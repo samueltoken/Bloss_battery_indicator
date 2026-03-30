@@ -45,7 +45,7 @@ public partial class MainWindow : Window
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
     private const string FallbackVersion = "1.0.1";
-    private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/swkwo/Bloss_battry_indicator/releases/latest";
+    private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
     private const string UpdateExpectedAssetName = "setup.exe";
     private static readonly string CustomIconDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
