@@ -11,6 +11,12 @@
   <a href="./README.en.md"><b>ENG</b></a>
 </p>
 
+<p align="center">
+  <a href="https://ko-fi.com/dukduk">
+    <img src="https://storage.ko-fi.com/cdn/kofi6.png?v=6" alt="Support on Ko-fi" height="44" />
+  </a>
+</p>
+
 ---
 
 <p align="center">
