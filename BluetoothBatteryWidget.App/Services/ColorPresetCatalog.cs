@@ -24,6 +24,10 @@ public sealed record ColorPreset(
     public override string ToString() => Label;
 }
 
+public sealed record ColorPresetOption(
+    string Id,
+    string Label);
+
 public static class ColorPresetCatalog
 {
     public static IReadOnlyList<ColorPreset> Presets { get; } =
@@ -149,7 +153,7 @@ public static class ColorPresetCatalog
             ColorFrom("#966495C9")),
         new(
             WidgetSettings.OceanMistPreset,
-            "Ocean Mist",
+            "오션 미스트",
             ColorFrom("#0E2540"),
             ColorFrom("#2B567A"),
             ColorFrom("#113657"),
@@ -166,7 +170,7 @@ public static class ColorPresetCatalog
             ColorFrom("#94BFD8E8")),
         new(
             WidgetSettings.SkyGlassPreset,
-            "Sky Glass",
+            "스카이 글래스",
             ColorFrom("#112A45"),
             ColorFrom("#366184"),
             ColorFrom("#153B61"),
@@ -183,7 +187,7 @@ public static class ColorPresetCatalog
             ColorFrom("#A0D2E7F3")),
         new(
             WidgetSettings.MintBluePreset,
-            "Mint Blue",
+            "민트 블루",
             ColorFrom("#12313F"),
             ColorFrom("#3A6E74"),
             ColorFrom("#1A4358"),
@@ -200,7 +204,7 @@ public static class ColorPresetCatalog
             ColorFrom("#A1DEDAE1")),
         new(
             WidgetSettings.SteelAquaPreset,
-            "Steel Aqua",
+            "스틸 아쿠아",
             ColorFrom("#1D2A36"),
             ColorFrom("#4A637A"),
             ColorFrom("#2A4256"),
@@ -217,7 +221,7 @@ public static class ColorPresetCatalog
             ColorFrom("#98B8CAD8")),
         new(
             WidgetSettings.BurgundyPreset,
-            "Burgundy",
+            "버건디",
             ColorFrom("#2E1220"),
             ColorFrom("#5E3347"),
             ColorFrom("#7B2442"),
@@ -234,7 +238,7 @@ public static class ColorPresetCatalog
             ColorFrom("#C2AABDD1")),
         new(
             WidgetSettings.CrimsonRedPreset,
-            "Crimson Red",
+            "크림슨 레드",
             ColorFrom("#341017"),
             ColorFrom("#73313E"),
             ColorFrom("#A22436"),
@@ -251,7 +255,7 @@ public static class ColorPresetCatalog
             ColorFrom("#D0A9B6C4")),
         new(
             WidgetSettings.BlackTonePreset,
-            "Black Tone",
+            "블랙 톤",
             ColorFrom("#E8EEF5"),
             ColorFrom("#B7C2D1"),
             ColorFrom("#F3F6FA"),
@@ -268,7 +272,7 @@ public static class ColorPresetCatalog
             ColorFrom("#A6435568")),
         new(
             WidgetSettings.DeepGreenPreset,
-            "Deep Green",
+            "딥 그린",
             ColorFrom("#112E23"),
             ColorFrom("#31634F"),
             ColorFrom("#1D7A59"),
@@ -285,7 +289,7 @@ public static class ColorPresetCatalog
             ColorFrom("#9CC8BDAE")),
         new(
             WidgetSettings.CobaltBluePreset,
-            "Cobalt Blue",
+            "코발트 블루",
             ColorFrom("#102445"),
             ColorFrom("#365A91"),
             ColorFrom("#1F4FA8"),
@@ -306,6 +310,65 @@ public static class ColorPresetCatalog
     {
         var normalized = WidgetSettings.NormalizeColorPresetId(presetId);
         return Presets.First(preset => string.Equals(preset.Id, normalized, StringComparison.Ordinal));
+    }
+
+    public static IReadOnlyList<ColorPresetOption> GetLocalizedOptions(string? language)
+    {
+        var normalizedLanguage = WidgetSettings.NormalizeLanguage(language);
+        return Presets
+            .Select(preset => new ColorPresetOption(preset.Id, GetLocalizedLabel(preset.Id, normalizedLanguage)))
+            .ToList();
+    }
+
+    private static string GetLocalizedLabel(string presetId, string normalizedLanguage)
+    {
+        var isKorean = string.Equals(normalizedLanguage, WidgetSettings.KoreanLanguage, StringComparison.Ordinal);
+        var normalizedPresetId = WidgetSettings.NormalizeColorPresetId(presetId);
+
+        if (isKorean)
+        {
+            return normalizedPresetId switch
+            {
+                WidgetSettings.WhiteBluePreset => "화이트 블루",
+                WidgetSettings.DeepBlueSeaPreset => "딥 블루",
+                WidgetSettings.AblRedPreset => "아블 레드",
+                WidgetSettings.GrassGreenPreset => "그래스 그린",
+                WidgetSettings.BurgundyRedPreset => "버건디 레드",
+                WidgetSettings.DawnDarkPreset => "던 다크",
+                WidgetSettings.CyberDarkPreset => "사이버 다크",
+                WidgetSettings.OceanMistPreset => "오션 미스트",
+                WidgetSettings.SkyGlassPreset => "스카이 글래스",
+                WidgetSettings.MintBluePreset => "민트 블루",
+                WidgetSettings.SteelAquaPreset => "스틸 아쿠아",
+                WidgetSettings.BurgundyPreset => "버건디",
+                WidgetSettings.CrimsonRedPreset => "크림슨 레드",
+                WidgetSettings.BlackTonePreset => "블랙 톤",
+                WidgetSettings.DeepGreenPreset => "딥 그린",
+                WidgetSettings.CobaltBluePreset => "코발트 블루",
+                _ => "화이트 블루"
+            };
+        }
+
+        return normalizedPresetId switch
+        {
+            WidgetSettings.WhiteBluePreset => "White Blue",
+            WidgetSettings.DeepBlueSeaPreset => "Deep Blue",
+            WidgetSettings.AblRedPreset => "Abl Red",
+            WidgetSettings.GrassGreenPreset => "Grass Green",
+            WidgetSettings.BurgundyRedPreset => "Burgundy Red",
+            WidgetSettings.DawnDarkPreset => "Dawn Dark",
+            WidgetSettings.CyberDarkPreset => "Cyber Dark",
+            WidgetSettings.OceanMistPreset => "Ocean Mist",
+            WidgetSettings.SkyGlassPreset => "Sky Glass",
+            WidgetSettings.MintBluePreset => "Mint Blue",
+            WidgetSettings.SteelAquaPreset => "Steel Aqua",
+            WidgetSettings.BurgundyPreset => "Burgundy",
+            WidgetSettings.CrimsonRedPreset => "Crimson Red",
+            WidgetSettings.BlackTonePreset => "Black Tone",
+            WidgetSettings.DeepGreenPreset => "Deep Green",
+            WidgetSettings.CobaltBluePreset => "Cobalt Blue",
+            _ => "White Blue"
+        };
     }
 
     private static WpfColor ColorFrom(string value)
