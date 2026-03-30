@@ -13,6 +13,10 @@
 
 ---
 
+<p align="center">
+  <img src="docs/images/bloss-widget-demo.png" alt="Bloss Preview" width="900" />
+</p>
+
 Language guide:
-- Korean documentation: [README.ko.md](./README.ko.md)
-- English documentation: [README.en.md](./README.en.md)
+- Korean: [README.ko.md](./README.ko.md)
+- English: [README.en.md](./README.en.md)
