@@ -1,0 +1,158 @@
+<Window x:Class="BluetoothBatteryWidget.App.IconImageAdjustWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="아이콘 이미지 맞춤"
+        Width="380"
+        Height="430"
+        MinWidth="360"
+        MinHeight="410"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F0F8FFFF">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="원형 안에 보일 위치를 맞춰주세요"
+                   FontSize="15"
+                   FontWeight="SemiBold"
+                   Foreground="#19334D" />
+
+        <Border x:Name="PreviewFrame"
+                Grid.Row="1"
+                Width="200"
+                Height="200"
+                Margin="0,14,0,0"
+                HorizontalAlignment="Center"
+                CornerRadius="100"
+                BorderThickness="1"
+                BorderBrush="#9DBFDAE8"
+                Background="#DDEEF8FF"
+                Cursor="Hand"
+                MouseWheel="PreviewFrame_MouseWheel"
+                MouseLeftButtonDown="PreviewFrame_MouseLeftButtonDown"
+                MouseLeftButtonUp="PreviewFrame_MouseLeftButtonUp"
+                MouseMove="PreviewFrame_MouseMove"
+                MouseLeave="PreviewFrame_MouseLeave">
+            <Grid Width="200" Height="200" ClipToBounds="True">
+                <Grid.Clip>
+                    <EllipseGeometry Center="100,100" RadiusX="100" RadiusY="100" />
+                </Grid.Clip>
+                <Canvas x:Name="PreviewCanvas"
+                        Width="200"
+                        Height="200">
+                    <Image x:Name="PreviewImage"
+                           Stretch="Fill"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
+                </Canvas>
+                <Canvas Width="200"
+                        Height="200"
+                        IsHitTestVisible="False">
+                    <Ellipse x:Name="GuideOuterRing"
+                             Canvas.Left="1"
+                             Canvas.Top="1"
+                             Width="198"
+                             Height="198"
+                             Stroke="#E8FFFFFF"
+                             StrokeThickness="2" />
+                    <Ellipse x:Name="GuideInnerRing"
+                             Canvas.Left="30"
+                             Canvas.Top="30"
+                             Width="140"
+                             Height="140"
+                             Stroke="#AEFFFFFF"
+                             StrokeThickness="1.2"
+                             StrokeDashArray="4,4" />
+                    <Line x:Name="GuideHorizontal"
+                          X1="0"
+                          Y1="100"
+                          X2="200"
+                          Y2="100"
+                          Stroke="#B8FFFFFF"
+                          StrokeThickness="1.2"
+                          StrokeDashArray="3,3" />
+                    <Line x:Name="GuideVertical"
+                          X1="100"
+                          Y1="0"
+                          X2="100"
+                          Y2="200"
+                          Stroke="#B8FFFFFF"
+                          StrokeThickness="1.2"
+                          StrokeDashArray="3,3" />
+                </Canvas>
+            </Grid>
+        </Border>
+
+        <TextBlock Grid.Row="2"
+                   x:Name="ZoomValueText"
+                   Margin="0,10,0,0"
+                   Foreground="#294A67"
+                   FontWeight="SemiBold"
+                   Text="배율 1.00x" />
+
+        <TextBlock Grid.Row="3"
+                   Margin="0,6,0,0"
+                   Foreground="#4A6A85"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Text="휠로 확대/축소, 마우스 왼쪽 버튼 드래그로 위치 이동" />
+
+        <Grid Grid.Row="4"
+              Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="48" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0"
+                       Foreground="#294A67"
+                       FontWeight="SemiBold"
+                       Text="가이드 두께" />
+            <Slider x:Name="GuideThicknessSlider"
+                    Grid.Column="1"
+                    Minimum="1.0"
+                    Maximum="5.0"
+                    Value="2.0"
+                    TickFrequency="0.1"
+                    IsSnapToTickEnabled="False" />
+            <TextBlock x:Name="GuideThicknessValueText"
+                       Grid.Column="2"
+                       Margin="8,0,0,0"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Right"
+                       Foreground="#294A67"
+                       Text="2.0" />
+        </Grid>
+
+        <TextBlock Grid.Row="5"
+                   Margin="0,10,0,0"
+                   Foreground="#4A6A85"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Text="원본보다 작게 축소할 수 있습니다. 필요하면 바깥 여백을 두고 중앙만 맞춰 저장하세요." />
+
+        <StackPanel Grid.Row="6"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,14,0,0">
+            <Button Width="88"
+                    Margin="0,0,8,0"
+                    Content="취소"
+                    Click="CancelButton_Click" />
+            <Button Width="88"
+                    Content="적용"
+                    IsDefault="True"
+                    Click="ApplyButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
