@@ -1,0 +1,11 @@
+bin/
+obj/
+artifacts/
+.vs/
+*.user
+*.suo
+*.pdb
+/release/
+/problems.md
+/solutions.md
+/TEST_SANDBOX.md
