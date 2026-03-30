@@ -1073,7 +1073,7 @@
                                HorizontalAlignment="Right"
                                FontSize="12"
                                Foreground="{StaticResource SecondaryTextBrush}"
-                               Text="버전 1.0.3" />
+                               Text="버전 1.0.1" />
                 </StackPanel>
             </Border>
         </Popup>
