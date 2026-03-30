@@ -14,7 +14,7 @@
 ---
 
 <p align="center">
-  <img src="docs/images/bloss-widget-demo.png" alt="Bloss Preview" width="900" />
+  <img src="docs/images/bloss-widget-real-masked.png" alt="Bloss Real Usage Preview" width="980" />
 </p>
 
 Language guide:
