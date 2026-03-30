@@ -24,7 +24,7 @@ Bloss is a Windows widget app that shows battery levels for Bluetooth-connected 
 ## How To Use
 1. Download the latest `setup.exe` from GitHub Releases and install it.
 2. Run Bloss to see battery levels for your connected Bluetooth devices.
-3. Open settings to adjust options like auto-start, tray behavior, and device name/icon changes.
+3. On the widget display, you can rename devices, change icon images, and restore defaults.
 
 ## Key Features
 - In settings, click `Update` to run auto-update when a newer release exists.
@@ -35,5 +35,6 @@ Bloss is a Windows widget app that shows battery levels for Bluetooth-connected 
 - Supports custom device names and custom device icons.
 
 ## Notes
-- For auto-update to work, each release must include `setup.exe` as a release asset.
-- To remove the app, run `Uninstall Bloss` from the Start menu.
+- Third-party game controllers may need extra time before battery data appears.
+- If status shows `Connecting` or `N/A`, wait up to about 5 minutes.
+- Some devices may not be supported yet.
