@@ -7,7 +7,6 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -46,11 +45,10 @@ public partial class MainWindow : Window
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.3";
+    private const string FallbackVersion = "1.0.1";
     private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
     private const string UpdateExpectedAssetName = "setup.exe";
     private const string UpdateExpectedChecksumAssetName = "setup.exe.sha256";
-    private const string UpdateExpectedSignerName = "samueltoken";
     private const long UpdateMaxInstallerBytes = 250L * 1024 * 1024;
     private const int UpdateMaxChecksumBytes = 16 * 1024;
     private static readonly string[] UpdateTrustedDownloadHosts =
@@ -624,12 +622,6 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
             }
 
-            if (!IsInstallerSignatureTrusted(setupPath, UpdateExpectedSignerName))
-            {
-                TryDeleteFile(setupPath);
-                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateSignatureFailed);
-            }
-
             SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateInstallStarting, 100, isIndeterminate: false);
             StartInstallerUpdateAndRestart(setupPath);
             ExitApplication();
@@ -913,37 +905,6 @@ public partial class MainWindow : Window
         using var sha256 = SHA256.Create();
         var hash = sha256.ComputeHash(stream);
         return Convert.ToHexString(hash);
-    }
-
-    private static bool IsInstallerSignatureTrusted(string installerPath, string expectedSignerName)
-    {
-        try
-        {
-            using var signerCertificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(installerPath));
-            if (signerCertificate.NotBefore.ToUniversalTime() > DateTime.UtcNow ||
-                signerCertificate.NotAfter.ToUniversalTime() < DateTime.UtcNow)
-            {
-                return false;
-            }
-
-            if (!signerCertificate.Subject.Contains(expectedSignerName, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            using var chain = new X509Chain();
-            chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
-            chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
-            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
-            chain.ChainPolicy.VerificationTime = DateTime.UtcNow;
-            chain.ChainPolicy.UrlRetrievalTimeout = TimeSpan.FromSeconds(15);
-
-            return chain.Build(signerCertificate);
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static bool IsTrustedUpdateDownloadUrl(string downloadUrl)
