@@ -1,7 +1,7 @@
 param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    [string]$AppVersion = "1.0.1"
+    [string]$AppVersion = "1.0.2"
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,9 +61,20 @@ if ($LASTEXITCODE -ne 0) {
     throw "ISCC compile failed with exit code $LASTEXITCODE."
 }
 
+$setupExePath = Join-Path $outputDir "setup.exe"
+if (-not (Test-Path $setupExePath)) {
+    throw "setup.exe not found after installer build: $setupExePath"
+}
+
+$setupHash = (Get-FileHash -Path $setupExePath -Algorithm SHA256).Hash.ToUpperInvariant()
+$checksumPath = Join-Path $outputDir "setup.exe.sha256"
+Set-Content -Path $checksumPath -Value "$setupHash  setup.exe" -Encoding ascii
+
 if (Test-Path $publishDir) {
     Remove-Item $publishDir -Recurse -Force
 }
 
 Write-Host "Installer package created in:"
 Write-Host $outputDir
+Write-Host "Checksum file created:"
+Write-Host $checksumPath
