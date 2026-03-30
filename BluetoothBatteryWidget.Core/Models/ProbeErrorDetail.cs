@@ -1,0 +1,30 @@
+namespace BluetoothBatteryWidget.Core.Models;
+
+public sealed record ProbeErrorDetail(
+    ProbeStage Stage,
+    string ExceptionType,
+    string ExceptionMessage,
+    string DiagnosticsText,
+    DateTimeOffset Timestamp,
+    int OpenSuccessCount = 0,
+    int OpenFailureCount = 0,
+    int ReadSuccessCount = 0,
+    int ReadFailureCount = 0,
+    int StrictEndpointCount = 0,
+    int RelaxedEndpointCount = 0,
+    int GlobalEndpointCount = 0,
+    int StreamTimeoutCount = 0,
+    string Context = "",
+    string ObservedReportIds = "",
+    string TopCandidates = "",
+    string WinnerDecoder = "",
+    string BlockReason = "",
+    string IdentityKey = "",
+    string SuppressionReason = "",
+    double DecoderConfidence = 0,
+    string HandshakeProfileId = "",
+    string BrandHint = "",
+    bool AliasMatched = false,
+    bool IdleSuppressed = false,
+    ProbeFailureKind FailureKind = ProbeFailureKind.Unknown
+);

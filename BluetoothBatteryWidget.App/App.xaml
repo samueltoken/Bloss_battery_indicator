@@ -1,0 +1,12 @@
+<Application x:Class="BluetoothBatteryWidget.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:BluetoothBatteryWidget.App.Converters"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <converters:IconGlyphConverter x:Key="IconGlyphConverter" />
+        <converters:BatteryPercentTextConverter x:Key="BatteryPercentTextConverter" />
+        <converters:BatteryFillBrushConverter x:Key="BatteryFillBrushConverter" />
+        <converters:BatteryWidthConverter x:Key="BatteryWidthConverter" />
+    </Application.Resources>
+</Application>
