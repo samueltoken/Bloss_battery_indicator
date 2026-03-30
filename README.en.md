@@ -16,10 +16,10 @@ Bloss is a Windows widget app that shows battery levels for Bluetooth-connected 
 
 ## Preview
 <p align="center">
-  <img src="docs/images/bloss-widget-demo.png" alt="Bloss usage preview" width="900" />
+  <img src="docs/images/bloss-widget-real-masked.png" alt="Bloss real usage preview" width="980" />
 </p>
 
-> This preview is a sanitized sample (no personal or real device data).
+> This is a real usage capture with device IDs masked only for public README safety.
 
 ## How To Use
 1. Download the latest `setup.exe` from GitHub Releases and install it.

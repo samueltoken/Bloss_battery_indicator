@@ -16,10 +16,10 @@ Bloss는 블루투스로 연결된 전자기기들의 배터리 잔량을 표시
 
 ## 화면 예시
 <p align="center">
-  <img src="docs/images/bloss-widget-demo.png" alt="Bloss 사용 화면 예시" width="900" />
+  <img src="docs/images/bloss-widget-real-masked.png" alt="Bloss 실제 사용 화면 예시" width="980" />
 </p>
 
-> 위 이미지는 개인정보/실기기 정보가 없는 예시 화면입니다.
+> 위 이미지는 README 공개용으로 기기 ID만 비식별 처리한 실제 사용 화면입니다.
 
 ## 사용 방법
 1. GitHub Release에서 최신 `setup.exe`를 내려받아 설치합니다.
