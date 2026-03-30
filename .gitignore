@@ -5,6 +5,7 @@ artifacts/
 *.user
 *.suo
 *.pdb
+*.dll
 /release/
 /problems.md
 /solutions.md
