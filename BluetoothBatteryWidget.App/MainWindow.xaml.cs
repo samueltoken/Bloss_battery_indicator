@@ -46,7 +46,7 @@ public partial class MainWindow : Window
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.2";
+    private const string FallbackVersion = "1.0.3";
     private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
     private const string UpdateExpectedAssetName = "setup.exe";
     private const string UpdateExpectedChecksumAssetName = "setup.exe.sha256";
@@ -92,8 +92,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
 
         InitializeComponent();
-        ColorPresetComboBox.ItemsSource = ColorPresetCatalog.Presets;
-        ColorPresetComboBox.DisplayMemberPath = nameof(ColorPreset.Label);
+        RefreshColorPresetOptions();
         LanguageComboBox.ItemsSource = _viewModel.LanguageOptions;
         LanguageComboBox.DisplayMemberPath = nameof(UiLanguageOption.Label);
         _appIcon = LoadAppIcon();
@@ -445,7 +444,7 @@ public partial class MainWindow : Window
 
     private void ColorPresetComboBox_SelectionChanged(object sender, WpfControls.SelectionChangedEventArgs e)
     {
-        if (_isColorPresetSyncing || ColorPresetComboBox.SelectedItem is not ColorPreset selected)
+        if (_isColorPresetSyncing || ColorPresetComboBox.SelectedItem is not ColorPresetOption selected)
         {
             return;
         }
@@ -1179,6 +1178,8 @@ public partial class MainWindow : Window
         {
             if (Dispatcher.CheckAccess())
             {
+                RefreshColorPresetOptions();
+                SyncColorPresetSelection();
                 SyncLanguageSelection();
                 RefreshTrayMenuTexts();
                 UpdateVersionMenuHeader();
@@ -1187,6 +1188,8 @@ public partial class MainWindow : Window
             {
                 Dispatcher.Invoke(() =>
                 {
+                    RefreshColorPresetOptions();
+                    SyncColorPresetSelection();
                     SyncLanguageSelection();
                     RefreshTrayMenuTexts();
                     UpdateVersionMenuHeader();
@@ -1234,8 +1237,8 @@ public partial class MainWindow : Window
         }
 
         var normalized = WidgetSettings.NormalizeColorPresetId(_viewModel.ColorPresetId);
-        var selected = ColorPresetCatalog.Presets
-            .FirstOrDefault(preset => string.Equals(preset.Id, normalized, StringComparison.Ordinal));
+        var selected = (ColorPresetComboBox.ItemsSource as IEnumerable<ColorPresetOption>)
+            ?.FirstOrDefault(preset => string.Equals(preset.Id, normalized, StringComparison.Ordinal));
         if (selected is null)
         {
             return;
@@ -1245,6 +1248,26 @@ public partial class MainWindow : Window
         try
         {
             ColorPresetComboBox.SelectedItem = selected;
+        }
+        finally
+        {
+            _isColorPresetSyncing = false;
+        }
+    }
+
+    private void RefreshColorPresetOptions()
+    {
+        if (ColorPresetComboBox is null)
+        {
+            return;
+        }
+
+        var options = ColorPresetCatalog.GetLocalizedOptions(_viewModel.Language);
+        _isColorPresetSyncing = true;
+        try
+        {
+            ColorPresetComboBox.ItemsSource = options;
+            ColorPresetComboBox.DisplayMemberPath = nameof(ColorPresetOption.Label);
         }
         finally
         {
