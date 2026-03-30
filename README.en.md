@@ -11,6 +11,12 @@
   <a href="./README.en.md"><b>ENG</b></a>
 </p>
 
+<p align="center">
+  <a href="https://ko-fi.com/dukduk">
+    <img src="https://storage.ko-fi.com/cdn/kofi6.png?v=6" alt="Support on Ko-fi" height="44" />
+  </a>
+</p>
+
 ## Overview
 Bloss is a Windows widget app that shows battery levels for Bluetooth-connected devices.
 
