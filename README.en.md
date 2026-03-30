@@ -12,42 +12,28 @@
 </p>
 
 ## Overview
-Bloss is a desktop widget that helps users quickly check battery levels of connected Bluetooth devices.
+Bloss is a Windows widget app that shows battery levels for Bluetooth-connected devices.
 
-## Folder Layout
-- `BluetoothBatteryWidget.App`: app UI and runtime logic
-- `BluetoothBatteryWidget.Core`: shared core logic
-- `BluetoothBatteryWidget.Tests`: test project
-- `build/scripts`: build scripts
-- `build/installer`: installer template
-- `release`: final distributable outputs
+## Preview
+<p align="center">
+  <img src="docs/images/bloss-widget-demo.png" alt="Bloss usage preview" width="900" />
+</p>
 
-## Build
-```powershell
-dotnet build .\BluetoothBatteryWidget.sln -c Release
-dotnet test .\BluetoothBatteryWidget.Tests\BluetoothBatteryWidget.Tests.csproj -c Release
-```
+> This preview is a sanitized sample (no personal or real device data).
 
-## Build Portable EXE
-```powershell
-.\build\scripts\build-portable.ps1 -Configuration Release -Runtime win-x64
-```
+## How To Use
+1. Download the latest `setup.exe` from GitHub Releases and install it.
+2. Run Bloss to see battery levels for your connected Bluetooth devices.
+3. Open settings to adjust options like auto-start, tray behavior, and device name/icon changes.
 
-Output:
-- `release\portable\Bloss.exe`
+## Key Features
+- In settings, click `Update` to run auto-update when a newer release exists.
+- After update installation, the widget app closes and starts again automatically.
+- Optimized for desktop widget use with low CPU/RAM overhead.
+- Supports launch at Windows startup.
+- Supports tray/background running even after closing the main window.
+- Supports custom device names and custom device icons.
 
-## Build Installer
-Requires Inno Setup 6 (`ISCC.exe`).
-
-```powershell
-.\build\scripts\build-installer.ps1 -AppVersion 1.0.1
-```
-
-Output:
-- `release\installer\setup.exe`
-- Start menu entry: `Uninstall Bloss`
-- Install folder file: `uninstall.exe`
-
-## Update Flow
-- The in-app `Update` button downloads the latest `setup.exe` from GitHub Releases and installs it.
-- Each new release must include `setup.exe` as a release asset for auto-update to work.
+## Notes
+- For auto-update to work, each release must include `setup.exe` as a release asset.
+- To remove the app, run `Uninstall Bloss` from the Start menu.
