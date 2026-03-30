@@ -1,56 +1,18 @@
-# Bloss (Bluetooth Battery Indicator)
+<p align="center">
+  <img src="BluetoothBatteryWidget.App/Assets/app.ico" alt="Bloss Icon" width="96" />
+</p>
 
-Windows desktop widget that shows battery level for connected Bluetooth devices.
+<h1 align="center">Bloss</h1>
+<p align="center">Bluetooth Battery Indicator for Windows</p>
 
-## Folder Layout
+<p align="center">
+  <a href="./README.ko.md"><b>KOR</b></a>
+  &nbsp;|&nbsp;
+  <a href="./README.en.md"><b>ENG</b></a>
+</p>
 
-- `BluetoothBatteryWidget.App` : app source code
-- `BluetoothBatteryWidget.Core` : shared logic
-- `BluetoothBatteryWidget.Tests` : test code
-- `build\scripts` : build commands
-- `build\installer` : installer template (`.iss`)
-- `release` : final output files (`Bloss.exe`, `setup.exe`)
-- `artifacts\staging` : temporary build files (auto cleanup)
+---
 
-## Quick Build
-
-```powershell
-dotnet build .\BluetoothBatteryWidget.sln -c Release
-dotnet test .\BluetoothBatteryWidget.Tests\BluetoothBatteryWidget.Tests.csproj -c Release
-```
-
-## Portable EXE Build
-
-```powershell
-.\build\scripts\build-portable.ps1 -Configuration Release -Runtime win-x64
-```
-
-Output:
-- `release\portable\Bloss.exe`
-
-Optional zip:
-
-```powershell
-.\build\scripts\build-portable.ps1 -Configuration Release -Runtime win-x64 -ZipOutput
-```
-
-Zip output:
-- `release\portable\Bloss-portable-win-x64.zip`
-
-## Installer Build
-
-Inno Setup 6 (`ISCC.exe`) is required.
-
-```powershell
-.\build\scripts\build-installer.ps1 -AppVersion 1.0.1
-```
-
-Output:
-- `release\installer\setup.exe`
-- Start Menu item: `Uninstall Bloss`
-- Install folder file: `uninstall.exe`
-
-## Notes
-
-- Main app executable name: `Bloss.exe`
-- User settings path: `%AppData%\Bloss\settings.json`
+Language guide:
+- Korean documentation: [README.ko.md](./README.ko.md)
+- English documentation: [README.en.md](./README.en.md)
