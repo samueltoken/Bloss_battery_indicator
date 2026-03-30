@@ -6,6 +6,8 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -44,9 +46,20 @@ public partial class MainWindow : Window
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.1";
+    private const string FallbackVersion = "1.0.2";
     private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
     private const string UpdateExpectedAssetName = "setup.exe";
+    private const string UpdateExpectedChecksumAssetName = "setup.exe.sha256";
+    private const string UpdateExpectedSignerName = "samueltoken";
+    private const long UpdateMaxInstallerBytes = 250L * 1024 * 1024;
+    private const int UpdateMaxChecksumBytes = 16 * 1024;
+    private static readonly string[] UpdateTrustedDownloadHosts =
+    [
+        "github.com",
+        "objects.githubusercontent.com",
+        "github-releases.githubusercontent.com",
+        "release-assets.githubusercontent.com"
+    ];
     private static readonly string CustomIconDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Bloss",
@@ -595,18 +608,42 @@ public partial class MainWindow : Window
                 tempRoot,
                 $"setup-{releaseInfo.Version}-{DateTime.UtcNow:yyyyMMddHHmmss}.exe");
 
-            await DownloadUpdateAssetAsync(releaseInfo.DownloadUrl, setupPath).ConfigureAwait(true);
+            await DownloadUpdateAssetAsync(releaseInfo.SetupDownloadUrl, setupPath).ConfigureAwait(true);
+
+            SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateVerifying, 100, isIndeterminate: true);
+            var checksumContent = await DownloadUpdateChecksumAssetAsync(releaseInfo.ChecksumDownloadUrl).ConfigureAwait(true);
+            if (!TryExtractSha256Hash(checksumContent, out var expectedHash))
+            {
+                TryDeleteFile(setupPath);
+                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
+            }
+
+            var downloadedHash = ComputeFileSha256(setupPath);
+            if (!string.Equals(downloadedHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                TryDeleteFile(setupPath);
+                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
+            }
+
+            if (!IsInstallerSignatureTrusted(setupPath, UpdateExpectedSignerName))
+            {
+                TryDeleteFile(setupPath);
+                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateSignatureFailed);
+            }
 
             SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateInstallStarting, 100, isIndeterminate: false);
             StartInstallerUpdateAndRestart(setupPath);
             ExitApplication();
         }
-        catch
+        catch (Exception ex)
         {
-            SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateDownloadFailed, 0, isIndeterminate: false);
+            var message = string.IsNullOrWhiteSpace(ex.Message)
+                ? _viewModel.CurrentLanguageText.UpdateDownloadFailed
+                : ex.Message;
+            SetUpdateProgressUi(message, 0, isIndeterminate: false);
             ShowTrayNotification(
                 _viewModel.TextUpdate,
-                _viewModel.CurrentLanguageText.UpdateDownloadFailed,
+                message,
                 Forms.ToolTipIcon.Warning);
         }
         finally
@@ -645,6 +682,20 @@ public partial class MainWindow : Window
                 return (null, _viewModel.CurrentLanguageText.UpdateReleaseReadFailed);
             }
 
+            if (root.TryGetProperty("draft", out var draftElement) &&
+                draftElement.ValueKind is JsonValueKind.True &&
+                draftElement.GetBoolean())
+            {
+                return (null, _viewModel.CurrentLanguageText.UpdateReleaseReadFailed);
+            }
+
+            if (root.TryGetProperty("prerelease", out var prereleaseElement) &&
+                prereleaseElement.ValueKind is JsonValueKind.True &&
+                prereleaseElement.GetBoolean())
+            {
+                return (null, _viewModel.CurrentLanguageText.UpdateReleaseReadFailed);
+            }
+
             var latestVersion = NormalizeReleaseVersion(tagNameElement.GetString());
             if (!root.TryGetProperty("assets", out var assetsElement) ||
                 assetsElement.ValueKind != JsonValueKind.Array)
@@ -652,7 +703,8 @@ public partial class MainWindow : Window
                 return (null, _viewModel.CurrentLanguageText.UpdateAssetMissing);
             }
 
-            string? fallbackUrl = null;
+            string? setupDownloadUrl = null;
+            string? checksumDownloadUrl = null;
             foreach (var asset in assetsElement.EnumerateArray())
             {
                 if (!asset.TryGetProperty("name", out var nameElement) ||
@@ -670,23 +722,33 @@ public partial class MainWindow : Window
 
                 if (string.Equals(assetName, UpdateExpectedAssetName, StringComparison.OrdinalIgnoreCase))
                 {
-                    return (new UpdateReleaseAssetInfo(latestVersion, downloadUrl), null);
+                    setupDownloadUrl = downloadUrl;
+                    continue;
                 }
 
-                if (fallbackUrl is null &&
-                    assetName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
-                    assetName.Contains("setup", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(assetName, UpdateExpectedChecksumAssetName, StringComparison.OrdinalIgnoreCase))
                 {
-                    fallbackUrl = downloadUrl;
+                    checksumDownloadUrl = downloadUrl;
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(fallbackUrl))
+            if (string.IsNullOrWhiteSpace(setupDownloadUrl))
             {
-                return (new UpdateReleaseAssetInfo(latestVersion, fallbackUrl), null);
+                return (null, _viewModel.CurrentLanguageText.UpdateAssetMissing);
             }
 
-            return (null, _viewModel.CurrentLanguageText.UpdateAssetMissing);
+            if (string.IsNullOrWhiteSpace(checksumDownloadUrl))
+            {
+                return (null, _viewModel.CurrentLanguageText.UpdateChecksumMissing);
+            }
+
+            if (!IsTrustedUpdateDownloadUrl(setupDownloadUrl) ||
+                !IsTrustedUpdateDownloadUrl(checksumDownloadUrl))
+            {
+                return (null, _viewModel.CurrentLanguageText.UpdateSourceNotTrusted);
+            }
+
+            return (new UpdateReleaseAssetInfo(latestVersion, setupDownloadUrl, checksumDownloadUrl), null);
         }
         catch
         {
@@ -696,7 +758,68 @@ public partial class MainWindow : Window
 
     private async Task DownloadUpdateAssetAsync(string downloadUrl, string destinationPath)
     {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue(AppDisplayName, GetDisplayVersion()));
+
+            using var response = await _httpClient
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
+                .ConfigureAwait(true);
+            response.EnsureSuccessStatusCode();
+
+            var totalBytes = response.Content.Headers.ContentLength;
+            if (totalBytes is > UpdateMaxInstallerBytes)
+            {
+                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
+            }
+
+            var downloadedBytes = 0L;
+
+            await using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(true);
+            await using var target = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            var buffer = new byte[81920];
+
+            while (true)
+            {
+                var read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length)).ConfigureAwait(true);
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                await target.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(true);
+                downloadedBytes += read;
+                if (downloadedBytes > UpdateMaxInstallerBytes)
+                {
+                    throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
+                }
+
+                if (totalBytes is > 0)
+                {
+                    var percent = Math.Clamp(downloadedBytes * 100d / totalBytes.Value, 0d, 100d);
+                    var message = string.Format(
+                        _viewModel.CurrentLanguageText.UpdateDownloadingFormat,
+                        Math.Round(percent, 0));
+                    SetUpdateProgressUi(message, percent, isIndeterminate: false);
+                }
+                else
+                {
+                    SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateDownloading, 0, isIndeterminate: true);
+                }
+            }
+        }
+        catch
+        {
+            TryDeleteFile(destinationPath);
+            throw;
+        }
+    }
+
+    private async Task<string> DownloadUpdateChecksumAssetAsync(string downloadUrl)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue(AppDisplayName, GetDisplayVersion()));
 
         using var response = await _httpClient
@@ -704,12 +827,14 @@ public partial class MainWindow : Window
             .ConfigureAwait(true);
         response.EnsureSuccessStatusCode();
 
-        var totalBytes = response.Content.Headers.ContentLength;
-        var downloadedBytes = 0L;
+        if (response.Content.Headers.ContentLength is > UpdateMaxChecksumBytes)
+        {
+            throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
+        }
 
         await using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(true);
-        await using var target = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-        var buffer = new byte[81920];
+        using var memory = new MemoryStream();
+        var buffer = new byte[2048];
 
         while (true)
         {
@@ -719,21 +844,144 @@ public partial class MainWindow : Window
                 break;
             }
 
-            await target.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(true);
-            downloadedBytes += read;
+            await memory.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(true);
+            if (memory.Length > UpdateMaxChecksumBytes)
+            {
+                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
+            }
+        }
 
-            if (totalBytes is > 0)
+        return Encoding.UTF8.GetString(memory.ToArray());
+    }
+
+    private static bool TryExtractSha256Hash(string checksumContent, out string hash)
+    {
+        hash = string.Empty;
+        if (string.IsNullOrWhiteSpace(checksumContent))
+        {
+            return false;
+        }
+
+        foreach (var rawLine in checksumContent.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith('#'))
             {
-                var percent = Math.Clamp(downloadedBytes * 100d / totalBytes.Value, 0d, 100d);
-                var message = string.Format(
-                    _viewModel.CurrentLanguageText.UpdateDownloadingFormat,
-                    Math.Round(percent, 0));
-                SetUpdateProgressUi(message, percent, isIndeterminate: false);
+                continue;
             }
-            else
+
+            var hashCandidate = line;
+            var separator = line.IndexOfAny([' ', '\t']);
+            if (separator > 0)
             {
-                SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateDownloading, 0, isIndeterminate: true);
+                hashCandidate = line[..separator];
             }
+
+            if (hashCandidate.Length != 64)
+            {
+                continue;
+            }
+
+            var allHex = true;
+            for (var i = 0; i < hashCandidate.Length; i++)
+            {
+                var ch = hashCandidate[i];
+                var isHex = (ch >= '0' && ch <= '9') ||
+                            (ch >= 'a' && ch <= 'f') ||
+                            (ch >= 'A' && ch <= 'F');
+                if (!isHex)
+                {
+                    allHex = false;
+                    break;
+                }
+            }
+
+            if (!allHex)
+            {
+                continue;
+            }
+
+            hash = hashCandidate.ToUpperInvariant();
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string ComputeFileSha256(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(stream);
+        return Convert.ToHexString(hash);
+    }
+
+    private static bool IsInstallerSignatureTrusted(string installerPath, string expectedSignerName)
+    {
+        try
+        {
+            using var signerCertificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(installerPath));
+            if (signerCertificate.NotBefore.ToUniversalTime() > DateTime.UtcNow ||
+                signerCertificate.NotAfter.ToUniversalTime() < DateTime.UtcNow)
+            {
+                return false;
+            }
+
+            if (!signerCertificate.Subject.Contains(expectedSignerName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            using var chain = new X509Chain();
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
+            chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
+            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
+            chain.ChainPolicy.VerificationTime = DateTime.UtcNow;
+            chain.ChainPolicy.UrlRetrievalTimeout = TimeSpan.FromSeconds(15);
+
+            return chain.Build(signerCertificate);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsTrustedUpdateDownloadUrl(string downloadUrl)
+    {
+        if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var trustedHost in UpdateTrustedDownloadHosts)
+        {
+            if (string.Equals(uri.Host, trustedHost, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Ignore cleanup failures.
         }
     }
 
@@ -1950,7 +2198,8 @@ public partial class MainWindow : Window
 
     private sealed record UpdateReleaseAssetInfo(
         string Version,
-        string DownloadUrl);
+        string SetupDownloadUrl,
+        string ChecksumDownloadUrl);
 
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;
