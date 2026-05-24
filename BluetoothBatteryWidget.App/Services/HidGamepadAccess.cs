@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using BluetoothBatteryWidget.Core.Services;
 using Microsoft.Win32.SafeHandles;
@@ -346,6 +347,102 @@ internal static class HidGamepadAccess
                     VendorId: vendorId,
                     ProductId: productId,
                     DiscoveryStage: discoveryStage);
+
+                if (!byPath.Add(endpoint.DevicePath))
+                {
+                    continue;
+                }
+
+                results.Add(endpoint);
+            }
+        }
+        finally
+        {
+            SetupDiDestroyDeviceInfoList(infoSet);
+        }
+
+        return results;
+    }
+
+    public static IReadOnlyList<HidGamepadEndpoint> EnumerateSteamControllerTritonEndpoints(CancellationToken cancellationToken)
+    {
+        var results = new List<HidGamepadEndpoint>();
+        var byPath = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        HidD_GetHidGuid(out var hidClassGuid);
+        var infoSet = SetupDiGetClassDevsW(
+            ref hidClassGuid,
+            null,
+            IntPtr.Zero,
+            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+
+        if (infoSet == IntPtr.Zero || infoSet == InvalidHandleValue)
+        {
+            return [];
+        }
+
+        try
+        {
+            for (uint index = 0; ; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var interfaceData = new SP_DEVICE_INTERFACE_DATA
+                {
+                    cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DATA>()
+                };
+
+                if (!SetupDiEnumDeviceInterfaces(infoSet, IntPtr.Zero, ref hidClassGuid, index, ref interfaceData))
+                {
+                    var lastError = Marshal.GetLastWin32Error();
+                    if (lastError == ERROR_NO_MORE_ITEMS)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (!TryReadHidInterfaceDetail(infoSet, ref interfaceData, out var devicePath, out var devInfoData))
+                {
+                    continue;
+                }
+
+                var instanceId = TryGetInstanceId(infoSet, ref devInfoData);
+                if (string.IsNullOrWhiteSpace(instanceId))
+                {
+                    continue;
+                }
+
+                var ancestorIds = TryGetAncestorInstanceIds(devInfoData.DevInst, 5);
+                if (!TryResolveVidPid(infoSet, ref devInfoData, instanceId, ancestorIds, devicePath, out var vendorId, out var productId) ||
+                    !IsSteamControllerTritonVidPid(vendorId, productId) ||
+                    !IsSteamControllerTritonInterface(instanceId, ancestorIds, devicePath, productId))
+                {
+                    continue;
+                }
+
+                var friendlyName = TryGetFriendlyName(infoSet, ref devInfoData);
+                if (!IsLikelySteamControllerVendorCollection(instanceId, friendlyName, devicePath))
+                {
+                    using var capabilityHandle = OpenHandle(devicePath);
+                    if (capabilityHandle.IsInvalid ||
+                        !TryGetCapabilities(capabilityHandle, out var usagePage, out _, out _) ||
+                        usagePage < 0xFF00)
+                    {
+                        continue;
+                    }
+                }
+
+                var address = ResolveSteamControllerTritonAddress(instanceId, ancestorIds, devicePath);
+                var endpoint = new HidGamepadEndpoint(
+                    DevicePath: devicePath,
+                    InstanceId: instanceId,
+                    Address: address,
+                    DisplayName: "Steam Controller",
+                    VendorId: vendorId,
+                    ProductId: productId,
+                    DiscoveryStage: HidEndpointDiscoveryStage.GlobalAggressive);
 
                 if (!byPath.Add(endpoint.DevicePath))
                 {
@@ -914,6 +1011,130 @@ internal static class HidGamepadAccess
         }
 
         return HidProbeTextParser.ExtractAddress(devicePath);
+    }
+
+    private static bool IsSteamControllerTritonVidPid(string vendorId, string productId)
+    {
+        if (!string.Equals(vendorId, "28DE", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return string.Equals(productId, "1304", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(productId, "1305", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSteamControllerTritonInterface(
+        string instanceId,
+        IReadOnlyList<string> ancestorIds,
+        string devicePath,
+        string productId)
+    {
+        if (!string.Equals(productId, "1304", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(productId, "1305", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (TryReadInterfaceNumber(instanceId, out var interfaceNumber))
+        {
+            return interfaceNumber is >= 2 and <= 6;
+        }
+
+        foreach (var ancestor in ancestorIds)
+        {
+            if (TryReadInterfaceNumber(ancestor, out interfaceNumber))
+            {
+                return interfaceNumber is >= 2 and <= 6;
+            }
+        }
+
+        return TryReadInterfaceNumber(devicePath, out interfaceNumber) && interfaceNumber is >= 2 and <= 6;
+    }
+
+    private static bool IsLikelySteamControllerVendorCollection(
+        string instanceId,
+        string? friendlyName,
+        string devicePath)
+    {
+        return instanceId.Contains("COL03", StringComparison.OrdinalIgnoreCase) ||
+               devicePath.Contains("COL03", StringComparison.OrdinalIgnoreCase) ||
+               (!string.IsNullOrWhiteSpace(friendlyName) &&
+                friendlyName.Contains("vendor-defined", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolveSteamControllerTritonAddress(
+        string instanceId,
+        IReadOnlyList<string> ancestorIds,
+        string devicePath)
+    {
+        if (TryExtractSteamSerialAddress(instanceId, out var address))
+        {
+            return address;
+        }
+
+        foreach (var ancestor in ancestorIds)
+        {
+            if (TryExtractSteamSerialAddress(ancestor, out address))
+            {
+                return address;
+            }
+        }
+
+        if (TryExtractSteamSerialAddress(devicePath, out address))
+        {
+            return address;
+        }
+
+        return BuildSyntheticAddress($"{instanceId}|{devicePath}");
+    }
+
+    private static bool TryReadInterfaceNumber(string text, out int interfaceNumber)
+    {
+        interfaceNumber = -1;
+        var markerIndex = text.IndexOf("MI_", StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0 || markerIndex + 5 > text.Length)
+        {
+            return false;
+        }
+
+        var hex = text.Substring(markerIndex + 3, 2);
+        return int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out interfaceNumber);
+    }
+
+    private static bool TryExtractSteamSerialAddress(string text, out string address)
+    {
+        address = string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var parts = text.Split(['\\', '#', '&', '_'], StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var normalized = AddressNormalizer.NormalizeAddress(part);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                address = normalized;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string BuildSyntheticAddress(string source)
+    {
+        var bytes = Encoding.UTF8.GetBytes(source.ToUpperInvariant());
+        var hash = SHA256.HashData(bytes);
+        var builder = new StringBuilder(12);
+        for (var index = 0; index < 6; index++)
+        {
+            builder.Append(hash[index].ToString("X2"));
+        }
+
+        return builder.ToString();
     }
 
     private static IReadOnlyList<string> TryGetAncestorInstanceIds(uint devInst, int maxDepth)

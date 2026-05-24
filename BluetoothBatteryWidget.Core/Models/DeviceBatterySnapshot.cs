@@ -16,6 +16,9 @@ public sealed record DeviceBatterySnapshot(
     bool IsBatterySuspect = false,
     bool IsStale = false,
     bool IsBatteryConnecting = false,
+    BatteryDisplayState DisplayState = BatteryDisplayState.Unknown,
     string? BaseDisplayName = null,
-    string? CustomIconImagePath = null
+    string? CustomIconImagePath = null,
+    bool IsCharging = false,
+    bool IsChargeComplete = false
 );

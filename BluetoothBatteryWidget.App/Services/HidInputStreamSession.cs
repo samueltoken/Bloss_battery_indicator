@@ -45,6 +45,7 @@ internal sealed class HidInputStreamSession : IDisposable
             }
 
             HidGamepadAccess.ReleaseBorrowedHandle(_sourceHandle, _addRefAcquired);
+            _disposed = true;
         }
     }
 

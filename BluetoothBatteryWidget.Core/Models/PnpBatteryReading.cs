@@ -11,5 +11,12 @@ public sealed record PnpBatteryReading(
     string? ModelKey = null,
     bool SuggestCalibration = false,
     DateTimeOffset? ObservedAt = null,
-    bool IsBatterySuspect = false
+    bool IsBatterySuspect = false,
+    int ReliabilityScore = 0,
+    string ReasonCode = "",
+    string ActiveSource = "",
+    string PathType = "",
+    BatteryDisplayState DisplayState = BatteryDisplayState.Unknown,
+    bool IsCharging = false,
+    bool IsChargeComplete = false
 );

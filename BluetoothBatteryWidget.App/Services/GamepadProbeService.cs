@@ -272,6 +272,11 @@ public sealed class GamepadProbeService
                 diagnostics.DecoderConfidence = CalculateDecoderConfidence(selectedWinner, rankedCandidates);
                 diagnostics.SuppressionReason = selectedSuppressionReason;
                 diagnostics.ActiveSource = $"probe:{selectedWinner.Decoder}";
+                diagnostics.ReliabilityScore = Math.Clamp(selectedWinner.Score, 0, 100);
+                diagnostics.ReasonCode = selectedWinner.Score >= ConfirmedScoreThreshold
+                    ? "probe_candidate_confirmed"
+                    : "probe_candidate_estimated";
+                diagnostics.PathType = ResolveProbePathType(selected.Endpoint);
                 if (!string.IsNullOrWhiteSpace(selectedSuppressionReason))
                 {
                     traceBlockReason = selectedSuppressionReason;
@@ -293,6 +298,7 @@ public sealed class GamepadProbeService
                 {
                     diagnostics.BlockReason = rejectReason;
                     diagnostics.SuppressionReason = rejectReason;
+                    diagnostics.ReasonCode = rejectReason;
                     traceBlockReason = rejectReason;
                     ApplyHardFailCooldownIfNeeded(observedProbeKeys, diagnostics);
                     Report(onProgress, ProbeStage.Failed, 100, "Xbox generic candidate blocked");
@@ -1060,7 +1066,12 @@ public sealed class GamepadProbeService
             IdentityKey: diagnostics.IdentityKey,
             SuppressionReason: diagnostics.SuppressionReason,
             DecoderConfidence: diagnostics.DecoderConfidence,
+            ReliabilityScore: diagnostics.ReliabilityScore,
+            ReasonCode: diagnostics.ReasonCode,
+            ActiveSource: diagnostics.ActiveSource,
+            PathType: diagnostics.PathType,
             HandshakeProfileId: diagnostics.HandshakeProfileId,
+            ProfileId: diagnostics.HandshakeProfileId,
             BrandHint: diagnostics.BrandHint,
             AliasMatched: !string.IsNullOrWhiteSpace(diagnostics.AliasMatchSource),
             IdleSuppressed: diagnostics.IdleSuppressed,
@@ -1082,6 +1093,31 @@ public sealed class GamepadProbeService
             diagnostics.BlockReason.StartsWith("xbox_generic", StringComparison.OrdinalIgnoreCase))
         {
             return ProbeFailureKind.PolicyBlocked;
+        }
+
+        if (diagnostics.AddressMismatchSkipCount > 0 &&
+            diagnostics.BestObservedScore <= 0)
+        {
+            return ProbeFailureKind.MixedPath;
+        }
+
+        if ((diagnostics.PathType == "receiver" &&
+             diagnostics.BestObservedScore <= 0) ||
+            message.Contains("xinput", StringComparison.OrdinalIgnoreCase) &&
+            message.Contains("wired", StringComparison.OrdinalIgnoreCase))
+        {
+            return ProbeFailureKind.ReceiverBlocked;
+        }
+
+        if (message.Contains("step-only", StringComparison.OrdinalIgnoreCase))
+        {
+            return ProbeFailureKind.StepOnly;
+        }
+
+        if (message.Contains("fixed", StringComparison.OrdinalIgnoreCase) ||
+            diagnostics.ReasonCode.Contains("fixed", StringComparison.OrdinalIgnoreCase))
+        {
+            return ProbeFailureKind.FixedBad;
         }
 
         if (diagnostics.BestObservedScore == 0 && diagnostics.ReportReadSuccessCount <= 0 && diagnostics.ReportReadFailureCount > 0)
@@ -1309,6 +1345,25 @@ public sealed class GamepadProbeService
             HidEndpointDiscoveryStage.GlobalAggressive => score - 6,
             _ => score
         };
+    }
+
+    private static string ResolveProbePathType(HidGamepadEndpoint endpoint)
+    {
+        var source = $"{endpoint.InstanceId} {endpoint.DevicePath}";
+        if (source.Contains("BTHENUM", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("BTHLE", StringComparison.OrdinalIgnoreCase))
+        {
+            return "bluetooth";
+        }
+
+        if (source.Contains("USB", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("XUSB", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("IG_", StringComparison.OrdinalIgnoreCase))
+        {
+            return "receiver";
+        }
+
+        return "unknown";
     }
 
     private static string BuildNoEndpointMessage(ProbeDiagnostics diagnostics)
@@ -1764,8 +1819,12 @@ public sealed class GamepadProbeService
                 blockReason,
                 suppressionReason = diagnostics.SuppressionReason,
                 decoderConfidence = diagnostics.DecoderConfidence,
+                reliabilityScore = diagnostics.ReliabilityScore,
+                reasonCode = diagnostics.ReasonCode,
                 identityKey = diagnostics.IdentityKey,
                 handshakeProfileId = diagnostics.HandshakeProfileId,
+                profileId = diagnostics.HandshakeProfileId,
+                pathType = diagnostics.PathType,
                 brandHint = diagnostics.BrandHint,
                 aliasMatchSource = diagnostics.AliasMatchSource,
                 profileSelectionReason = diagnostics.ProfileSelectionReason,
@@ -1999,7 +2058,13 @@ public sealed class GamepadProbeService
 
         public string SuppressionReason { get; set; } = string.Empty;
 
+        public string ReasonCode { get; set; } = string.Empty;
+
         public string HandshakeProfileId { get; set; } = string.Empty;
+
+        public string PathType { get; set; } = string.Empty;
+
+        public int ReliabilityScore { get; set; }
 
         public string BrandHint { get; private set; } = string.Empty;
 
@@ -2190,6 +2255,15 @@ public sealed class GamepadProbeService
             var sourcePart = string.IsNullOrWhiteSpace(ActiveSource)
                 ? string.Empty
                 : $", source={ActiveSource}";
+            var reasonPart = string.IsNullOrWhiteSpace(ReasonCode)
+                ? string.Empty
+                : $", reason={ReasonCode}";
+            var pathTypePart = string.IsNullOrWhiteSpace(PathType)
+                ? string.Empty
+                : $", pathType={PathType}";
+            var reliabilityPart = ReliabilityScore > 0
+                ? $", reliability={ReliabilityScore}"
+                : string.Empty;
             var recoveryPart = NoSignalRecoveryAttempted
                 ? NoSignalRecoveryRecovered ? ", recoveryRound=1,recovered=1" : ", recoveryRound=1,recovered=0"
                 : string.Empty;
@@ -2203,7 +2277,7 @@ public sealed class GamepadProbeService
                 $"readOk={ReportReadSuccessCount}, readFail={ReportReadFailureCount}, " +
                 $"getInputOk={GetInputSuccessCount}, getInputFail={GetInputFailureCount}, " +
                 $"streamOk={StreamSuccessCount}, streamFail={StreamFailureCount}, streamTimeout={StreamTimeoutCount}, " +
-                $"hardFail={HardFailCount}, cooldownSkip={CooldownSkipCount}, endpointEx={EndpointExceptionCount}, readEx={ReportReadExceptionCount}, confidence={DecoderConfidence:0.000}{bestScorePart}{identityPart}{suppressionPart}{handshakePart}{brandPart}{aliasPart}{globalExcludedPart}{skipAddressPart}{skipGlobalNoAddressPart}{profilePart}{idleKeepPart}{idleSuppressedPart}{revalidationPart}{stateBeforePart}{stateAfterPart}{acceptancePathPart}{sourcePart}{recoveryPart}{contextPart}";
+                $"hardFail={HardFailCount}, cooldownSkip={CooldownSkipCount}, endpointEx={EndpointExceptionCount}, readEx={ReportReadExceptionCount}, confidence={DecoderConfidence:0.000}{bestScorePart}{identityPart}{suppressionPart}{reasonPart}{handshakePart}{brandPart}{aliasPart}{globalExcludedPart}{skipAddressPart}{skipGlobalNoAddressPart}{profilePart}{idleKeepPart}{idleSuppressedPart}{revalidationPart}{stateBeforePart}{stateAfterPart}{acceptancePathPart}{sourcePart}{pathTypePart}{reliabilityPart}{recoveryPart}{contextPart}";
         }
 
         public string ToObservedReportText()

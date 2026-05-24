@@ -89,4 +89,18 @@ public sealed class BatteryPercentTextConverterTests
 
         Assert.Equal("Unsupported", text);
     }
+
+    [Fact]
+    public void Convert_WhenChargingWithPercent_ReturnsPercentOnly()
+    {
+        var converter = new BatteryPercentTextConverter();
+
+        var text = converter.Convert(
+            [85, false, true, false, true, WidgetSettings.EnglishLanguage],
+            typeof(string),
+            parameter: null!,
+            CultureInfo.InvariantCulture);
+
+        Assert.Equal("85%", text);
+    }
 }

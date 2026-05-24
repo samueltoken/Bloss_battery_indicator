@@ -1110,7 +1110,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             var staleSnapshot = pair.Value.Snapshot with
             {
                 IsConnected = pair.Value.Snapshot.IsConnected,
-                IsStale = true
+                IsStale = true,
+                DisplayState = pair.Value.Snapshot.BatteryPercent is null
+                    ? BatteryDisplayState.NA
+                    : pair.Value.Snapshot.DisplayState
             };
             pair.Value.UpdateSnapshot(staleSnapshot);
             RestoreProbeState(pair.Value, staleSnapshot);
@@ -1165,7 +1168,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         ApplyProbeActionAvailability();
     }
 
-    private static DeviceBatterySnapshot ResolveBatteryHoldSnapshot(
+    internal static DeviceBatterySnapshot ResolveBatteryHoldSnapshot(
         DeviceBatterySnapshot previous,
         DeviceBatterySnapshot current,
         TimeSpan holdDuration,
@@ -1181,6 +1184,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             return current;
         }
 
+        if (ShouldDiscardPreviousForCurrentReading(previous, current))
+        {
+            return current;
+        }
+
         if (holdDuration <= TimeSpan.Zero)
         {
             return current with { IsStale = true };
@@ -1189,7 +1197,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         var age = now - previous.LastUpdated;
         if (age > holdDuration)
         {
-            return current with { IsStale = true };
+            return current with
+            {
+                IsStale = true,
+                DisplayState = BatteryDisplayState.NA
+            };
         }
 
         return current with
@@ -1201,8 +1213,23 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             IsBatterySuspect = previous.IsBatterySuspect,
             IsStale = true,
             IsBatteryConnecting = false,
+            IsChargeComplete = previous.IsChargeComplete,
+            DisplayState = previous.DisplayState == BatteryDisplayState.Unknown
+                ? BatteryDisplayState.Estimated
+                : previous.DisplayState,
             LastUpdated = previous.LastUpdated
         };
+    }
+
+    internal static bool ShouldDiscardPreviousForCurrentReading(
+        DeviceBatterySnapshot previous,
+        DeviceBatterySnapshot current)
+    {
+        return previous.BatteryPercent == 100 &&
+               current.SourceKind == BatterySourceKind.SteamHid &&
+               current.IsCharging &&
+               current.IsBatterySuspect &&
+               current.BatteryPercent is null;
     }
 
     internal static bool ShouldTreatDualShock4InitialLowAsConnecting(
@@ -1257,7 +1284,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             BatteryConfidence = BatteryConfidence.Estimated,
             IsBatterySuspect = true,
             IsStale = false,
-            IsBatteryConnecting = true
+            IsBatteryConnecting = true,
+            DisplayState = BatteryDisplayState.NA
         };
     }
 

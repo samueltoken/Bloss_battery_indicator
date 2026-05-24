@@ -57,7 +57,12 @@ public static class XboxBatteryMatcher
                 BatteryConfidence: BatteryConfidence.Confirmed,
                 SourceKind: BatterySourceKind.XInput,
                 RawMetric: reading.RawMetric,
-                ModelKey: modelScopeKey)
+                ModelKey: modelScopeKey,
+                ReliabilityScore: Math.Clamp(winner.Score + 8, 0, 100),
+                ReasonCode: "xinput_confirmed",
+                ActiveSource: "xinput",
+                PathType: ResolvePathType(winnerSignal),
+                DisplayState: BatteryDisplayState.Verified)
         ];
     }
 
@@ -94,6 +99,8 @@ public static class XboxBatteryMatcher
         string? winnerSignal = null;
         endpointSignalsByAddress?.TryGetValue(winner.Address, out winnerSignal);
         var modelScopeKey = BuildModelScopeKey(winner.Address, winner.DisplayName, winnerSignal);
+        var scaledByTenPattern = IsScaledByTenPattern(reading);
+        var highFixedRisk = scaledByTenPattern && reading.BatteryPercent >= 98;
         return
         [
             new PnpBatteryReading(
@@ -104,8 +111,32 @@ public static class XboxBatteryMatcher
                 BatteryConfidence: BatteryConfidence.Estimated,
                 SourceKind: BatterySourceKind.GameInput,
                 RawMetric: reading.RawMetric,
-                ModelKey: modelScopeKey)
+                ModelKey: modelScopeKey,
+                SuggestCalibration: scaledByTenPattern,
+                IsBatterySuspect: highFixedRisk,
+                ReliabilityScore: Math.Clamp(winner.Score - (highFixedRisk ? 20 : 0), 0, 100),
+                ReasonCode: highFixedRisk
+                    ? "gameinput_scaled_full_suspect"
+                    : scaledByTenPattern
+                        ? "gameinput_scaled_pattern"
+                        : "gameinput_raw",
+                ActiveSource: "gameinput",
+                PathType: ResolvePathType(winnerSignal),
+                DisplayState: BatteryDisplayState.Estimated)
         ];
+    }
+
+    private static bool IsScaledByTenPattern(GameInputBatteryReading reading)
+    {
+        if (reading.RawMetric is null || reading.FullMetric is null)
+        {
+            return false;
+        }
+
+        return reading.FullMetric.Value >= 900d &&
+               reading.FullMetric.Value <= 1100d &&
+               reading.RawMetric.Value >= 0d &&
+               reading.RawMetric.Value <= 100d;
     }
 
     private static MatchedXboxCandidate? SelectPreferredWinner(
@@ -308,6 +339,29 @@ public static class XboxBatteryMatcher
                endpointSignal.Contains("xusb", StringComparison.OrdinalIgnoreCase) ||
                endpointSignal.Contains("xinput", StringComparison.OrdinalIgnoreCase) ||
                endpointSignal.Contains("ig_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolvePathType(string? endpointSignal)
+    {
+        if (string.IsNullOrWhiteSpace(endpointSignal))
+        {
+            return "unknown";
+        }
+
+        if (endpointSignal.Contains("BTHENUM", StringComparison.OrdinalIgnoreCase) ||
+            endpointSignal.Contains("BTHLE", StringComparison.OrdinalIgnoreCase))
+        {
+            return "bluetooth";
+        }
+
+        if (endpointSignal.Contains("XUSB", StringComparison.OrdinalIgnoreCase) ||
+            endpointSignal.Contains("USB", StringComparison.OrdinalIgnoreCase) ||
+            endpointSignal.Contains("IG_", StringComparison.OrdinalIgnoreCase))
+        {
+            return "receiver";
+        }
+
+        return "unknown";
     }
 
     private sealed record MatchedXboxCandidate(

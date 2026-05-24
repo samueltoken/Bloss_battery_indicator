@@ -27,4 +27,26 @@ public sealed class DeviceItemViewModelTests
 
         Assert.True(vm.IsProbeEligible);
     }
+
+    [Fact]
+    public void IsChargeComplete_ReflectsSnapshot()
+    {
+        var snapshot = new DeviceBatterySnapshot(
+            DeviceId: "steam-triton:AABBCCDDEEFF",
+            Address: "AABBCCDDEEFF",
+            DisplayName: "Steam Controller",
+            BatteryPercent: 100,
+            BatteryConfidence: BatteryConfidence.Confirmed,
+            IsConnected: true,
+            Category: DeviceCategory.Gamepad,
+            IconKey: IconKey.Gamepad,
+            LastUpdated: DateTimeOffset.Now,
+            IsCharging: true,
+            IsChargeComplete: true);
+
+        var vm = new DeviceItemViewModel(snapshot);
+
+        Assert.True(vm.IsCharging);
+        Assert.True(vm.IsChargeComplete);
+    }
 }

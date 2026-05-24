@@ -46,7 +46,10 @@ public partial class App : System.Windows.Application
 
         var settingsStore = new WidgetSettingsStore();
         var autostartService = new AutostartService();
-        var connectedDeviceProvider = new WinRtConnectedDeviceProvider();
+        var steamTritonReader = new SteamControllerTritonHidReader();
+        var connectedDeviceProvider = new CompositeConnectedDeviceProvider(
+            new WinRtConnectedDeviceProvider(),
+            new SteamControllerTritonConnectedDeviceProvider(steamTritonReader));
         var setupApiBatteryLevelProvider = new SetupApiBatteryLevelProvider();
         var profileStore = new GamepadProfileStore();
         var pendingCandidateStore = new PendingGamepadCandidateStore();
@@ -59,6 +62,7 @@ public partial class App : System.Windows.Application
         var xInputBatteryLevelProvider = new XInputBatteryLevelProvider();
         var hidFeatureBatteryProvider = new HidFeatureBatteryProvider();
         var bleBatteryServiceProvider = new BleBatteryServiceProvider();
+        var steamTritonBatteryProvider = new SteamControllerTritonBatteryProvider(steamTritonReader);
         var batteryLevelProvider = new CompositeBatteryLevelProvider(
             setupApiBatteryLevelProvider,
             gameInputBatteryProvider,
@@ -67,6 +71,7 @@ public partial class App : System.Windows.Application
             xInputBatteryLevelProvider,
             hidFeatureBatteryProvider,
             bleBatteryServiceProvider,
+            steamTritonBatteryProvider,
             evidenceResolver);
         var gamepadProbeService = new GamepadProbeService(profileStore, pendingCandidateStore);
         var iconResolver = new IconResolver();

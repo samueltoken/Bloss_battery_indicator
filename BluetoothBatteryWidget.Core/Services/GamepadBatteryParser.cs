@@ -1,3 +1,5 @@
+using BluetoothBatteryWidget.Core.Models;
+
 namespace BluetoothBatteryWidget.Core.Services;
 
 public static class GamepadBatteryParser
@@ -14,6 +16,10 @@ public static class GamepadBatteryParser
     private const int DualShock4BtReportSize = 78;
     private const int DualShock4Status0OffsetInCommon = 29;
     private const int DualShock4Status1OffsetInCommon = 30;
+    private const byte SteamTritonBatteryReportId = 0x43;
+    private const byte SteamTritonWirelessStatusXReportId = 0x46;
+    private const byte SteamTritonWirelessStatusReportId = 0x79;
+    private const int SteamTritonBatteryReportSize = 17;
 
     public static bool TryParseDualSenseBatteryPercent(ReadOnlySpan<byte> report, out int? batteryPercent)
     {
@@ -37,6 +43,56 @@ public static class GamepadBatteryParser
 
         batteryPercent = ParseDualShock4Status(status0);
         return true;
+    }
+
+    public static bool TryParseSteamTritonBatteryStatus(
+        ReadOnlySpan<byte> report,
+        out SteamControllerBatteryStatus status)
+    {
+        status = null!;
+        if (report.Length < SteamTritonBatteryReportSize || report[0] != SteamTritonBatteryReportId)
+        {
+            return false;
+        }
+
+        var percent = report[2];
+        if (percent > 100)
+        {
+            return false;
+        }
+
+        status = new SteamControllerBatteryStatus(
+            BatteryPercent: percent,
+            ChargeState: ParseSteamTritonChargeState(report[1]),
+            BatteryVoltage: ReadUInt16LittleEndian(report, 3),
+            SystemVoltage: ReadUInt16LittleEndian(report, 5),
+            InputVoltage: ReadUInt16LittleEndian(report, 7),
+            Current: ReadUInt16LittleEndian(report, 9),
+            InputCurrent: ReadUInt16LittleEndian(report, 11),
+            Temperature: ReadUInt16LittleEndian(report, 15));
+        return true;
+    }
+
+    public static bool TryParseSteamTritonWirelessConnected(ReadOnlySpan<byte> report, out bool connected)
+    {
+        connected = false;
+        if (report.Length < 2 ||
+            (report[0] != SteamTritonWirelessStatusXReportId && report[0] != SteamTritonWirelessStatusReportId))
+        {
+            return false;
+        }
+
+        switch (report[1])
+        {
+            case 1:
+                connected = false;
+                return true;
+            case 2:
+                connected = true;
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static bool TryGetDualSenseStatus(ReadOnlySpan<byte> report, out byte status)
@@ -131,5 +187,23 @@ public static class GamepadBatteryParser
         return batteryData < 10
             ? batteryData * 10 + 5
             : 100;
+    }
+
+    private static SteamControllerChargeState ParseSteamTritonChargeState(byte value)
+    {
+        return value switch
+        {
+            0 => SteamControllerChargeState.Reset,
+            1 => SteamControllerChargeState.Discharging,
+            2 => SteamControllerChargeState.Charging,
+            3 => SteamControllerChargeState.SourceValidate,
+            4 => SteamControllerChargeState.ChargingDone,
+            _ => SteamControllerChargeState.Unknown
+        };
+    }
+
+    private static ushort ReadUInt16LittleEndian(ReadOnlySpan<byte> source, int offset)
+    {
+        return (ushort)(source[offset] | (source[offset + 1] << 8));
     }
 }
