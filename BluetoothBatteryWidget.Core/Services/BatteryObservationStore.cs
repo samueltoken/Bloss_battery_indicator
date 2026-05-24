@@ -13,6 +13,7 @@ public sealed class BatteryObservationStore
     private static readonly TimeSpan ObservationTtl = TimeSpan.FromDays(30);
     private static readonly TimeSpan PersistDebounce = TimeSpan.FromSeconds(1);
     private const int MaxSamplesPerModel = 64;
+    private const int MaxChargeCompleteAnchorsPerModel = 8;
 
     private readonly object _sync = new();
     private readonly string _storePath;
@@ -108,7 +109,10 @@ public sealed class BatteryObservationStore
         return evidence with
         {
             Address = AddressNormalizer.NormalizeAddress(evidence.Address),
-            ModelKey = NormalizeModelKey(evidence.ModelKey)
+            ModelKey = NormalizeModelKey(evidence.ModelKey),
+            ReasonCode = string.IsNullOrWhiteSpace(evidence.ReasonCode)
+                ? string.Empty
+                : evidence.ReasonCode.Trim().ToLowerInvariant()
         };
     }
 
@@ -117,6 +121,14 @@ public sealed class BatteryObservationStore
         return string.IsNullOrWhiteSpace(value)
             ? string.Empty
             : value.Trim().ToUpperInvariant();
+    }
+
+    private static bool IsChargeCompleteAnchor(BatteryEvidence evidence)
+    {
+        return evidence.SourceKind == BatterySourceKind.SteamHid &&
+               evidence.DerivedPercent == 100 &&
+               evidence.RawMetric is null or <= 100 &&
+               evidence.IsChargeComplete;
     }
 
     private void Prune(DateTimeOffset now)
@@ -131,9 +143,15 @@ public sealed class BatteryObservationStore
         {
             var recent = group
                 .OrderByDescending(item => item.ObservedAt)
-                .Take(MaxSamplesPerModel)
-                .OrderBy(item => item.ObservedAt);
-            trimmed.AddRange(recent);
+                .Take(MaxSamplesPerModel);
+            var chargeCompleteAnchors = group
+                .Where(IsChargeCompleteAnchor)
+                .OrderByDescending(item => item.ObservedAt)
+                .Take(MaxChargeCompleteAnchorsPerModel);
+            trimmed.AddRange(recent
+                .Concat(chargeCompleteAnchors)
+                .Distinct()
+                .OrderBy(item => item.ObservedAt));
         }
 
         if (trimmed.Count != _cached.Count || beforeCount != _cached.Count)

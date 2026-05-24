@@ -9,5 +9,6 @@ public enum BatterySourceKind
     SonyHid = 4,
     LearnedHid = 5,
     BleGatt = 6,
-    HidFeature = 7
+    HidFeature = 7,
+    SteamHid = 8
 }

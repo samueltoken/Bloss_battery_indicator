@@ -56,6 +56,10 @@ public sealed class DeviceItemViewModel : INotifyPropertyChanged
 
     public bool IsBatteryConnecting => _snapshot.IsBatteryConnecting;
 
+    public bool IsCharging => _snapshot.IsCharging;
+
+    public bool IsChargeComplete => _snapshot.IsChargeComplete;
+
     public DeviceCategory Category => _snapshot.Category;
 
     public IconKey IconKey => _snapshot.IconKey;
@@ -208,6 +212,8 @@ public sealed class DeviceItemViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsConnected));
         OnPropertyChanged(nameof(IsStale));
         OnPropertyChanged(nameof(IsBatteryConnecting));
+        OnPropertyChanged(nameof(IsCharging));
+        OnPropertyChanged(nameof(IsChargeComplete));
         OnPropertyChanged(nameof(Category));
         OnPropertyChanged(nameof(IconKey));
         OnPropertyChanged(nameof(CustomIconImagePath));

@@ -65,6 +65,68 @@ public sealed class MainViewModelDualShock4ConnectingTests
         Assert.False(result);
     }
 
+    [Fact]
+    public void ResolveBatteryHoldSnapshot_WhenSteamDockedFullPending_DoesNotKeepPreviousHundred()
+    {
+        var now = DateTimeOffset.Now;
+        var previous = CreateSnapshot(
+            batteryPercent: 100,
+            sourceKind: BatterySourceKind.SteamHid,
+            modelKey: "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK") with
+        {
+            LastUpdated = now.AddSeconds(-10)
+        };
+        var current = CreateSnapshot(
+            batteryPercent: null,
+            sourceKind: BatterySourceKind.SteamHid,
+            modelKey: "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK") with
+        {
+            IsBatterySuspect = true,
+            IsCharging = true,
+            DisplayState = BatteryDisplayState.Charging,
+            LastUpdated = now
+        };
+
+        var resolved = MainViewModel.ResolveBatteryHoldSnapshot(
+            previous,
+            current,
+            TimeSpan.FromMinutes(2),
+            now);
+
+        Assert.Null(resolved.BatteryPercent);
+        Assert.True(resolved.IsCharging);
+        Assert.Equal(BatteryDisplayState.Charging, resolved.DisplayState);
+    }
+
+    [Fact]
+    public void ResolveBatteryHoldSnapshot_WhenNormalMissingPercent_KeepsPreviousPercent()
+    {
+        var now = DateTimeOffset.Now;
+        var previous = CreateSnapshot(
+            batteryPercent: 76,
+            sourceKind: BatterySourceKind.SteamHid,
+            modelKey: "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK") with
+        {
+            LastUpdated = now.AddSeconds(-10)
+        };
+        var current = CreateSnapshot(
+            batteryPercent: null,
+            sourceKind: BatterySourceKind.SteamHid,
+            modelKey: "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK") with
+        {
+            LastUpdated = now
+        };
+
+        var resolved = MainViewModel.ResolveBatteryHoldSnapshot(
+            previous,
+            current,
+            TimeSpan.FromMinutes(2),
+            now);
+
+        Assert.Equal(76, resolved.BatteryPercent);
+        Assert.True(resolved.IsStale);
+    }
+
     private static DeviceBatterySnapshot CreateSnapshot(
         int? batteryPercent,
         BatterySourceKind sourceKind,

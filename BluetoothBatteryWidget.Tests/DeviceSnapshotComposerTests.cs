@@ -63,6 +63,38 @@ public sealed class DeviceSnapshotComposerTests
     }
 
     [Fact]
+    public void Compose_PreservesChargeCompleteState()
+    {
+        var composer = new DeviceSnapshotComposer(new IconResolver());
+        var connected = new List<ConnectedBluetoothDevice>
+        {
+            new("steam-triton:AABBCCDDEEFF", "AABBCCDDEEFF", "Steam Controller", true, "Input.GameController")
+        };
+        var battery = new List<PnpBatteryReading>
+        {
+            new(
+                InstanceId: "steam-triton:AABBCCDDEEFF",
+                Address: "AABBCCDDEEFF",
+                DisplayName: "Steam Controller",
+                BatteryPercent: 100,
+                IsCharging: true,
+                IsChargeComplete: true)
+        };
+
+        var snapshots = composer.Compose(
+            connected,
+            battery,
+            new Dictionary<string, IconKey>(),
+            new Dictionary<string, string>(),
+            new Dictionary<string, string>(),
+            DateTimeOffset.UtcNow);
+
+        Assert.Single(snapshots);
+        Assert.True(snapshots[0].IsCharging);
+        Assert.True(snapshots[0].IsChargeComplete);
+    }
+
+    [Fact]
     public void Compose_AppliesNameOverride_WithoutChangingCategory()
     {
         var composer = new DeviceSnapshotComposer(new IconResolver());
@@ -73,7 +105,7 @@ public sealed class DeviceSnapshotComposerTests
         var battery = new List<PnpBatteryReading>();
         var nameOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["AA1122334455"] = "내꺼"
+            ["AA1122334455"] = "?�꺼"
         };
 
         var snapshots = composer.Compose(
@@ -85,7 +117,7 @@ public sealed class DeviceSnapshotComposerTests
             DateTimeOffset.UtcNow);
 
         Assert.Single(snapshots);
-        Assert.Equal("내꺼", snapshots[0].DisplayName);
+        Assert.Equal("?�꺼", snapshots[0].DisplayName);
         Assert.Equal("Xbox Wireless Controller", snapshots[0].BaseDisplayName);
         Assert.Equal(DeviceCategory.Gamepad, snapshots[0].Category);
     }

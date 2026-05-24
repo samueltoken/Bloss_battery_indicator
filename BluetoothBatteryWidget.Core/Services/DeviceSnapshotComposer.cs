@@ -47,6 +47,10 @@ public sealed class DeviceSnapshotComposer
             var modelKey = batteryReading?.ModelKey;
             var suggestCalibration = batteryReading?.SuggestCalibration ?? false;
             var isBatterySuspect = batteryReading?.IsBatterySuspect ?? false;
+            var isCharging = batteryReading?.IsCharging ?? false;
+            var isChargeComplete = batteryReading?.IsChargeComplete ?? false;
+            var displayState = batteryReading?.DisplayState
+                ?? (connected.IsConnected ? BatteryDisplayState.NA : BatteryDisplayState.Unsupported);
 
             var category = ResolveCategory(normalizedAddress, baseDisplayName, connected.CategoryHint);
             var icon = ResolveIcon(normalizedAddress, category, baseDisplayName, overrides);
@@ -63,12 +67,15 @@ public sealed class DeviceSnapshotComposer
                     ModelKey: modelKey,
                     SuggestCalibration: suggestCalibration,
                     IsBatterySuspect: isBatterySuspect,
+                    DisplayState: displayState,
+                    IsCharging: isCharging,
                     IsConnected: connected.IsConnected,
                     Category: category,
                     IconKey: icon,
                     LastUpdated: timestamp,
                     BaseDisplayName: baseDisplayName,
-                    CustomIconImagePath: customIconImagePath));
+                    CustomIconImagePath: customIconImagePath,
+                    IsChargeComplete: isChargeComplete));
         }
 
         snapshots.Sort(CompareSnapshots);

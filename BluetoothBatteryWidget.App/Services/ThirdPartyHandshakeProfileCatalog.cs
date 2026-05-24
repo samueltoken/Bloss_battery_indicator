@@ -391,6 +391,12 @@ internal static class ThirdPartyHandshakeProfileCatalog
             ? string.Empty
             : endpointSignal.Trim();
         var merged = $"{name} {signal}";
+        if (merged.Contains("easysmx", StringComparison.OrdinalIgnoreCase) ||
+            merged.Contains("easy smx", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("easysmx", "name:keyword_easysmx");
+        }
+
         if (merged.Contains("gulikit", StringComparison.OrdinalIgnoreCase))
         {
             return ("gulikit", "name:keyword_gulikit");
@@ -399,12 +405,6 @@ internal static class ThirdPartyHandshakeProfileCatalog
         if (merged.Contains("flydigi", StringComparison.OrdinalIgnoreCase))
         {
             return ("flydigi", "name:keyword_flydigi");
-        }
-
-        if (merged.Contains("easysmx", StringComparison.OrdinalIgnoreCase) ||
-            merged.Contains("easy smx", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("easysmx", "name:keyword_easysmx");
         }
 
         if (merged.Contains("gamesir", StringComparison.OrdinalIgnoreCase) ||

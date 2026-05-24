@@ -118,6 +118,33 @@ public sealed class XboxBatteryMatchingTests
         Assert.Single(matched);
         Assert.Equal(63, matched[0].BatteryPercent);
         Assert.Equal("GAMEINPUT_SLOT_0", matched[0].InstanceId);
+        Assert.Equal("gameinput", matched[0].ActiveSource);
+        Assert.Equal(BatteryDisplayState.Estimated, matched[0].DisplayState);
+    }
+
+    [Fact]
+    public void MatchGameInputBestEffort_ScaledPatternHigh_MarksReadingAsSuspect()
+    {
+        var connected = new List<ConnectedBluetoothDevice>
+        {
+            new("dev1", "A05A5FBB663E", "Xbox Wireless Controller", true, "Input.Gaming")
+        };
+        var readings = new List<GameInputBatteryReading>
+        {
+            new(SourceIndex: 0, BatteryPercent: 100, RawMetric: 100, FullMetric: 1000)
+        };
+        var signals = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["A05A5FBB663E"] = "BTHENUM VID_045E PID_0B22"
+        };
+
+        var matched = XboxBatteryMatcher.MatchGameInputBestEffort(connected, readings, signals);
+
+        Assert.Single(matched);
+        Assert.True(matched[0].IsBatterySuspect);
+        Assert.True(matched[0].SuggestCalibration);
+        Assert.Equal("gameinput_scaled_full_suspect", matched[0].ReasonCode);
+        Assert.Equal("bluetooth", matched[0].PathType);
     }
 
     [Fact]

@@ -8,7 +8,9 @@ public sealed class BatteryPercentTextConverter : IMultiValueConverter
 {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        var language = values.Length > 4 && values[4] is string selectedLanguage
+        var language = values.Length > 5 && values[5] is string selectedLanguageAtNewIndex
+            ? selectedLanguageAtNewIndex
+            : values.Length > 4 && values[4] is string selectedLanguage
             ? selectedLanguage
             : null;
         var localized = UiLanguageCatalog.Get(language);

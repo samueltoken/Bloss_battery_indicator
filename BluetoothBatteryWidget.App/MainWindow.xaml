@@ -207,7 +207,6 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Padding" Value="10,5" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
@@ -232,30 +231,12 @@
             </Setter>
         </Style>
 
-        <Style x:Key="GlassPresetComboToggleButtonStyle" TargetType="ToggleButton">
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border Background="Transparent"
-                                BorderBrush="Transparent"
-                                BorderThickness="0"
-                                CornerRadius="10" />
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="GlassPresetComboBoxStyle" TargetType="ComboBox">
             <Setter Property="Foreground" Value="{StaticResource SettingsTitleBrush}" />
             <Setter Property="Background" Value="#E8F3FBFF" />
             <Setter Property="BorderBrush" Value="#8FB9D7EF" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="10,4,30,4" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
@@ -289,7 +270,6 @@
                                            IsHitTestVisible="False" />
 
                                 <ToggleButton Grid.ColumnSpan="2"
-                                              Style="{StaticResource GlassPresetComboToggleButtonStyle}"
                                               Focusable="False"
                                               Background="Transparent"
                                               BorderThickness="0"
@@ -429,9 +409,39 @@
                                     <Border Margin="0,0,0,10"
                                             Padding="12,10"
                                             CornerRadius="18"
-                                            Background="{StaticResource CardTintBrush}"
-                                            BorderBrush="{StaticResource CardBorderBrush}"
                                             BorderThickness="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{StaticResource CardTintBrush}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsCharging}" Value="True">
+                                                        <Setter Property="Background">
+                                                            <Setter.Value>
+                                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                                    <GradientStop Color="#FFFFF9DE" Offset="0" />
+                                                                    <GradientStop Color="#FFFFE8A8" Offset="0.55" />
+                                                                    <GradientStop Color="#FFFFF4C8" Offset="1" />
+                                                                </LinearGradientBrush>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                        <Setter Property="BorderBrush" Value="#FFFFCF5A" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsChargeComplete}" Value="True">
+                                                        <Setter Property="Background">
+                                                            <Setter.Value>
+                                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                                    <GradientStop Color="#FFEAF7FF" Offset="0" />
+                                                                    <GradientStop Color="#FFC9E9FF" Offset="0.55" />
+                                                                    <GradientStop Color="#FFE4F4FF" Offset="1" />
+                                                                </LinearGradientBrush>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                        <Setter Property="BorderBrush" Value="#FF8FC9F0" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto" />
@@ -592,22 +602,55 @@
                                                            Foreground="{StaticResource SecondaryTextBrush}" />
                                             </StackPanel>
 
-                                            <TextBlock Grid.Column="2"
-                                                       VerticalAlignment="Top"
-                                                       FontSize="28"
-                                                       FontWeight="Bold"
-                                                       Foreground="{StaticResource BatteryTextBrush}"
-                                                       >
-                                                <TextBlock.Text>
-                                                    <MultiBinding Converter="{StaticResource BatteryPercentTextConverter}">
-                                                        <Binding Path="BatteryPercent" />
-                                                        <Binding Path="IsStale" />
-                                                        <Binding Path="IsConnected" />
-                                                        <Binding Path="IsBatteryConnecting" />
-                                                        <Binding Path="DataContext.Language" RelativeSource="{RelativeSource AncestorType=Window}" />
-                                                    </MultiBinding>
-                                                </TextBlock.Text>
-                                            </TextBlock>
+                                            <StackPanel Grid.Column="2"
+                                                        Orientation="Horizontal"
+                                                        VerticalAlignment="Top"
+                                                        HorizontalAlignment="Right">
+                                                <TextBlock FontSize="28"
+                                                           FontWeight="Bold">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource BatteryTextBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsCharging}" Value="True">
+                                                                    <Setter Property="Foreground" Value="#B7791F" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsChargeComplete}" Value="True">
+                                                                    <Setter Property="Foreground" Value="#1D5F8B" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                    <TextBlock.Text>
+                                                        <MultiBinding Converter="{StaticResource BatteryPercentTextConverter}">
+                                                            <Binding Path="BatteryPercent" />
+                                                            <Binding Path="IsStale" />
+                                                            <Binding Path="IsConnected" />
+                                                            <Binding Path="IsBatteryConnecting" />
+                                                            <Binding Path="IsCharging" />
+                                                            <Binding Path="DataContext.Language" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                </TextBlock>
+                                                <TextBlock Text="&#xE945;"
+                                                           Margin="6,2,0,0"
+                                                           FontFamily="Segoe MDL2 Assets"
+                                                           FontSize="20"
+                                                           FontWeight="Bold"
+                                                           VerticalAlignment="Center"
+                                                           Visibility="{Binding IsCharging, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="#B7791F" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsChargeComplete}" Value="True">
+                                                                    <Setter Property="Foreground" Value="#1D5F8B" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
 
                                             <Grid Grid.Row="1"
                                                   Grid.Column="1"
@@ -621,6 +664,7 @@
                                                 <Border Height="12"
                                                         HorizontalAlignment="Left"
                                                         CornerRadius="6"
+                                                        ClipToBounds="True"
                                                         Background="{Binding BatteryPercent, Converter={StaticResource BatteryFillBrushConverter}}">
                                                     <Border.Width>
                                                         <MultiBinding Converter="{StaticResource BatteryWidthConverter}">
@@ -925,6 +969,8 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -1001,8 +1047,6 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -1073,7 +1117,7 @@
                                HorizontalAlignment="Right"
                                FontSize="12"
                                Foreground="{StaticResource SecondaryTextBrush}"
-                               Text="버전 1.0.1" />
+                               Text="버전 1.0.2" />
                 </StackPanel>
             </Border>
         </Popup>
