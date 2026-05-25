@@ -15,14 +15,15 @@
     <AssemblyName>Bloss</AssemblyName>
     <Title>Bloss</Title>
     <Product>Bloss</Product>
-    <Version>1.0.3</Version>
-    <AssemblyVersion>1.0.3.0</AssemblyVersion>
-    <FileVersion>1.0.3.0</FileVersion>
-    <InformationalVersion>1.0.3</InformationalVersion>
+    <Version>1.0.4</Version>
+    <AssemblyVersion>1.0.4.0</AssemblyVersion>
+    <FileVersion>1.0.4.0</FileVersion>
+    <InformationalVersion>1.0.4</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets\battery-guide-chime.wav" LogicalName="BluetoothBatteryWidget.App.Assets.battery-guide-chime.wav" />
     <Resource Include="Assets\kofi_symbol.png" />
   </ItemGroup>
 

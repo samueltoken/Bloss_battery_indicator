@@ -1,4 +1,4 @@
-using BluetoothBatteryWidget.App.Services;
+﻿using BluetoothBatteryWidget.App.Services;
 using BluetoothBatteryWidget.Core.Models;
 
 namespace BluetoothBatteryWidget.Tests;
@@ -110,7 +110,7 @@ public sealed class CompositeBatteryLevelProviderTests
             new PnpBatteryReading(
                 InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_AABBCCDDE011",
                 Address: "AABBCCDDE011",
-                DisplayName: "Steam Ctrl (BT) FXA9961304141",
+                DisplayName: "Steam Ctrl (BT) SAMPLE000001",
                 BatteryPercent: 100,
                 SourceKind: BatterySourceKind.BleGatt,
                 RawMetric: 96,

@@ -23,8 +23,11 @@ public sealed class BatteryEvidenceResolver
     private const string SteamTritonVoltageEstimatedChargingReason = "steam_triton_voltage_estimated_charging";
     private const string SteamTritonChargeCompleteLatchedReason = "steam_triton_charge_complete_latched";
     private const string SteamControllerBluetoothChargeCompleteLatchedReason = "steam_controller_bluetooth_charge_complete_latched";
+    private const string SonyPico2WHoldPreviousStableReason = "sony_hid_usb_pico2w_hold_previous_stable";
+    private const string SonyPico2WConfirmedAfterRepeatReason = "sony_hid_usb_pico2w_confirmed_after_repeat";
     private const int SteamTritonWirelessNearFullMinPercent = 95;
     private const int SteamTritonWirelessNearFullMaxPercent = 99;
+    private const int SonyPico2WUpwardSpikeThreshold = 10;
     private static readonly string[] SteamTritonPuckAnchorModelKeys =
     [
         "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK",
@@ -32,9 +35,13 @@ public sealed class BatteryEvidenceResolver
     ];
     private static readonly TimeSpan SteamTritonDockedFullArtifactWindow = TimeSpan.FromHours(12);
     private static readonly TimeSpan SteamTritonChargeCompleteLatchWindow = TimeSpan.FromHours(12);
+    private static readonly TimeSpan SonyPico2WStableObservationWindow = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan SonyPico2WRepeatConfirmWindow = TimeSpan.FromSeconds(45);
 
     private readonly BatteryObservationStore _observationStore;
     private readonly CalibrationStore _calibrationStore;
+    private readonly object _sonyPico2WStabilitySync = new();
+    private readonly Dictionary<string, PendingSonyPico2WReading> _pendingSonyPico2WReadings = new(StringComparer.OrdinalIgnoreCase);
 
     public BatteryEvidenceResolver(
         BatteryObservationStore observationStore,
@@ -55,6 +62,7 @@ public sealed class BatteryEvidenceResolver
         var adjustedCandidates = normalizedCandidates
             .Select(candidate => ApplySteamControllerChargeCompleteLatch(candidate, now))
             .Select(candidate => ApplySteamTritonDockedFullGuard(candidate, now))
+            .Select(candidate => ApplySonyPico2WDualSenseStabilityGuard(candidate, now))
             .ToList();
 
         var evidences = adjustedCandidates
@@ -306,6 +314,7 @@ public sealed class BatteryEvidenceResolver
         {
             if (!string.Equals(reasonCode, SteamTritonRecentNonFullHoldReason, StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(reasonCode, SteamTritonVoltageEstimatedChargingReason, StringComparison.OrdinalIgnoreCase) &&
+                !IsSonyPico2WStabilityReason(reasonCode) &&
                 !IsChargeCompleteLatchedReason(reasonCode))
             {
                 reasonCode = $"{reading.SourceKind.ToString().ToLowerInvariant()}_direct";
@@ -550,6 +559,170 @@ public sealed class BatteryEvidenceResolver
                               value.Contains("PID=1303", StringComparison.OrdinalIgnoreCase);
 
         return hasSteamVendor && hasBluetoothPid;
+    }
+
+    private PnpBatteryReading ApplySonyPico2WDualSenseStabilityGuard(PnpBatteryReading candidate, DateTimeOffset now)
+    {
+        if (!IsSonyPico2WDualSenseCandidate(candidate) ||
+            candidate.BatteryPercent is null ||
+            candidate.IsCharging ||
+            candidate.IsChargeComplete)
+        {
+            ClearSonyPico2WPending(candidate);
+            return candidate;
+        }
+
+        var previous = FindRecentSonyPico2WStableObservation(candidate, now);
+        if (previous is null)
+        {
+            ClearSonyPico2WPending(candidate);
+            return candidate;
+        }
+
+        var currentPercent = candidate.BatteryPercent.Value;
+        var previousPercent = previous.DerivedPercent;
+        var jump = currentPercent - previousPercent;
+        if (jump < SonyPico2WUpwardSpikeThreshold)
+        {
+            ClearSonyPico2WPending(candidate);
+            return candidate;
+        }
+
+        var pendingKey = BuildSonyPico2WPendingKey(candidate);
+        if (string.IsNullOrWhiteSpace(pendingKey))
+        {
+            return candidate;
+        }
+
+        lock (_sonyPico2WStabilitySync)
+        {
+            if (_pendingSonyPico2WReadings.TryGetValue(pendingKey, out var pending) &&
+                pending.Percent == currentPercent &&
+                now - pending.LastSeen <= SonyPico2WRepeatConfirmWindow)
+            {
+                _pendingSonyPico2WReadings.Remove(pendingKey);
+                return candidate with
+                {
+                    RawMetric = candidate.RawMetric ?? currentPercent,
+                    BatteryConfidence = BatteryConfidence.Confirmed,
+                    IsBatterySuspect = false,
+                    ReasonCode = SonyPico2WConfirmedAfterRepeatReason
+                };
+            }
+
+            _pendingSonyPico2WReadings[pendingKey] = new PendingSonyPico2WReading(
+                Percent: currentPercent,
+                FirstSeen: now,
+                LastSeen: now);
+        }
+
+        return candidate with
+        {
+            BatteryPercent = previousPercent,
+            RawMetric = currentPercent,
+            BatteryConfidence = BatteryConfidence.Estimated,
+            IsBatterySuspect = true,
+            SuggestCalibration = false,
+            ReasonCode = SonyPico2WHoldPreviousStableReason
+        };
+    }
+
+    private BatteryEvidence? FindRecentSonyPico2WStableObservation(PnpBatteryReading candidate, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(candidate.ModelKey))
+        {
+            return null;
+        }
+
+        var normalizedAddress = AddressNormalizer.NormalizeAddress(candidate.Address);
+        if (string.IsNullOrWhiteSpace(normalizedAddress))
+        {
+            return null;
+        }
+
+        return _observationStore
+            .GetRecentForModel(candidate.ModelKey, BatterySourceKind.SonyHid, now)
+            .Where(item =>
+                string.Equals(
+                    AddressNormalizer.NormalizeAddress(item.Address),
+                    normalizedAddress,
+                    StringComparison.OrdinalIgnoreCase))
+            .Where(item => now - item.ObservedAt <= SonyPico2WStableObservationWindow)
+            .Where(item => item.DerivedPercent is >= 0 and <= 100)
+            .OrderByDescending(item => item.ObservedAt)
+            .FirstOrDefault();
+    }
+
+    private void ClearSonyPico2WPending(PnpBatteryReading candidate)
+    {
+        var pendingKey = BuildSonyPico2WPendingKey(candidate);
+        if (string.IsNullOrWhiteSpace(pendingKey))
+        {
+            return;
+        }
+
+        lock (_sonyPico2WStabilitySync)
+        {
+            _pendingSonyPico2WReadings.Remove(pendingKey);
+        }
+    }
+
+    private static string BuildSonyPico2WPendingKey(PnpBatteryReading candidate)
+    {
+        var normalizedAddress = AddressNormalizer.NormalizeAddress(candidate.Address);
+        if (string.IsNullOrWhiteSpace(normalizedAddress) || string.IsNullOrWhiteSpace(candidate.ModelKey))
+        {
+            return string.Empty;
+        }
+
+        return $"{normalizedAddress}|{candidate.ModelKey.Trim().ToUpperInvariant()}";
+    }
+
+    private static bool IsSonyPico2WStabilityReason(string? reasonCode)
+    {
+        return string.Equals(reasonCode, SonyPico2WHoldPreviousStableReason, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(reasonCode, SonyPico2WConfirmedAfterRepeatReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSonyPico2WDualSenseCandidate(PnpBatteryReading candidate)
+    {
+        if (candidate.SourceKind != BatterySourceKind.SonyHid)
+        {
+            return false;
+        }
+
+        var isPico2WPath =
+            string.Equals(candidate.PathType, "usb_pico2w", StringComparison.OrdinalIgnoreCase) ||
+            candidate.ReasonCode.Contains("pico2w", StringComparison.OrdinalIgnoreCase) ||
+            candidate.DisplayName.Contains("Pico2W", StringComparison.OrdinalIgnoreCase);
+        if (!isPico2WPath)
+        {
+            return false;
+        }
+
+        return candidate.DisplayName.Contains("DualSense", StringComparison.OrdinalIgnoreCase) ||
+               ContainsDualSenseVidPid(candidate.ModelKey) ||
+               ContainsDualSenseVidPid(candidate.InstanceId);
+    }
+
+    private static bool ContainsDualSenseVidPid(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var hasSonyVendor = value.Contains("VID_054C", StringComparison.OrdinalIgnoreCase) ||
+                            value.Contains("VID&054C", StringComparison.OrdinalIgnoreCase) ||
+                            value.Contains("VID=054C", StringComparison.OrdinalIgnoreCase);
+        var hasDualSenseProduct = value.Contains("PID_0CE6", StringComparison.OrdinalIgnoreCase) ||
+                                  value.Contains("PID&0CE6", StringComparison.OrdinalIgnoreCase) ||
+                                  value.Contains("PID=0CE6", StringComparison.OrdinalIgnoreCase) ||
+                                  value.Contains("PID_0DF2", StringComparison.OrdinalIgnoreCase) ||
+                                  value.Contains("PID&0DF2", StringComparison.OrdinalIgnoreCase) ||
+                                  value.Contains("PID=0DF2", StringComparison.OrdinalIgnoreCase);
+
+        return hasSonyVendor && hasDualSenseProduct;
     }
 
     private PnpBatteryReading ApplyCalibration(PnpBatteryReading candidate)
@@ -904,6 +1077,11 @@ public sealed class BatteryEvidenceResolver
     }
 
     private sealed record EvaluatedCandidate(PnpBatteryReading Reading, int Score);
+
+    private sealed record PendingSonyPico2WReading(
+        int Percent,
+        DateTimeOffset FirstSeen,
+        DateTimeOffset LastSeen);
 
     private enum GameInputReliability
     {
