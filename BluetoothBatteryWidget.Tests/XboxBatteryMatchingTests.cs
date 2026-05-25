@@ -60,7 +60,7 @@ public sealed class XboxBatteryMatchingTests
     {
         var connected = new List<ConnectedBluetoothDevice>
         {
-            new("dev1", "112233445566", "DualSense Wireless Controller", true, "Input.Gaming")
+            new("dev1", "AABBCCDDE002", "DualSense Wireless Controller", true, "Input.Gaming")
         };
         var readings = new List<XInputBatteryReading>
         {
@@ -127,7 +127,7 @@ public sealed class XboxBatteryMatchingTests
     {
         var connected = new List<ConnectedBluetoothDevice>
         {
-            new("dev1", "A05A5FBB663E", "Xbox Wireless Controller", true, "Input.Gaming")
+            new("dev1", "AABBCCDDE003", "Xbox Wireless Controller", true, "Input.Gaming")
         };
         var readings = new List<GameInputBatteryReading>
         {
@@ -135,7 +135,7 @@ public sealed class XboxBatteryMatchingTests
         };
         var signals = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["A05A5FBB663E"] = "BTHENUM VID_045E PID_0B22"
+            ["AABBCCDDE003"] = "BTHENUM VID_045E PID_0B22"
         };
 
         var matched = XboxBatteryMatcher.MatchGameInputBestEffort(connected, readings, signals);

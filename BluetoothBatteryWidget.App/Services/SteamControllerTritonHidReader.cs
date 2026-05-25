@@ -10,8 +10,8 @@ public sealed class SteamControllerTritonHidReader
     private const int AnyReportSize = 64;
     private const int QuickReadTimeoutMs = 120;
     private const int EndpointDiscoveryTimeoutMs = 320;
-    private const int ActiveBatteryReadTimeoutMs = 6500;
-    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(3);
+    private const int ActiveBatteryReadTimeoutMs = 2200;
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(5);
 
     private readonly object _cacheLock = new();
     private IReadOnlyList<SteamControllerTritonSnapshot> _cachedSnapshots = [];
@@ -169,7 +169,9 @@ public sealed class SteamControllerTritonHidReader
 
     internal static bool IsSuspiciousDockedFullBattery(SteamControllerBatteryStatus status)
     {
-        return false;
+        return status.BatteryPercent == 100 &&
+               status.IsCharging &&
+               !status.IsChargeComplete;
     }
 
     internal static SteamControllerBatteryStatus ChoosePreferredBatteryStatus(

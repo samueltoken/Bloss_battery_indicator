@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="아이콘 이미지 맞춤"
         Width="380"
-        Height="430"
+        Height="480"
         MinWidth="360"
-        MinHeight="410"
+        MinHeight="460"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#F0F8FFFF">
@@ -16,7 +16,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 

@@ -9,8 +9,8 @@ namespace BluetoothBatteryWidget.App;
 
 public partial class App : System.Windows.Application
 {
-    private const string SingleInstanceMutexName = @"Local\Bloss.Test.SingleInstance";
-    private const string ActivateSignalName = @"Local\Bloss.Test.Activate";
+    private const string SingleInstanceMutexName = @"Local\Bloss.SingleInstance";
+    private const string ActivateSignalName = @"Local\Bloss.Activate";
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _activateSignal;
     private CancellationTokenSource? _activateSignalCts;
@@ -49,6 +49,7 @@ public partial class App : System.Windows.Application
         var steamTritonReader = new SteamControllerTritonHidReader();
         var connectedDeviceProvider = new CompositeConnectedDeviceProvider(
             new WinRtConnectedDeviceProvider(),
+            new PlayStationUsbConnectedDeviceProvider(),
             new SteamControllerTritonConnectedDeviceProvider(steamTritonReader));
         var setupApiBatteryLevelProvider = new SetupApiBatteryLevelProvider();
         var profileStore = new GamepadProfileStore();

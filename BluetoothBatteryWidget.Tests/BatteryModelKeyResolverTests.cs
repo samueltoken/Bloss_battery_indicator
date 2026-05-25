@@ -26,7 +26,7 @@ public sealed class BatteryModelKeyResolverTests
             identityProductId: "",
             transportVendorId: "045E",
             transportProductId: "0B13",
-            address: "A05A5F89E531",
+            address: "AABBCCDDE004",
             displayName: "Xbox Wireless Controller");
 
         Assert.Equal(GamepadProfileStore.BuildModelKey("045E", "0B13"), key);
@@ -40,14 +40,14 @@ public sealed class BatteryModelKeyResolverTests
             identityProductId: "",
             transportVendorId: "",
             transportProductId: "",
-            address: "A05A5F89E531",
+            address: "AABBCCDDE004",
             displayName: "Xbox Wireless Controller");
         var keyB = BatteryModelKeyResolver.ResolveNormalizedModelKey(
             identityVendorId: "",
             identityProductId: "",
             transportVendorId: "",
             transportProductId: "",
-            address: "A05A5F89E531",
+            address: "AABBCCDDE004",
             displayName: "Xbox Wireless Controller");
 
         Assert.StartsWith("FP_", keyA);
@@ -62,7 +62,7 @@ public sealed class BatteryModelKeyResolverTests
             identityProductId: "02E0",
             transportVendorId: "045E",
             transportProductId: "02E0",
-            address: "A05A5F89E531",
+            address: "AABBCCDDE004",
             displayName: "Controller",
             endpointSignature: "BTHENUM|HID");
         var keyB = BatteryModelKeyResolver.ResolveIdentityKey(
@@ -70,7 +70,7 @@ public sealed class BatteryModelKeyResolverTests
             identityProductId: "02E0",
             transportVendorId: "045E",
             transportProductId: "02E0",
-            address: "A05A5F89E531",
+            address: "AABBCCDDE004",
             displayName: "Controller",
             endpointSignature: "BTHLE|HID");
 

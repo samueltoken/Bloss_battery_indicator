@@ -66,12 +66,14 @@ public sealed class SonyHidBatteryLevelProvider
                         }
 
                         var instanceId = TryGetInstanceId(infoSet, ref devInfoData);
-                        if (string.IsNullOrWhiteSpace(instanceId) || !IsBluetoothHidEndpoint(instanceId))
+                        if (string.IsNullOrWhiteSpace(instanceId))
                         {
                             continue;
                         }
 
-                        if (!TryParseVidPid(instanceId, out var vid, out var pid) || vid != SonyVendorId)
+                        var parentInstanceId = TryGetParentInstanceId(devInfoData.DevInst);
+                        if (!TryParseVidPid(instanceId, parentInstanceId, devicePath, out var vid, out var pid) ||
+                            vid != SonyVendorId)
                         {
                             continue;
                         }
@@ -83,10 +85,26 @@ public sealed class SonyHidBatteryLevelProvider
                             continue;
                         }
 
-                        var address = AddressNormalizer.ExtractAddressFromInstanceId(instanceId);
-                        if (string.IsNullOrEmpty(address))
+                        var vendorId = vid.ToString("X4");
+                        var productId = pid.ToString("X4");
+                        var isUsbPicoDualSense = PlayStationUsbBridgeSupport.IsSupportedUsbDualSenseEndpoint(
+                            instanceId,
+                            parentInstanceId,
+                            devicePath,
+                            vendorId,
+                            productId);
+                        var isBluetoothSonyGamepad = IsBluetoothHidEndpoint(instanceId) ||
+                                                     IsBluetoothHidEndpoint(parentInstanceId);
+                        if (!isBluetoothSonyGamepad && !isUsbPicoDualSense)
                         {
-                            var parentInstanceId = TryGetParentInstanceId(devInfoData.DevInst);
+                            continue;
+                        }
+
+                        var address = isUsbPicoDualSense
+                            ? PlayStationUsbBridgeSupport.BuildSyntheticAddress(instanceId, devicePath)
+                            : AddressNormalizer.ExtractAddressFromInstanceId(instanceId);
+                        if (string.IsNullOrEmpty(address) && !isUsbPicoDualSense)
+                        {
                             address = AddressNormalizer.ExtractAddressFromInstanceId(parentInstanceId);
                         }
 
@@ -95,7 +113,9 @@ public sealed class SonyHidBatteryLevelProvider
                             continue;
                         }
 
-                        var displayName = TryGetFriendlyName(infoSet, ref devInfoData);
+                        var displayName = isUsbPicoDualSense
+                            ? PlayStationUsbBridgeSupport.GetDisplayName(productId)
+                            : TryGetFriendlyName(infoSet, ref devInfoData);
                         if (string.IsNullOrWhiteSpace(displayName))
                         {
                             displayName = isDualSense ? "DualSense Wireless Controller" : "DualShock 4 Wireless Controller";
@@ -120,7 +140,10 @@ public sealed class SonyHidBatteryLevelProvider
                             BatteryConfidence: BatteryConfidence.Confirmed,
                             SourceKind: BatterySourceKind.SonyHid,
                             RawMetric: null,
-                            ModelKey: BatteryModelKeyResolver.ResolveFromVidPid(vid.ToString("X4"), pid.ToString("X4")));
+                            ModelKey: BatteryModelKeyResolver.ResolveFromVidPid(vendorId, productId),
+                            ReasonCode: isUsbPicoDualSense ? "sony_hid_usb_pico2w_dualsense" : "sony_hid_bluetooth",
+                            ActiveSource: "sony_hid",
+                            PathType: isUsbPicoDualSense ? "usb_pico2w" : "bluetooth_hid");
 
                         if (!byAddress.TryGetValue(address, out var existing))
                         {
@@ -312,41 +335,31 @@ public sealed class SonyHidBatteryLevelProvider
         }
     }
 
-    private static bool TryParseVidPid(string instanceId, out ushort vid, out ushort pid)
+    private static bool TryParseVidPid(
+        string instanceId,
+        string parentInstanceId,
+        string devicePath,
+        out ushort vid,
+        out ushort pid)
     {
         vid = 0;
         pid = 0;
 
-        var vidMarker = "VID&";
-        var pidMarker = "PID&";
-
-        var vidIndex = instanceId.IndexOf(vidMarker, StringComparison.OrdinalIgnoreCase);
-        var pidIndex = instanceId.IndexOf(pidMarker, StringComparison.OrdinalIgnoreCase);
-        if (vidIndex < 0 || pidIndex < 0)
+        foreach (var text in new[] { instanceId, parentInstanceId, devicePath })
         {
-            return false;
+            if (!HidProbeTextParser.TryParseVidPid(text, out var vendorId, out var productId))
+            {
+                continue;
+            }
+
+            if (ushort.TryParse(vendorId, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out vid) &&
+                ushort.TryParse(productId, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out pid))
+            {
+                return true;
+            }
         }
 
-        var vidValueStart = vidIndex + vidMarker.Length;
-        var pidValueStart = pidIndex + pidMarker.Length;
-        if (instanceId.Length < vidValueStart + 8 || instanceId.Length < pidValueStart + 4)
-        {
-            return false;
-        }
-
-        var vidRaw = instanceId.Substring(vidValueStart, 8);
-        var pidRaw = instanceId.Substring(pidValueStart, 4);
-        if (vidRaw.StartsWith("0002", StringComparison.OrdinalIgnoreCase))
-        {
-            vidRaw = vidRaw[4..];
-        }
-        else
-        {
-            vidRaw = vidRaw[..4];
-        }
-
-        return ushort.TryParse(vidRaw, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out vid) &&
-               ushort.TryParse(pidRaw, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out pid);
+        return false;
     }
 
     private static bool TryReadHidInterfaceDetail(

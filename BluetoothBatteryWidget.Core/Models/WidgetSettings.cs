@@ -5,6 +5,13 @@ public sealed class WidgetSettings
     public const string NormalGlassMode = "NormalGlass";
     public const string LiteGlassMode = "LiteGlass";
     public const string WhiteBluePreset = "WhiteBlue";
+    public const string CloudDancerPreset = "CloudDancer";
+    public const string MoonLavenderPreset = "MoonLavender";
+    public const string MistSagePreset = "MistSage";
+    public const string AuroraTealPreset = "AuroraTeal";
+    public const string RoseDuskPreset = "RoseDusk";
+    public const string DeepNavyPreset = "DeepNavy";
+    public const string GraphiteBloomPreset = "GraphiteBloom";
     public const string AquaClassicPreset = "AquaClassic";
     public const string OceanMistPreset = "OceanMist";
     public const string SkyGlassPreset = "SkyGlass";
@@ -47,6 +54,18 @@ public sealed class WidgetSettings
 
     public string ColorPresetId { get; set; } = WhiteBluePreset;
 
+    public bool UseCustomColors { get; set; } = false;
+
+    public string CustomTextColor { get; set; } = string.Empty;
+
+    public string CustomBackgroundColor { get; set; } = string.Empty;
+
+    public Dictionary<string, string> CustomElementColors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool UseCustomFont { get; set; } = false;
+
+    public string CustomFontPath { get; set; } = string.Empty;
+
     public string Language { get; set; } = KoreanLanguage;
 
     public bool GuidedProbeEnabled { get; set; } = false;
@@ -74,24 +93,60 @@ public sealed class WidgetSettings
         return presetId switch
         {
             WhiteBluePreset => WhiteBluePreset,
+            CloudDancerPreset => CloudDancerPreset,
+            MoonLavenderPreset => MoonLavenderPreset,
+            MistSagePreset => MistSagePreset,
+            AuroraTealPreset => AuroraTealPreset,
+            RoseDuskPreset => RoseDuskPreset,
+            DeepNavyPreset => DeepNavyPreset,
+            GraphiteBloomPreset => GraphiteBloomPreset,
             AquaClassicPreset => WhiteBluePreset,
-            OceanMistPreset => OceanMistPreset,
-            SkyGlassPreset => SkyGlassPreset,
-            MintBluePreset => MintBluePreset,
-            SteelAquaPreset => SteelAquaPreset,
-            BurgundyPreset => BurgundyPreset,
-            CrimsonRedPreset => CrimsonRedPreset,
-            BlackTonePreset => BlackTonePreset,
-            DeepGreenPreset => DeepGreenPreset,
-            CobaltBluePreset => CobaltBluePreset,
-            DeepBlueSeaPreset => DeepBlueSeaPreset,
-            AblRedPreset => AblRedPreset,
-            GrassGreenPreset => GrassGreenPreset,
-            BurgundyRedPreset => BurgundyRedPreset,
-            DawnDarkPreset => DawnDarkPreset,
-            CyberDarkPreset => CyberDarkPreset,
+            OceanMistPreset => WhiteBluePreset,
+            SkyGlassPreset => WhiteBluePreset,
+            MintBluePreset => WhiteBluePreset,
+            SteelAquaPreset => WhiteBluePreset,
+            BurgundyPreset => RoseDuskPreset,
+            CrimsonRedPreset => RoseDuskPreset,
+            AblRedPreset => RoseDuskPreset,
+            BurgundyRedPreset => RoseDuskPreset,
+            BlackTonePreset => GraphiteBloomPreset,
+            DawnDarkPreset => GraphiteBloomPreset,
+            CyberDarkPreset => GraphiteBloomPreset,
+            DeepGreenPreset => MistSagePreset,
+            GrassGreenPreset => MistSagePreset,
+            CobaltBluePreset => DeepNavyPreset,
+            DeepBlueSeaPreset => DeepNavyPreset,
             _ => WhiteBluePreset
         };
+    }
+
+    public static string NormalizeOptionalHexColor(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = value.Trim();
+        if (!trimmed.StartsWith('#'))
+        {
+            trimmed = $"#{trimmed}";
+        }
+
+        if (trimmed.Length is not (7 or 9))
+        {
+            return string.Empty;
+        }
+
+        for (var index = 1; index < trimmed.Length; index++)
+        {
+            if (!Uri.IsHexDigit(trimmed[index]))
+            {
+                return string.Empty;
+            }
+        }
+
+        return trimmed.ToUpperInvariant();
     }
 
     public static int NormalizeUiScaleStep(int uiScaleStep)

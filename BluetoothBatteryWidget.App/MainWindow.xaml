@@ -34,6 +34,57 @@
         <SolidColorBrush x:Key="SettingsTextBrush" Color="#35617F" />
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
+        <DataTemplate x:Key="ColorPresetComboTemplate">
+            <Grid Width="138">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid Width="34"
+                      Height="18"
+                      Margin="0,0,8,0"
+                      VerticalAlignment="Center">
+                    <Border CornerRadius="9"
+                            Background="{Binding PreviewBrush}" />
+                    <Border Width="14"
+                            Height="14"
+                            Margin="2"
+                            HorizontalAlignment="Right"
+                            CornerRadius="7"
+                            Background="{Binding AccentBrush}" />
+                </Grid>
+                <Grid x:Name="ColorPresetMarqueeViewport"
+                      Grid.Column="1"
+                      Height="18"
+                      VerticalAlignment="Center"
+                      Background="Transparent"
+                      ClipToBounds="True"
+                      Loaded="ColorPresetMarqueeViewport_Loaded"
+                      SizeChanged="ColorPresetMarqueeViewport_SizeChanged"
+                      MouseEnter="ColorPresetMarqueeViewport_MouseEnter"
+                      MouseLeave="ColorPresetMarqueeViewport_MouseLeave">
+                    <Canvas Height="18"
+                            VerticalAlignment="Center"
+                            IsHitTestVisible="False">
+                        <TextBlock x:Name="ColorPresetMarqueeText"
+                                   Canvas.Left="0"
+                                   Canvas.Top="1"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="#1C3550"
+                                   Text="{Binding Label}"
+                                   Loaded="ColorPresetMarqueeText_Loaded"
+                                   SizeChanged="ColorPresetMarqueeText_SizeChanged">
+                            <TextBlock.RenderTransform>
+                                <TranslateTransform />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Canvas>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+
         <Style x:Key="FlatListBoxItemStyle" TargetType="ListBoxItem">
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
@@ -53,6 +104,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{x:Null}" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Foreground" Value="#153A5C" />
             <Setter Property="FontSize" Value="16" />
             <Setter Property="Cursor" Value="Hand" />
@@ -78,6 +130,7 @@
         <Style x:Key="GlassToggleSwitchStyle" TargetType="ToggleButton">
             <Setter Property="Width" Value="48" />
             <Setter Property="Height" Value="26" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Background" Value="#98CFDBE9" />
             <Setter Property="BorderBrush" Value="#7D9CB4CC" />
@@ -128,6 +181,9 @@
             <Setter Property="Background" Value="#EAF5FFFF" />
             <Setter Property="BorderBrush" Value="#7FA5C7E6" />
             <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -138,8 +194,8 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 Padding="8,6">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center" />
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -154,6 +210,18 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="ColorElementButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource GlassPanelActionButtonStyle}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="MinHeight" Value="37" />
+            <Setter Property="Foreground" Value="#10243C" />
+            <Setter Property="Background" Value="#ECF7FBFF" />
+            <Setter Property="BorderBrush" Value="#88BDD6E8" />
         </Style>
 
         <Style x:Key="DangerExitButtonStyle"
@@ -203,10 +271,14 @@
         </Style>
 
         <Style x:Key="GlassPresetComboBoxItemStyle" TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="{StaticResource SettingsTitleBrush}" />
+            <Setter Property="Foreground" Value="#1D3E5B" />
             <Setter Property="Background" Value="Transparent" />
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Padding" Value="10,5" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ColorPresetComboBoxItem_PreviewMouseLeftButtonDown" />
+            <EventSetter Event="PreviewMouseLeftButtonUp" Handler="ColorPresetComboBoxItem_PreviewMouseLeftButtonUp" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
@@ -214,16 +286,20 @@
                                 Margin="2"
                                 Padding="{TemplateBinding Padding}"
                                 CornerRadius="8"
+                                BorderThickness="1"
+                                BorderBrush="Transparent"
                                 Background="{TemplateBinding Background}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#CDE8F8FF" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#EAF5FFFF" />
+                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#8FB9D7EF" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#B8D8F2FF" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#D9EDF9FF" />
+                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#86B9CFE4" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -231,11 +307,26 @@
             </Setter>
         </Style>
 
+        <Style x:Key="ComboTransparentToggleButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="GlassPresetComboBoxStyle" TargetType="ComboBox">
-            <Setter Property="Foreground" Value="{StaticResource SettingsTitleBrush}" />
+            <Setter Property="Foreground" Value="#1D3E5B" />
             <Setter Property="Background" Value="#E8F3FBFF" />
             <Setter Property="BorderBrush" Value="#8FB9D7EF" />
             <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Padding" Value="10,4,30,4" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -256,7 +347,7 @@
                                 <ContentPresenter Margin="{TemplateBinding Padding}"
                                                   VerticalAlignment="Center"
                                                   Content="{TemplateBinding SelectionBoxItem}"
-                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  ContentTemplate="{TemplateBinding ItemTemplate}"
                                                   ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                                   IsHitTestVisible="False" />
 
@@ -271,6 +362,7 @@
 
                                 <ToggleButton Grid.ColumnSpan="2"
                                               Focusable="False"
+                                              Style="{StaticResource ComboTransparentToggleButtonStyle}"
                                               Background="Transparent"
                                               BorderThickness="0"
                                               IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
@@ -291,6 +383,8 @@
                                     <ScrollViewer MaxHeight="240"
                                                   Margin="4"
                                                   SnapsToDevicePixels="True"
+                                                  VerticalScrollBarVisibility="Hidden"
+                                                  HorizontalScrollBarVisibility="Disabled"
                                                   CanContentScroll="True">
                                         <StackPanel IsItemsHost="True"
                                                     KeyboardNavigation.DirectionalNavigation="Contained" />
@@ -377,7 +471,31 @@
             </Border.Background>
 
             <Grid x:Name="GlassCardContent">
-                <Grid>
+                <Grid x:Name="GlassTextureLayer"
+                      Panel.ZIndex="0"
+                      ClipToBounds="True"
+                      IsHitTestVisible="False"
+                      Opacity="0.88">
+                    <Rectangle>
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop x:Name="GlassSheenTop" Offset="0" Color="#18FFFFFF" />
+                                <GradientStop x:Name="GlassSheenMiddle" Offset="0.52" Color="#08FFFFFF" />
+                                <GradientStop x:Name="GlassSheenBottom" Offset="1" Color="#24CFEAFF" />
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Rectangle Opacity="0.55">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="1,0" EndPoint="0,1">
+                                <GradientStop x:Name="GlassDepthTop" Offset="0" Color="#16FFFFFF" />
+                                <GradientStop x:Name="GlassDepthBottom" Offset="1" Color="#1E9BC4DF" />
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                </Grid>
+
+                <Grid Panel.ZIndex="1">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
@@ -412,10 +530,14 @@
                                             BorderThickness="1">
                                         <Border.Style>
                                             <Style TargetType="Border">
-                                                <Setter Property="Background" Value="{StaticResource CardTintBrush}" />
-                                                <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+                                                <Setter Property="Background" Value="{DynamicResource CardTintBrush}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsCharging}" Value="True">
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsCharging}" Value="True" />
+                                                            <Condition Binding="{Binding DataContext.UseCustomColors, RelativeSource={RelativeSource AncestorType=Window}}" Value="False" />
+                                                        </MultiDataTrigger.Conditions>
                                                         <Setter Property="Background">
                                                             <Setter.Value>
                                                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -426,8 +548,12 @@
                                                             </Setter.Value>
                                                         </Setter>
                                                         <Setter Property="BorderBrush" Value="#FFFFCF5A" />
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding IsChargeComplete}" Value="True">
+                                                    </MultiDataTrigger>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsChargeComplete}" Value="True" />
+                                                            <Condition Binding="{Binding DataContext.UseCustomColors, RelativeSource={RelativeSource AncestorType=Window}}" Value="False" />
+                                                        </MultiDataTrigger.Conditions>
                                                         <Setter Property="Background">
                                                             <Setter.Value>
                                                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -438,7 +564,7 @@
                                                             </Setter.Value>
                                                         </Setter>
                                                         <Setter Property="BorderBrush" Value="#FF8FC9F0" />
-                                                    </DataTrigger>
+                                                    </MultiDataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
@@ -459,16 +585,37 @@
                                                         Height="48"
                                                         CornerRadius="24"
                                                         BorderThickness="1"
-                                                        Background="{StaticResource IconBackBrush}"
-                                                        BorderBrush="{StaticResource IconBorderBrush}"
                                                         Cursor="Hand"
                                                         MouseLeftButtonDown="DeviceIconBorder_MouseLeftButtonDown">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="{DynamicResource IconBackBrush}" />
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource IconBorderBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasCustomIconImage}" Value="True">
+                                                                    <Setter Property="Background" Value="{DynamicResource CardTintBrush}" />
+                                                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
                                                     <Grid ClipToBounds="True">
                                                         <Grid.Clip>
                                                             <EllipseGeometry Center="24,24" RadiusX="23" RadiusY="23" />
                                                         </Grid.Clip>
                                                         <Image Source="{Binding CustomIconImagePath}"
-                                                               Stretch="UniformToFill">
+                                                               Stretch="UniformToFill"
+                                                               RenderOptions.BitmapScalingMode="HighQuality">
+                                                            <Image.OpacityMask>
+                                                                <RadialGradientBrush Center="0.5,0.5"
+                                                                                     GradientOrigin="0.5,0.5"
+                                                                                     RadiusX="0.62"
+                                                                                     RadiusY="0.62">
+                                                                    <GradientStop Color="#FFFFFFFF" Offset="0.62" />
+                                                                    <GradientStop Color="#C8FFFFFF" Offset="0.82" />
+                                                                    <GradientStop Color="#00FFFFFF" Offset="1" />
+                                                                </RadialGradientBrush>
+                                                            </Image.OpacityMask>
                                                             <Image.Style>
                                                                 <Style TargetType="Image">
                                                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -546,7 +693,7 @@
                                                            TextTrimming="CharacterEllipsis"
                                                            FontSize="17"
                                                            FontWeight="SemiBold"
-                                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                                           Foreground="{DynamicResource PrimaryTextBrush}"
                                                            Cursor="Hand"
                                                            MouseLeftButtonDown="DisplayNameTextBlock_MouseLeftButtonDown">
                                                     <TextBlock.Style>
@@ -599,7 +746,7 @@
                                                 <TextBlock Text="{Binding Address}"
                                                            Margin="0,2,0,0"
                                                            FontSize="14"
-                                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="2"
@@ -610,15 +757,7 @@
                                                            FontWeight="Bold">
                                                     <TextBlock.Style>
                                                         <Style TargetType="TextBlock">
-                                                            <Setter Property="Foreground" Value="{StaticResource BatteryTextBrush}" />
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsCharging}" Value="True">
-                                                                    <Setter Property="Foreground" Value="#B7791F" />
-                                                                </DataTrigger>
-                                                                <DataTrigger Binding="{Binding IsChargeComplete}" Value="True">
-                                                                    <Setter Property="Foreground" Value="#1D5F8B" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
+                                                            <Setter Property="Foreground" Value="{DynamicResource BatteryTextBrush}" />
                                                         </Style>
                                                     </TextBlock.Style>
                                                     <TextBlock.Text>
@@ -660,7 +799,7 @@
                                                 <Border x:Name="BatteryTrack"
                                                         Height="12"
                                                         CornerRadius="6"
-                                                        Background="{StaticResource TrackBrush}" />
+                                                        Background="{DynamicResource TrackBrush}" />
                                                 <Border Height="12"
                                                         HorizontalAlignment="Left"
                                                         CornerRadius="6"
@@ -683,7 +822,7 @@
 
                     <Border x:Name="StatusPanelBorder"
                             Grid.Row="1"
-                            Margin="0,10,0,0"
+                            Margin="0,14,0,0"
                             Padding="12,9"
                             CornerRadius="18"
                             BorderThickness="1"
@@ -718,8 +857,8 @@
                                             Margin="0,0,8,0"
                                             CornerRadius="12"
                                             BorderThickness="1"
-                                            Background="{StaticResource ActionButtonBackBrush}"
-                                            BorderBrush="{StaticResource ActionButtonBorderBrush}">
+                                            Background="{DynamicResource ActionButtonBackBrush}"
+                                            BorderBrush="{DynamicResource ActionButtonBorderBrush}">
                                         <Button Style="{StaticResource RoundActionButtonStyle}"
                                                 Cursor="Hand"
                                                 Click="StatusPanelToggleButton_Click"
@@ -727,7 +866,7 @@
                                             <TextBlock Text="−"
                                                        FontSize="15"
                                                        FontWeight="Bold"
-                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}"
                                                        VerticalAlignment="Center"
                                                        HorizontalAlignment="Center" />
                                         </Button>
@@ -735,13 +874,13 @@
 
                                     <TextBlock FontSize="15"
                                                FontWeight="SemiBold"
-                                               Foreground="{StaticResource PrimaryTextBrush}"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"
                                                Text="{Binding StatusText}" />
                                 </StackPanel>
 
                                 <TextBlock Margin="0,2,0,0"
                                            FontSize="13"
-                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
                                            Text="{Binding DiagnosticsText}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -757,7 +896,7 @@
 
                                 <TextBlock Margin="0,1,0,0"
                                            FontSize="13"
-                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
                                            Text="{Binding PerformanceText}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -780,8 +919,8 @@
                                         Margin="0,0,8,0"
                                         CornerRadius="17"
                                         BorderThickness="1"
-                                        Background="{StaticResource ActionButtonBackBrush}"
-                                        BorderBrush="{StaticResource ActionButtonBorderBrush}">
+                                        Background="{DynamicResource ActionButtonBackBrush}"
+                                        BorderBrush="{DynamicResource ActionButtonBorderBrush}">
                                     <Button x:Name="SettingsButton"
                                             Style="{StaticResource RoundActionButtonStyle}"
                                             Click="SettingsButton_Click"
@@ -794,8 +933,8 @@
                                         Height="34"
                                         CornerRadius="17"
                                         BorderThickness="1"
-                                        Background="{StaticResource ActionButtonBackBrush}"
-                                        BorderBrush="{StaticResource ActionButtonBorderBrush}">
+                                        Background="{DynamicResource ActionButtonBackBrush}"
+                                        BorderBrush="{DynamicResource ActionButtonBorderBrush}">
                                     <Button x:Name="MainCloseButton"
                                             Style="{StaticResource RoundActionButtonStyle}"
                                             Click="CloseButton_Click"
@@ -810,13 +949,13 @@
                     <Border Grid.Row="1"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Bottom"
-                            Margin="8,0,0,8"
+                            Margin="8,14,0,10"
                             Width="28"
                             Height="28"
                             CornerRadius="14"
                             BorderThickness="1"
-                            Background="{StaticResource ActionButtonBackBrush}"
-                            BorderBrush="{StaticResource ActionButtonBorderBrush}">
+                            Background="{DynamicResource ActionButtonBackBrush}"
+                            BorderBrush="{DynamicResource ActionButtonBorderBrush}">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -876,26 +1015,41 @@
                Placement="Bottom"
                HorizontalOffset="8"
                VerticalOffset="8"
-               StaysOpen="False">
-            <Border Width="320"
+               StaysOpen="True">
+            <Border x:Name="SettingsPopupChrome"
+                    Width="340"
                     Padding="12"
                     CornerRadius="18"
                     BorderThickness="1"
                     BorderBrush="#9DD0E1F4"
-                    Background="#F2EAF6FF">
+                    Background="#F2EAF6FF"
+                    Cursor="Arrow"
+                    Focusable="False"
+                    FocusVisualStyle="{x:Null}">
                 <Border.Effect>
                     <DropShadowEffect Color="#70000000"
                                       BlurRadius="16"
                                       ShadowDepth="4"
                                       Opacity="0.25" />
                 </Border.Effect>
-                <StackPanel>
-                    <TextBlock x:Name="SettingsTitleTextBlock"
-                               Margin="0,0,0,8"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource SettingsTitleBrush}"
-                               Text="{Binding TextSettingsTitle}" />
+                <ScrollViewer MaxHeight="600"
+                              VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Disabled"
+                              CanContentScroll="False"
+                              Cursor="Arrow">
+                    <StackPanel Cursor="Arrow">
+                    <Grid MinHeight="24"
+                          Margin="0,0,0,8"
+                          Background="Transparent"
+                          Cursor="Arrow">
+                        <TextBlock x:Name="SettingsTitleTextBlock"
+                                    VerticalAlignment="Center"
+                                    FontSize="15"
+                                    FontWeight="SemiBold"
+                                    Foreground="{StaticResource SettingsTitleBrush}"
+                                    IsHitTestVisible="False"
+                                    Text="{Binding TextSettingsTitle}" />
+                    </Grid>
 
                     <Grid Margin="0,0,0,6">
                         <Grid.ColumnDefinitions>
@@ -969,8 +1123,6 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -1017,9 +1169,84 @@
                                   Width="166"
                                   Height="30"
                                   Style="{StaticResource GlassPresetComboBoxStyle}"
-                                   ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
-                                   SelectionChanged="ColorPresetComboBox_SelectionChanged"
-                                   DisplayMemberPath="Label" />
+                                  ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
+                                  ItemTemplate="{StaticResource ColorPresetComboTemplate}"
+                                  PreviewMouseLeftButtonDown="ColorPresetComboBox_PreviewMouseLeftButtonDown"
+                                  MouseEnter="ColorPresetComboBox_MouseEnter"
+                                  MouseLeave="ColorPresetComboBox_MouseLeave"
+                                  SelectionChanged="ColorPresetComboBox_SelectionChanged" />
+                    </Grid>
+
+                    <Grid Margin="0,0,0,10">
+                        <Button x:Name="ColorCustomizeButton"
+                                Style="{StaticResource GlassPanelActionButtonStyle}"
+                                Click="ColorCustomizeButton_Click"
+                                HorizontalContentAlignment="Stretch">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid Width="30"
+                                      Height="18"
+                                      Margin="0,0,9,0"
+                                      VerticalAlignment="Center">
+                                    <Border CornerRadius="9">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#FFFFF5EA" Offset="0" />
+                                                <GradientStop Color="#FFD7F5E8" Offset="0.45" />
+                                                <GradientStop Color="#FFDAD8FF" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                    </Border>
+                                    <Border Width="10"
+                                            Height="10"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center"
+                                            CornerRadius="5"
+                                            Background="#FF2F6BFF" />
+                                </Grid>
+                                <TextBlock Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           Text="색상 커스텀" />
+                                <TextBlock Grid.Column="2"
+                                           Margin="8,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="15"
+                                           Text="›" />
+                            </Grid>
+                        </Button>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0"
+                                   Margin="0,0,0,6"
+                                   Foreground="{StaticResource SettingsTextBrush}"
+                                   Text="사용자 폰트" />
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="LoadCustomFontButton"
+                                    Grid.Column="0"
+                                    Margin="0,0,6,0"
+                                    Style="{StaticResource GlassPanelActionButtonStyle}"
+                                    Click="LoadCustomFontButton_Click"
+                                    Content="불러오기" />
+                            <Button x:Name="ResetCustomFontButton"
+                                    Grid.Column="1"
+                                    Margin="6,0,0,0"
+                                    Style="{StaticResource GlassPanelActionButtonStyle}"
+                                    Click="ResetCustomFontButton_Click"
+                                    Content="기본값" />
+                        </Grid>
                     </Grid>
 
                     <Grid Margin="0,0,0,10">
@@ -1032,7 +1259,7 @@
                                    Margin="0,0,10,6"
                                    VerticalAlignment="Center"
                                    Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="{Binding TextLanguage}" />
+                                   Text="Language" />
                         <ComboBox x:Name="LanguageComboBox"
                                   Grid.Column="1"
                                   Width="166"
@@ -1045,6 +1272,8 @@
 
                     <Grid Margin="0,0,0,10">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
@@ -1068,8 +1297,8 @@
 
                         <Button Grid.Row="1"
                                 Grid.Column="0"
-                                x:Name="UpdateButton"
                                 Margin="0,0,6,0"
+                                x:Name="UpdateButton"
                                 Style="{StaticResource GlassPanelActionButtonStyle}"
                                 Click="UpdateButton_Click"
                                 Content="{Binding TextUpdate}" />
@@ -1116,9 +1345,261 @@
                     <TextBlock x:Name="VersionTextBlock"
                                HorizontalAlignment="Right"
                                FontSize="12"
-                               Foreground="{StaticResource SecondaryTextBrush}"
-                               Text="버전 1.0.2" />
-                </StackPanel>
+                               Foreground="{StaticResource SettingsTextBrush}"
+                               Text="버전 1.0.3" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Popup>
+
+        <Popup x:Name="ColorCustomPopup"
+               AllowsTransparency="True"
+               PlacementTarget="{Binding ElementName=ColorCustomizeButton}"
+               Placement="Right"
+               HorizontalOffset="10"
+               VerticalOffset="-8"
+               StaysOpen="True">
+            <Border x:Name="ColorPopupChrome"
+                    Width="360"
+                    Padding="12"
+                    CornerRadius="18"
+                    BorderThickness="1"
+                    BorderBrush="#A6D2E7F4"
+                    Background="#F4F7FBFF"
+                    PreviewMouseLeftButtonDown="PopupChrome_MouseLeftButtonDown"
+                    MouseLeftButtonDown="PopupChrome_MouseLeftButtonDown"
+                    MouseMove="PopupChrome_MouseMove"
+                    MouseLeftButtonUp="PopupChrome_MouseLeftButtonUp"
+                    LostMouseCapture="PopupChrome_LostMouseCapture">
+                <Border.Effect>
+                    <DropShadowEffect Color="#68000000"
+                                      BlurRadius="18"
+                                      ShadowDepth="4"
+                                      Opacity="0.26" />
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel IsHitTestVisible="False">
+                            <TextBlock FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource SettingsTitleBrush}"
+                                       Text="색상 커스텀" />
+                            <TextBlock x:Name="SelectedColorNameText"
+                                       Margin="0,2,0,0"
+                                       FontSize="12"
+                                       Foreground="{StaticResource SettingsTextBrush}"
+                                       Text="전체 글자" />
+                        </StackPanel>
+                        <Thumb x:Name="ColorPopupDragThumb"
+                               Grid.Column="0"
+                               Focusable="False"
+                               Cursor="Arrow"
+                               DragDelta="ColorPopupDragThumb_DragDelta">
+                            <Thumb.Template>
+                                <ControlTemplate TargetType="Thumb">
+                                    <Border Background="Transparent" />
+                                </ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
+                        <Button Grid.Column="1"
+                                Width="28"
+                                Height="28"
+                                Style="{StaticResource RoundActionButtonStyle}"
+                                Click="ColorCustomCloseButton_Click">
+                            <TextBlock FontFamily="Segoe MDL2 Assets"
+                                       Text="&#xE711;" />
+                        </Button>
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="142" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0"
+                                    Margin="0,0,10,0">
+                            <Button x:Name="PrimaryTextColorButton"
+                                    Tag="PrimaryText"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="PrimaryTextSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource PrimaryTextBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="전체 글자" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="SecondaryTextColorButton"
+                                    Tag="SecondaryText"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="SecondaryTextSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource SecondaryTextBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="보조 글자" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="BatteryTextColorButton"
+                                    Tag="BatteryText"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="BatteryTextSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource BatteryTextBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="배터리 숫자" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="CardTintColorButton"
+                                    Tag="CardTint"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="CardTintSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource CardTintBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="기기 칸" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="CardBorderColorButton"
+                                    Tag="CardBorder"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="CardBorderSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource CardBorderBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="기기 테두리" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="TrackColorButton"
+                                    Tag="Track"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="TrackSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource TrackBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="막대 배경" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="PanelColorButton"
+                                    Tag="Panel"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="PanelSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource ActionButtonBackBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="하단 패널" />
+                                </Grid>
+                            </Button>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1">
+                            <Border x:Name="PaletteSurface"
+                                    Height="172"
+                                    CornerRadius="16"
+                                    ClipToBounds="True"
+                                    MouseLeftButtonDown="PaletteSurface_MouseLeftButtonDown"
+                                    MouseMove="PaletteSurface_MouseMove"
+                                    MouseLeftButtonUp="PaletteSurface_MouseLeftButtonUp"
+                                    MouseLeave="PaletteSurface_MouseLeave">
+                                <Grid Background="Transparent">
+                                    <Rectangle>
+                                        <Rectangle.Fill>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                <GradientStop Color="#FFFF5656" Offset="0.00" />
+                                                <GradientStop Color="#FFFFD84D" Offset="0.16" />
+                                                <GradientStop Color="#FF6EE7A7" Offset="0.32" />
+                                                <GradientStop Color="#FF44D7E8" Offset="0.50" />
+                                                <GradientStop Color="#FF6B8CFF" Offset="0.68" />
+                                                <GradientStop Color="#FFC977F2" Offset="0.84" />
+                                                <GradientStop Color="#FFFF6BAA" Offset="1.00" />
+                                            </LinearGradientBrush>
+                                        </Rectangle.Fill>
+                                    </Rectangle>
+                                    <Rectangle>
+                                        <Rectangle.Fill>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                <GradientStop Color="#DDFFFFFF" Offset="0" />
+                                                <GradientStop Color="#00FFFFFF" Offset="0.45" />
+                                                <GradientStop Color="#99000000" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Rectangle.Fill>
+                                    </Rectangle>
+                                    <Ellipse x:Name="PaletteCursor"
+                                             Width="16"
+                                             Height="16"
+                                             Stroke="#F8FFFFFF"
+                                             StrokeThickness="2"
+                                             Fill="#33000000"
+                                             HorizontalAlignment="Left"
+                                             VerticalAlignment="Top"
+                                             Margin="0" />
+                                </Grid>
+                            </Border>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="SelectedColorPreviewBorder"
+                                        Width="38"
+                                        Height="30"
+                                        CornerRadius="10"
+                                        BorderThickness="1"
+                                        BorderBrush="#88A7BED2"
+                                        Background="{DynamicResource PrimaryTextBrush}" />
+                                <TextBlock x:Name="SelectedColorHexText"
+                                           Grid.Column="1"
+                                           Margin="10,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource SettingsTitleBrush}"
+                                           Text="#10243C" />
+                            </Grid>
+
+                            <Button Margin="0,10,0,0"
+                                    Style="{StaticResource GlassPanelActionButtonStyle}"
+                                    Click="ResetCustomColorsButton_Click"
+                                    Content="색상 초기화" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,10,0,0"
+                               FontSize="11"
+                               Foreground="{StaticResource SettingsTextBrush}"
+                               Text="마우스를 누른 채 움직이면 바로 반영됩니다." />
+                </Grid>
             </Border>
         </Popup>
     </Grid>

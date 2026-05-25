@@ -9,10 +9,10 @@ public sealed class LearnedHidBatteryLevelProviderTests
     public void NormalizeIdentityForEndpointDrift_RemovesEndpointTokenOnly()
     {
         var normalized = LearnedHidBatteryLevelProvider.NormalizeIdentityForEndpointDrift(
-            "ID=VID_054C|PID_09CC|TR=VID_054C|PID_09CC|FP=FP_1F2D073D14AB|EP=762121DE");
+            "ID=VID_054C|PID_09CC|TR=VID_054C|PID_09CC|FP=FP_AABBCCDDE012|EP=762121DE");
 
         Assert.Equal(
-            "ID=VID_054C|PID_09CC|TR=VID_054C|PID_09CC|FP=FP_1F2D073D14AB",
+            "ID=VID_054C|PID_09CC|TR=VID_054C|PID_09CC|FP=FP_AABBCCDDE012",
             normalized);
     }
 

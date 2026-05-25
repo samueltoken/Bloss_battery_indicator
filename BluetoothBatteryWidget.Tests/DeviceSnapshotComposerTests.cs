@@ -68,13 +68,13 @@ public sealed class DeviceSnapshotComposerTests
         var composer = new DeviceSnapshotComposer(new IconResolver());
         var connected = new List<ConnectedBluetoothDevice>
         {
-            new("steam-triton:AABBCCDDEEFF", "AABBCCDDEEFF", "Steam Controller", true, "Input.GameController")
+            new("steam-triton:AABBCCDDE010", "AABBCCDDE010", "Steam Controller", true, "Input.GameController")
         };
         var battery = new List<PnpBatteryReading>
         {
             new(
-                InstanceId: "steam-triton:AABBCCDDEEFF",
-                Address: "AABBCCDDEEFF",
+                InstanceId: "steam-triton:AABBCCDDE010",
+                Address: "AABBCCDDE010",
                 DisplayName: "Steam Controller",
                 BatteryPercent: 100,
                 IsCharging: true,
@@ -105,7 +105,7 @@ public sealed class DeviceSnapshotComposerTests
         var battery = new List<PnpBatteryReading>();
         var nameOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["AA1122334455"] = "?�꺼"
+            ["AA1122334455"] = "내꺼"
         };
 
         var snapshots = composer.Compose(
@@ -117,7 +117,7 @@ public sealed class DeviceSnapshotComposerTests
             DateTimeOffset.UtcNow);
 
         Assert.Single(snapshots);
-        Assert.Equal("?�꺼", snapshots[0].DisplayName);
+        Assert.Equal("내꺼", snapshots[0].DisplayName);
         Assert.Equal("Xbox Wireless Controller", snapshots[0].BaseDisplayName);
         Assert.Equal(DeviceCategory.Gamepad, snapshots[0].Category);
     }
