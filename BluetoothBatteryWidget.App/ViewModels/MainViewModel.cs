@@ -143,6 +143,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(VisualMode));
             OnPropertyChanged(nameof(IsLiteVisualMode));
             OnPropertyChanged(nameof(ColorPresetId));
+            OnPropertyChanged(nameof(UseCustomColors));
+            OnPropertyChanged(nameof(CustomTextColor));
+            OnPropertyChanged(nameof(CustomBackgroundColor));
+            OnPropertyChanged(nameof(CustomElementColors));
+            OnPropertyChanged(nameof(UseCustomFont));
+            OnPropertyChanged(nameof(CustomFontPath));
             OnPropertyChanged(nameof(Language));
             OnPropertyChanged(nameof(StatusPanelCollapsed));
             OnPropertyChanged(nameof(UiScaleStep));
@@ -164,6 +170,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool IsLiteVisualMode => string.Equals(Settings.VisualMode, WidgetSettings.LiteGlassMode, StringComparison.Ordinal);
 
     public string ColorPresetId => Settings.ColorPresetId;
+
+    public bool UseCustomColors => Settings.UseCustomColors;
+
+    public string CustomTextColor => Settings.CustomTextColor;
+
+    public string CustomBackgroundColor => Settings.CustomBackgroundColor;
+
+    public IReadOnlyDictionary<string, string> CustomElementColors => Settings.CustomElementColors;
+
+    public bool UseCustomFont => Settings.UseCustomFont;
+
+    public string CustomFontPath => Settings.CustomFontPath;
 
     public string Language => Settings.Language;
 
@@ -191,9 +209,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public string TextColorPreset => CurrentLanguageText.ColorPresetLabel;
 
-    public string TextLanguage =>
-        LanguageOptions.FirstOrDefault(option => string.Equals(option.Id, Settings.Language, StringComparison.Ordinal))?.Label
-        ?? CurrentLanguageText.LanguageLabel;
+    public string TextLanguage => "Language";
 
     public string TextRefreshNow => CurrentLanguageText.RefreshNowButton;
 
@@ -870,14 +886,156 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public void SetColorPreset(string presetId)
     {
         var normalized = WidgetSettings.NormalizeColorPresetId(presetId);
-        if (string.Equals(Settings.ColorPresetId, normalized, StringComparison.Ordinal))
+        var changed = !string.Equals(Settings.ColorPresetId, normalized, StringComparison.Ordinal);
+        var hadCustomColors = Settings.UseCustomColors ||
+                              !string.IsNullOrWhiteSpace(Settings.CustomTextColor) ||
+                              !string.IsNullOrWhiteSpace(Settings.CustomBackgroundColor) ||
+                              Settings.CustomElementColors.Count > 0;
+        if (!changed && !hadCustomColors)
         {
             return;
         }
 
         Settings.ColorPresetId = normalized;
+        Settings.UseCustomColors = false;
+        Settings.CustomTextColor = string.Empty;
+        Settings.CustomBackgroundColor = string.Empty;
+        Settings.CustomElementColors.Clear();
         SaveSettings();
-        OnPropertyChanged(nameof(ColorPresetId));
+        if (changed)
+        {
+            OnPropertyChanged(nameof(ColorPresetId));
+        }
+
+        if (hadCustomColors)
+        {
+            OnPropertyChanged(nameof(UseCustomColors));
+            OnPropertyChanged(nameof(CustomTextColor));
+            OnPropertyChanged(nameof(CustomBackgroundColor));
+            OnPropertyChanged(nameof(CustomElementColors));
+        }
+    }
+
+    public void SetCustomColors(string textColor, string backgroundColor)
+    {
+        var normalizedText = WidgetSettings.NormalizeOptionalHexColor(textColor);
+        var normalizedBackground = WidgetSettings.NormalizeOptionalHexColor(backgroundColor);
+        if (string.IsNullOrWhiteSpace(normalizedText) || string.IsNullOrWhiteSpace(normalizedBackground))
+        {
+            return;
+        }
+
+        if (Settings.UseCustomColors &&
+            string.Equals(Settings.CustomTextColor, normalizedText, StringComparison.Ordinal) &&
+            string.Equals(Settings.CustomBackgroundColor, normalizedBackground, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Settings.UseCustomColors = true;
+        Settings.CustomTextColor = normalizedText;
+        Settings.CustomBackgroundColor = normalizedBackground;
+        Settings.CustomElementColors["PrimaryText"] = normalizedText;
+        Settings.CustomElementColors["CardTint"] = normalizedBackground;
+        SaveSettings();
+        OnPropertyChanged(nameof(UseCustomColors));
+        OnPropertyChanged(nameof(CustomTextColor));
+        OnPropertyChanged(nameof(CustomBackgroundColor));
+        OnPropertyChanged(nameof(CustomElementColors));
+    }
+
+    public void SetCustomElementColor(string elementKey, string color, bool save = true)
+    {
+        var normalizedKey = elementKey?.Trim() ?? string.Empty;
+        var normalizedColor = WidgetSettings.NormalizeOptionalHexColor(color);
+        if (string.IsNullOrWhiteSpace(normalizedKey) || string.IsNullOrWhiteSpace(normalizedColor))
+        {
+            return;
+        }
+
+        if (Settings.UseCustomColors &&
+            Settings.CustomElementColors.TryGetValue(normalizedKey, out var current) &&
+            string.Equals(current, normalizedColor, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Settings.UseCustomColors = true;
+        Settings.CustomElementColors[normalizedKey] = normalizedColor;
+        if (string.Equals(normalizedKey, "PrimaryText", StringComparison.OrdinalIgnoreCase))
+        {
+            Settings.CustomTextColor = normalizedColor;
+            OnPropertyChanged(nameof(CustomTextColor));
+        }
+        else if (string.Equals(normalizedKey, "CardTint", StringComparison.OrdinalIgnoreCase))
+        {
+            Settings.CustomBackgroundColor = normalizedColor;
+            OnPropertyChanged(nameof(CustomBackgroundColor));
+        }
+
+        if (save)
+        {
+            SaveSettings();
+        }
+
+        OnPropertyChanged(nameof(UseCustomColors));
+        OnPropertyChanged(nameof(CustomElementColors));
+    }
+
+    public void ClearCustomColors()
+    {
+        if (!Settings.UseCustomColors &&
+            string.IsNullOrWhiteSpace(Settings.CustomTextColor) &&
+            string.IsNullOrWhiteSpace(Settings.CustomBackgroundColor) &&
+            Settings.CustomElementColors.Count == 0)
+        {
+            return;
+        }
+
+        Settings.UseCustomColors = false;
+        Settings.CustomTextColor = string.Empty;
+        Settings.CustomBackgroundColor = string.Empty;
+        Settings.CustomElementColors.Clear();
+        SaveSettings();
+        OnPropertyChanged(nameof(UseCustomColors));
+        OnPropertyChanged(nameof(CustomTextColor));
+        OnPropertyChanged(nameof(CustomBackgroundColor));
+        OnPropertyChanged(nameof(CustomElementColors));
+    }
+
+    public void SetCustomFont(string fontPath)
+    {
+        var normalizedPath = fontPath?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            return;
+        }
+
+        if (Settings.UseCustomFont &&
+            string.Equals(Settings.CustomFontPath, normalizedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Settings.UseCustomFont = true;
+        Settings.CustomFontPath = normalizedPath;
+        SaveSettings();
+        OnPropertyChanged(nameof(UseCustomFont));
+        OnPropertyChanged(nameof(CustomFontPath));
+    }
+
+    public void ClearCustomFont()
+    {
+        if (!Settings.UseCustomFont && string.IsNullOrWhiteSpace(Settings.CustomFontPath))
+        {
+            return;
+        }
+
+        Settings.UseCustomFont = false;
+        Settings.CustomFontPath = string.Empty;
+        SaveSettings();
+        OnPropertyChanged(nameof(UseCustomFont));
+        OnPropertyChanged(nameof(CustomFontPath));
     }
 
     public void SetLanguage(string language)

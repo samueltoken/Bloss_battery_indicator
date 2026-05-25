@@ -10,7 +10,7 @@ public sealed class DeviceItemViewModelTests
     {
         var snapshot = new DeviceBatterySnapshot(
             DeviceId: "dev-1",
-            Address: "A05A5F89E531",
+            Address: "AABBCCDDE004",
             DisplayName: "Xbox Wireless Controller",
             BatteryPercent: 9,
             BatteryConfidence: BatteryConfidence.Confirmed,
@@ -32,8 +32,8 @@ public sealed class DeviceItemViewModelTests
     public void IsChargeComplete_ReflectsSnapshot()
     {
         var snapshot = new DeviceBatterySnapshot(
-            DeviceId: "steam-triton:AABBCCDDEEFF",
-            Address: "AABBCCDDEEFF",
+            DeviceId: "steam-triton:AABBCCDDE010",
+            Address: "AABBCCDDE010",
             DisplayName: "Steam Controller",
             BatteryPercent: 100,
             BatteryConfidence: BatteryConfidence.Confirmed,

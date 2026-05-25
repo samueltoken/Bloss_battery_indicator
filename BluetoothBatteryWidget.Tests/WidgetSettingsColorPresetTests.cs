@@ -23,9 +23,9 @@ public sealed class WidgetSettingsColorPresetTests
     [Fact]
     public void NormalizeColorPresetId_ValidValue_IsPreserved()
     {
-        var normalized = WidgetSettings.NormalizeColorPresetId(WidgetSettings.CrimsonRedPreset);
+        var normalized = WidgetSettings.NormalizeColorPresetId(WidgetSettings.CloudDancerPreset);
 
-        Assert.Equal(WidgetSettings.CrimsonRedPreset, normalized);
+        Assert.Equal(WidgetSettings.CloudDancerPreset, normalized);
     }
 
     [Fact]
@@ -33,22 +33,72 @@ public sealed class WidgetSettingsColorPresetTests
     {
         var values = new[]
         {
-            WidgetSettings.BurgundyPreset,
-            WidgetSettings.BlackTonePreset,
-            WidgetSettings.DeepGreenPreset,
-            WidgetSettings.CobaltBluePreset,
-            WidgetSettings.DeepBlueSeaPreset,
-            WidgetSettings.AblRedPreset,
-            WidgetSettings.GrassGreenPreset,
-            WidgetSettings.BurgundyRedPreset,
-            WidgetSettings.DawnDarkPreset,
-            WidgetSettings.CyberDarkPreset
+            WidgetSettings.WhiteBluePreset,
+            WidgetSettings.CloudDancerPreset,
+            WidgetSettings.MoonLavenderPreset,
+            WidgetSettings.MistSagePreset,
+            WidgetSettings.AuroraTealPreset,
+            WidgetSettings.RoseDuskPreset,
+            WidgetSettings.DeepNavyPreset,
+            WidgetSettings.GraphiteBloomPreset
         };
 
         foreach (var value in values)
         {
             Assert.Equal(value, WidgetSettings.NormalizeColorPresetId(value));
         }
+    }
+
+    [Theory]
+    [InlineData(WidgetSettings.BurgundyPreset, WidgetSettings.RoseDuskPreset)]
+    [InlineData(WidgetSettings.CrimsonRedPreset, WidgetSettings.RoseDuskPreset)]
+    [InlineData(WidgetSettings.BlackTonePreset, WidgetSettings.GraphiteBloomPreset)]
+    [InlineData(WidgetSettings.DeepGreenPreset, WidgetSettings.MistSagePreset)]
+    [InlineData(WidgetSettings.CobaltBluePreset, WidgetSettings.DeepNavyPreset)]
+    [InlineData(WidgetSettings.DeepBlueSeaPreset, WidgetSettings.DeepNavyPreset)]
+    [InlineData(WidgetSettings.AblRedPreset, WidgetSettings.RoseDuskPreset)]
+    [InlineData(WidgetSettings.GrassGreenPreset, WidgetSettings.MistSagePreset)]
+    [InlineData(WidgetSettings.BurgundyRedPreset, WidgetSettings.RoseDuskPreset)]
+    [InlineData(WidgetSettings.DawnDarkPreset, WidgetSettings.GraphiteBloomPreset)]
+    [InlineData(WidgetSettings.CyberDarkPreset, WidgetSettings.GraphiteBloomPreset)]
+    public void NormalizeColorPresetId_LegacyAliases_MapToSupportedPresets(string legacyPreset, string expected)
+    {
+        Assert.Equal(expected, WidgetSettings.NormalizeColorPresetId(legacyPreset));
+    }
+
+    [Fact]
+    public void CustomAppearance_DefaultsToDisabled()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.False(settings.UseCustomColors);
+        Assert.Empty(settings.CustomTextColor);
+        Assert.Empty(settings.CustomBackgroundColor);
+        Assert.NotNull(settings.CustomElementColors);
+        Assert.Empty(settings.CustomElementColors);
+        Assert.False(settings.UseCustomFont);
+        Assert.Empty(settings.CustomFontPath);
+    }
+
+    [Theory]
+    [InlineData("#123abc", "#123ABC")]
+    [InlineData("123abc", "#123ABC")]
+    [InlineData("#80123abc", "#80123ABC")]
+    [InlineData("80123abc", "#80123ABC")]
+    public void NormalizeOptionalHexColor_ValidHex_IsNormalized(string input, string expected)
+    {
+        Assert.Equal(expected, WidgetSettings.NormalizeOptionalHexColor(input));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("#12345")]
+    [InlineData("#1234567")]
+    [InlineData("#12XX56")]
+    public void NormalizeOptionalHexColor_InvalidHex_ReturnsEmpty(string? input)
+    {
+        Assert.Empty(WidgetSettings.NormalizeOptionalHexColor(input));
     }
 
     [Fact]

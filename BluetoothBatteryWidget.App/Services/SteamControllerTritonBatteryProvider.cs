@@ -46,38 +46,57 @@ public sealed class SteamControllerTritonBatteryProvider : IBatteryLevelProvider
                 continue;
             }
 
-            var batteryPercent = status.BatteryPercent;
-            var rawMetric = (double?)status.BatteryPercent;
-            var confidence = BatteryConfidence.Confirmed;
-            var reliabilityScore = 98;
-            var reasonCode = status.IsChargeComplete
-                ? "steam_triton_charge_complete"
-                : status.IsCharging ? "steam_triton_charging" : "steam_triton_battery";
-            if (SteamControllerTritonHidReader.IsSuspiciousDockedFullBattery(status) &&
-                SteamControllerBatteryEstimator.TryEstimatePercentFromVoltage(status, out _))
-            {
-                rawMetric = status.BatteryVoltage;
-            }
-
-            readings.Add(new PnpBatteryReading(
-                InstanceId: snapshot.DeviceId,
-                Address: snapshot.Address,
-                DisplayName: snapshot.DisplayName,
-                BatteryPercent: batteryPercent,
-                BatteryConfidence: confidence,
-                SourceKind: BatterySourceKind.SteamHid,
-                RawMetric: rawMetric,
-                ModelKey: snapshot.ModelKey,
-                ObservedAt: DateTimeOffset.Now,
-                ReliabilityScore: reliabilityScore,
-                ReasonCode: reasonCode,
-                ActiveSource: "steamhid",
-                PathType: "receiver",
-                DisplayState: status.IsCharging ? BatteryDisplayState.Charging : BatteryDisplayState.Verified,
-                IsCharging: status.IsCharging,
-                IsChargeComplete: status.IsChargeComplete));
+            readings.Add(CreateReading(snapshot, status, DateTimeOffset.Now));
         }
 
         return readings;
+    }
+
+    internal static PnpBatteryReading CreateReading(
+        SteamControllerTritonSnapshot snapshot,
+        SteamControllerBatteryStatus status,
+        DateTimeOffset observedAt)
+    {
+        int? batteryPercent = status.BatteryPercent;
+        var rawMetric = (double?)status.BatteryPercent;
+        var confidence = BatteryConfidence.Confirmed;
+        var reliabilityScore = 98;
+        var reasonCode = status.IsChargeComplete
+            ? "steam_triton_charge_complete"
+            : status.IsCharging ? "steam_triton_charging" : "steam_triton_battery";
+        var isBatterySuspect = false;
+
+        if (SteamControllerTritonHidReader.IsSuspiciousDockedFullBattery(status))
+        {
+            confidence = BatteryConfidence.Estimated;
+            reliabilityScore = 80;
+            rawMetric = status.BatteryVoltage > 0 ? status.BatteryVoltage : null;
+
+            if (!SteamControllerBatteryEstimator.TryEstimatePercentFromVoltage(status, out _))
+            {
+                batteryPercent = null;
+                isBatterySuspect = true;
+                reasonCode = "steam_triton_docked_full_pending";
+            }
+        }
+
+        return new PnpBatteryReading(
+            InstanceId: snapshot.DeviceId,
+            Address: snapshot.Address,
+            DisplayName: snapshot.DisplayName,
+            BatteryPercent: batteryPercent,
+            BatteryConfidence: confidence,
+            SourceKind: BatterySourceKind.SteamHid,
+            RawMetric: rawMetric,
+            ModelKey: snapshot.ModelKey,
+            ObservedAt: observedAt,
+            IsBatterySuspect: isBatterySuspect,
+            ReliabilityScore: reliabilityScore,
+            ReasonCode: reasonCode,
+            ActiveSource: "steamhid",
+            PathType: "receiver",
+            DisplayState: status.IsCharging ? BatteryDisplayState.Charging : BatteryDisplayState.Verified,
+            IsCharging: status.IsCharging,
+            IsChargeComplete: status.IsChargeComplete);
     }
 }

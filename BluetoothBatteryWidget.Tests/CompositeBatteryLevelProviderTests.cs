@@ -49,8 +49,8 @@ public sealed class CompositeBatteryLevelProviderTests
         var raw = new[]
         {
             new PnpBatteryReading(
-                InstanceId: "steam-triton:AABBCCDDEEFF",
-                Address: "AABBCCDDEEFF",
+                InstanceId: "steam-triton:AABBCCDDE010",
+                Address: "AABBCCDDE010",
                 DisplayName: "Steam Controller",
                 BatteryPercent: 100,
                 SourceKind: BatterySourceKind.SteamHid,
@@ -68,8 +68,8 @@ public sealed class CompositeBatteryLevelProviderTests
         var resolved = new[]
         {
             new PnpBatteryReading(
-                InstanceId: "steam-triton:AABBCCDDEEFF",
-                Address: "AABBCCDDEEFF",
+                InstanceId: "steam-triton:AABBCCDDE010",
+                Address: "AABBCCDDE010",
                 DisplayName: "Steam Controller",
                 BatteryPercent: null,
                 SourceKind: BatterySourceKind.SteamHid,
@@ -88,8 +88,8 @@ public sealed class CompositeBatteryLevelProviderTests
         var resolved = new[]
         {
             new PnpBatteryReading(
-                InstanceId: "steam-triton:AABBCCDDEEFF",
-                Address: "AABBCCDDEEFF",
+                InstanceId: "steam-triton:AABBCCDDE010",
+                Address: "AABBCCDDE010",
                 DisplayName: "Steam Controller",
                 BatteryPercent: 100,
                 SourceKind: BatterySourceKind.SteamHid,
@@ -108,9 +108,9 @@ public sealed class CompositeBatteryLevelProviderTests
         var resolved = new[]
         {
             new PnpBatteryReading(
-                InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_112233445566",
-                Address: "112233445566",
-                DisplayName: "Steam Ctrl (BT) FXA0000000001",
+                InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_AABBCCDDE011",
+                Address: "AABBCCDDE011",
+                DisplayName: "Steam Ctrl (BT) FXA0000000000",
                 BatteryPercent: 100,
                 SourceKind: BatterySourceKind.BleGatt,
                 RawMetric: 96,
@@ -129,8 +129,8 @@ public sealed class CompositeBatteryLevelProviderTests
         var raw = new[]
         {
             new PnpBatteryReading(
-                InstanceId: "steam-triton:AABBCCDDEEFF",
-                Address: "AABBCCDDEEFF",
+                InstanceId: "steam-triton:AABBCCDDE010",
+                Address: "AABBCCDDE010",
                 DisplayName: "Steam Controller",
                 BatteryPercent: 96,
                 SourceKind: BatterySourceKind.SteamHid,
@@ -181,8 +181,8 @@ public sealed class CompositeBatteryLevelProviderTests
         string reasonCode)
     {
         return new PnpBatteryReading(
-            InstanceId: "steam-triton:AABBCCDDEEFF",
-            Address: "AABBCCDDEEFF",
+            InstanceId: "steam-triton:AABBCCDDE010",
+            Address: "AABBCCDDE010",
             DisplayName: "Steam Controller",
             BatteryPercent: batteryPercent,
             BatteryConfidence: BatteryConfidence.Confirmed,
@@ -200,7 +200,7 @@ public sealed class CompositeBatteryLevelProviderTests
     {
         return new PnpBatteryReading(
             InstanceId: "SETUPAPI",
-            Address: "AABBCCDDEEFF",
+            Address: "AABBCCDDE010",
             DisplayName: "Steam Controller",
             BatteryPercent: batteryPercent,
             BatteryConfidence: BatteryConfidence.Estimated,

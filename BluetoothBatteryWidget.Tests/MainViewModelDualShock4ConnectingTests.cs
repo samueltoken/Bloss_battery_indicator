@@ -134,7 +134,7 @@ public sealed class MainViewModelDualShock4ConnectingTests
     {
         return new DeviceBatterySnapshot(
             DeviceId: "id",
-            Address: "A45385EDE1A5",
+            Address: "AABBCCDDE005",
             DisplayName: "Wireless Controller",
             BatteryPercent: batteryPercent,
             BatteryConfidence: BatteryConfidence.Confirmed,

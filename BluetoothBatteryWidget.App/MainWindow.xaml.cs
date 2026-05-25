@@ -22,6 +22,7 @@ using BluetoothBatteryWidget.Core.Services;
 using DrawingIcon = System.Drawing.Icon;
 using Forms = System.Windows.Forms;
 using WpfControls = System.Windows.Controls;
+using WpfPopup = System.Windows.Controls.Primitives.Popup;
 using WpfScrollBar = System.Windows.Controls.Primitives.ScrollBar;
 using WpfThumb = System.Windows.Controls.Primitives.Thumb;
 using WpfToggleButton = System.Windows.Controls.Primitives.ToggleButton;
@@ -41,11 +42,15 @@ public partial class MainWindow : Window
     private const int UiScaleAnimationMilliseconds = 140;
     private const double ResizeGripBaseInset = 4d;
     private const double StatusPanelFallbackHeight = 108d;
+    private const double ColorPresetMarqueeGap = 14d;
+    private const double ColorPresetMarqueePixelsPerSecond = 22d;
+    private const double ColorPresetMarqueeStartDelaySeconds = 0.8d;
+    private const double ColorPresetMarqueeEndDelaySeconds = 0.9d;
     private const string GlassWaveStoryboardKey = "GlassWaveStoryboard";
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.2";
+    private const string FallbackVersion = "1.0.3";
     private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
     private const string UpdateExpectedAssetName = "setup.exe";
     private const string UpdateExpectedChecksumAssetName = "setup.exe.sha256";
@@ -62,6 +67,14 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Bloss",
         "icon-images");
+    private static readonly string CustomFontDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Bloss",
+        "fonts");
+    private static readonly System.Windows.Media.Color FixedSettingsTitleColor =
+        System.Windows.Media.Color.FromRgb(0x1D, 0x3E, 0x5B);
+    private static readonly System.Windows.Media.Color FixedSettingsTextColor =
+        System.Windows.Media.Color.FromRgb(0x35, 0x61, 0x7F);
 
     private readonly MainViewModel _viewModel;
     private readonly Forms.NotifyIcon _trayIcon;
@@ -75,6 +88,13 @@ public partial class MainWindow : Window
     private bool _initialBoundsApplied;
     private bool _isColorPresetSyncing;
     private bool _isLanguageSyncing;
+    private bool _isPaletteDragging;
+    private WpfPopup? _draggingPopup;
+    private FrameworkElement? _popupDragChrome;
+    private System.Windows.Point _popupDragStartScreenPoint;
+    private double _popupDragStartHorizontalOffset;
+    private double _popupDragStartVerticalOffset;
+    private string _selectedColorElementKey = "PrimaryText";
     private double _statusPanelCollapsedHeightDelta;
     private DateTime _lastBoundsSaveAt = DateTime.MinValue;
     private Storyboard? _glassWaveStoryboard;
@@ -84,13 +104,25 @@ public partial class MainWindow : Window
     private readonly HttpClient _httpClient = new();
     private bool _isUpdating;
 
+    private static readonly IReadOnlyDictionary<string, string> ColorElementLabels =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["PrimaryText"] = "전체 글자",
+            ["SecondaryText"] = "보조 글자",
+            ["BatteryText"] = "배터리 숫자",
+            ["CardTint"] = "기기 칸",
+            ["CardBorder"] = "기기 테두리",
+            ["Track"] = "막대 배경",
+            ["Panel"] = "하단 패널"
+        };
+
     public MainWindow(MainViewModel viewModel)
     {
         _viewModel = viewModel;
         DataContext = _viewModel;
 
         InitializeComponent();
-        RefreshColorPresetOptions();
+        ColorPresetComboBox.ItemsSource = ColorPresetCatalog.Presets;
         LanguageComboBox.ItemsSource = _viewModel.LanguageOptions;
         LanguageComboBox.DisplayMemberPath = nameof(UiLanguageOption.Label);
         _appIcon = LoadAppIcon();
@@ -100,7 +132,10 @@ public partial class MainWindow : Window
         ResetUpdateProgressUi();
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
 
-        LocationChanged += (_, _) => SaveBoundsThrottled();
+        LocationChanged += (_, _) =>
+        {
+            SaveBoundsThrottled();
+        };
         SizeChanged += (_, _) =>
         {
             SaveBoundsThrottled();
@@ -128,6 +163,7 @@ public partial class MainWindow : Window
         ApplyVisualModeState();
         await _viewModel.InitializeAsync().ConfigureAwait(true);
         ApplyColorPreset(_viewModel.ColorPresetId);
+        ApplyCustomFont();
         SyncColorPresetSelection();
         SyncLanguageSelection();
         ApplyUiScaleStep(_viewModel.UiScaleStep, animate: false);
@@ -349,8 +385,15 @@ public partial class MainWindow : Window
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        SettingsPopup.IsOpen = !SettingsPopup.IsOpen;
-        UpdateVersionMenuHeader();
+        e.Handled = true;
+
+        if (IsSettingsPopupOpen())
+        {
+            CloseSettingsPopup();
+            return;
+        }
+
+        OpenSettingsPopup();
     }
 
     private void StatusPanelToggleButton_Click(object sender, RoutedEventArgs e)
@@ -358,7 +401,7 @@ public partial class MainWindow : Window
         var collapse = !_viewModel.StatusPanelCollapsed;
         if (collapse)
         {
-            SettingsPopup.IsOpen = false;
+            CloseSettingsPopup();
             _statusPanelCollapsedHeightDelta = Math.Max(StatusPanelFallbackHeight, GetStatusPanelOccupiedHeight());
         }
 
@@ -442,13 +485,212 @@ public partial class MainWindow : Window
 
     private void ColorPresetComboBox_SelectionChanged(object sender, WpfControls.SelectionChangedEventArgs e)
     {
-        if (_isColorPresetSyncing || ColorPresetComboBox.SelectedItem is not ColorPresetOption selected)
+        if (_isColorPresetSyncing || ColorPresetComboBox.SelectedItem is not ColorPreset selected)
         {
             return;
         }
 
+        ApplySelectedColorPreset(selected);
+    }
+
+    private void ColorPresetComboBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_isColorPresetSyncing ||
+            !_viewModel.UseCustomColors ||
+            ColorPresetComboBox.IsDropDownOpen ||
+            ColorPresetComboBox.SelectedItem is not ColorPreset selected)
+        {
+            return;
+        }
+
+        ApplySelectedColorPreset(selected);
+    }
+
+    private void ColorPresetComboBox_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        QueueColorPresetMarqueeUpdate(FindColorPresetMarqueeText(ColorPresetComboBox));
+    }
+
+    private void ColorPresetComboBox_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        QueueColorPresetMarqueeReset(FindColorPresetMarqueeText(ColorPresetComboBox));
+    }
+
+    private void ColorPresetComboBoxItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_isColorPresetSyncing || sender is not WpfControls.ComboBoxItem { DataContext: ColorPreset selected })
+        {
+            return;
+        }
+
+        ApplySelectedColorPreset(selected);
+    }
+
+    private void ColorPresetComboBoxItem_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isColorPresetSyncing || sender is not WpfControls.ComboBoxItem { DataContext: ColorPreset selected })
+        {
+            return;
+        }
+
+        ApplySelectedColorPreset(selected);
+    }
+
+    private void ApplySelectedColorPreset(ColorPreset selected)
+    {
         _viewModel.SetColorPreset(selected.Id);
         ApplyColorPreset(selected.Id);
+        SyncColorPresetSelection();
+    }
+
+    private void CustomTextColorButton_Click(object sender, RoutedEventArgs e)
+    {
+        var preset = ColorPresetCatalog.GetById(_viewModel.ColorPresetId);
+        var currentText = _viewModel.UseCustomColors
+            ? _viewModel.CustomTextColor
+            : ToRgbHex(preset.PrimaryText);
+        var currentBackground = _viewModel.UseCustomColors
+            ? _viewModel.CustomBackgroundColor
+            : ToRgbHex(preset.CardTint);
+
+        if (!TryPickColor(currentText, out var selectedTextColor))
+        {
+            return;
+        }
+
+        _viewModel.SetCustomColors(selectedTextColor, currentBackground);
+        ApplyColorPreset(_viewModel.ColorPresetId);
+    }
+
+    private void CustomBackgroundColorButton_Click(object sender, RoutedEventArgs e)
+    {
+        var preset = ColorPresetCatalog.GetById(_viewModel.ColorPresetId);
+        var currentText = _viewModel.UseCustomColors
+            ? _viewModel.CustomTextColor
+            : ToRgbHex(preset.PrimaryText);
+        var currentBackground = _viewModel.UseCustomColors
+            ? _viewModel.CustomBackgroundColor
+            : ToRgbHex(preset.CardTint);
+
+        if (!TryPickColor(currentBackground, out var selectedBackgroundColor))
+        {
+            return;
+        }
+
+        _viewModel.SetCustomColors(currentText, selectedBackgroundColor);
+        ApplyColorPreset(_viewModel.ColorPresetId);
+    }
+
+    private void ResetCustomColorsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.ClearCustomColors();
+        ApplyColorPreset(_viewModel.ColorPresetId);
+        UpdateColorEditorState();
+    }
+
+    private void ColorCustomizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        ColorCustomPopup.IsOpen = !ColorCustomPopup.IsOpen;
+        if (ColorCustomPopup.IsOpen)
+        {
+            UpdateColorEditorState();
+        }
+    }
+
+    private void ColorCustomCloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        ColorCustomPopup.IsOpen = false;
+    }
+
+    private void ColorElementButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string elementKey } ||
+            !ColorElementLabels.ContainsKey(elementKey))
+        {
+            return;
+        }
+
+        _selectedColorElementKey = elementKey;
+        UpdateColorEditorState();
+    }
+
+    private void PaletteSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _isPaletteDragging = true;
+        PaletteSurface.CaptureMouse();
+        UpdateSelectedColorFromPalette(e.GetPosition(PaletteSurface));
+        e.Handled = true;
+    }
+
+    private void PaletteSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_isPaletteDragging)
+        {
+            return;
+        }
+
+        UpdateSelectedColorFromPalette(e.GetPosition(PaletteSurface));
+        e.Handled = true;
+    }
+
+    private void PaletteSurface_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isPaletteDragging)
+        {
+            return;
+        }
+
+        UpdateSelectedColorFromPalette(e.GetPosition(PaletteSurface));
+        FinishPaletteDrag();
+        e.Handled = true;
+    }
+
+    private void PaletteSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_isPaletteDragging && e.LeftButton != MouseButtonState.Pressed)
+        {
+            FinishPaletteDrag();
+        }
+    }
+
+    private void LoadCustomFontButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "사용자 폰트 선택",
+            Filter = "Font files (*.ttf;*.otf)|*.ttf;*.otf|All files (*.*)|*.*",
+            CheckFileExists = true,
+            CheckPathExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var persistedPath = PersistCustomFont(dialog.FileName);
+        if (string.IsNullOrWhiteSpace(persistedPath))
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                "폰트 파일을 불러오지 못했습니다.",
+                AppDisplayName,
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+            return;
+        }
+
+        _viewModel.SetCustomFont(persistedPath);
+        ApplyCustomFont();
+    }
+
+    private void ResetCustomFontButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.ClearCustomFont();
+        ApplyCustomFont();
     }
 
     private void LanguageComboBox_SelectionChanged(object sender, WpfControls.SelectionChangedEventArgs e)
@@ -1078,6 +1320,27 @@ public partial class MainWindow : Window
         return path.Replace("'", "''");
     }
 
+    private void OpenSettingsPopup()
+    {
+        FinishPopupDrag();
+        SettingsPopup.HorizontalOffset = 8d;
+        SettingsPopup.VerticalOffset = 8d;
+        SettingsPopup.IsOpen = true;
+        UpdateVersionMenuHeader();
+    }
+
+    private void CloseSettingsPopup()
+    {
+        FinishPopupDrag();
+        SettingsPopup.IsOpen = false;
+        ColorCustomPopup.IsOpen = false;
+    }
+
+    private bool IsSettingsPopupOpen()
+    {
+        return SettingsPopup.IsOpen;
+    }
+
     private void ExitButton_Click(object sender, RoutedEventArgs e)
     {
         ExitApplication();
@@ -1090,7 +1353,39 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (IsInteractiveElement(e.OriginalSource as DependencyObject))
+        var originalSource = e.OriginalSource as DependencyObject;
+        if (IsSettingsPopupOpen())
+        {
+            if (IsInsidePopupChrome(originalSource))
+            {
+                if (!IsPopupDragBlocked(originalSource))
+                {
+                    e.Handled = true;
+                }
+
+                return;
+            }
+
+            if (IsInteractiveElement(originalSource))
+            {
+                return;
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (IsInsidePopupChrome(originalSource))
+        {
+            if (!IsPopupDragBlocked(originalSource))
+            {
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (IsInteractiveElement(originalSource))
         {
             return;
         }
@@ -1103,6 +1398,79 @@ public partial class MainWindow : Window
         {
             // DragMove throws if mouse is released during call.
         }
+    }
+
+    private void PopupChrome_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed ||
+            sender is not FrameworkElement chrome ||
+            IsPopupDragBlocked(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        var popup = GetPopupForChrome(chrome);
+        if (popup is null || !popup.IsOpen)
+        {
+            return;
+        }
+
+        _draggingPopup = popup;
+        _popupDragChrome = chrome;
+        _popupDragStartScreenPoint = chrome.PointToScreen(e.GetPosition(chrome));
+        _popupDragStartHorizontalOffset = popup.HorizontalOffset;
+        _popupDragStartVerticalOffset = popup.VerticalOffset;
+        Mouse.Capture(chrome, CaptureMode.SubTree);
+        e.Handled = true;
+    }
+
+    private void PopupChrome_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_draggingPopup is null ||
+            _popupDragChrome is null ||
+            !ReferenceEquals(sender, _popupDragChrome))
+        {
+            return;
+        }
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            FinishPopupDrag();
+            return;
+        }
+
+        var currentPoint = _popupDragChrome.PointToScreen(e.GetPosition(_popupDragChrome));
+        _draggingPopup.HorizontalOffset = _popupDragStartHorizontalOffset + currentPoint.X - _popupDragStartScreenPoint.X;
+        _draggingPopup.VerticalOffset = _popupDragStartVerticalOffset + currentPoint.Y - _popupDragStartScreenPoint.Y;
+        e.Handled = true;
+    }
+
+    private void PopupChrome_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_draggingPopup is null ||
+            _popupDragChrome is null ||
+            !ReferenceEquals(sender, _popupDragChrome))
+        {
+            return;
+        }
+
+        FinishPopupDrag();
+        e.Handled = true;
+    }
+
+    private void PopupChrome_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_popupDragChrome is not null && ReferenceEquals(sender, _popupDragChrome))
+        {
+            FinishPopupDrag();
+        }
+    }
+
+    private void ColorPopupDragThumb_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        ColorCustomPopup.HorizontalOffset += e.HorizontalChange;
+        ColorCustomPopup.VerticalOffset += e.VerticalChange;
+        e.Handled = true;
     }
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
@@ -1135,12 +1503,42 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.PropertyName is nameof(MainViewModel.UseCustomColors)
+            or nameof(MainViewModel.CustomTextColor)
+            or nameof(MainViewModel.CustomBackgroundColor)
+            or nameof(MainViewModel.CustomElementColors))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                ApplyColorPreset(_viewModel.ColorPresetId);
+            }
+            else
+            {
+                Dispatcher.Invoke(() => ApplyColorPreset(_viewModel.ColorPresetId));
+            }
+
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.UseCustomFont)
+            or nameof(MainViewModel.CustomFontPath))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                ApplyCustomFont();
+            }
+            else
+            {
+                Dispatcher.Invoke(ApplyCustomFont);
+            }
+
+            return;
+        }
+
         if (e.PropertyName is nameof(MainViewModel.Language))
         {
             if (Dispatcher.CheckAccess())
             {
-                RefreshColorPresetOptions();
-                SyncColorPresetSelection();
                 SyncLanguageSelection();
                 RefreshTrayMenuTexts();
                 UpdateVersionMenuHeader();
@@ -1149,8 +1547,6 @@ public partial class MainWindow : Window
             {
                 Dispatcher.Invoke(() =>
                 {
-                    RefreshColorPresetOptions();
-                    SyncColorPresetSelection();
                     SyncLanguageSelection();
                     RefreshTrayMenuTexts();
                     UpdateVersionMenuHeader();
@@ -1164,7 +1560,7 @@ public partial class MainWindow : Window
         {
             if (_viewModel.StatusPanelCollapsed)
             {
-                SettingsPopup.IsOpen = false;
+                CloseSettingsPopup();
             }
 
             return;
@@ -1198,8 +1594,8 @@ public partial class MainWindow : Window
         }
 
         var normalized = WidgetSettings.NormalizeColorPresetId(_viewModel.ColorPresetId);
-        var selected = (ColorPresetComboBox.ItemsSource as IEnumerable<ColorPresetOption>)
-            ?.FirstOrDefault(preset => string.Equals(preset.Id, normalized, StringComparison.Ordinal));
+        var selected = ColorPresetCatalog.Presets
+            .FirstOrDefault(preset => string.Equals(preset.Id, normalized, StringComparison.Ordinal));
         if (selected is null)
         {
             return;
@@ -1216,24 +1612,200 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RefreshColorPresetOptions()
+    private void ColorPresetMarqueeText_Loaded(object sender, RoutedEventArgs e)
     {
-        if (ColorPresetComboBox is null)
+        QueueColorPresetMarqueeReset(sender as WpfControls.TextBlock);
+    }
+
+    private void ColorPresetMarqueeText_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        QueueColorPresetMarqueeReset(sender as WpfControls.TextBlock);
+    }
+
+    private void ColorPresetMarqueeViewport_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is DependencyObject source)
+        {
+            QueueColorPresetMarqueeReset(FindColorPresetMarqueeText(source));
+        }
+    }
+
+    private void ColorPresetMarqueeViewport_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is DependencyObject source)
+        {
+            QueueColorPresetMarqueeReset(FindColorPresetMarqueeText(source));
+        }
+    }
+
+    private void ColorPresetMarqueeViewport_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is DependencyObject source)
+        {
+            QueueColorPresetMarqueeUpdate(FindColorPresetMarqueeText(source));
+        }
+    }
+
+    private void ColorPresetMarqueeViewport_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is DependencyObject source)
+        {
+            QueueColorPresetMarqueeReset(FindColorPresetMarqueeText(source));
+        }
+    }
+
+    private static void QueueColorPresetMarqueeUpdate(WpfControls.TextBlock? textBlock)
+    {
+        if (textBlock is null || textBlock.Dispatcher.HasShutdownStarted)
         {
             return;
         }
 
-        var options = ColorPresetCatalog.GetLocalizedOptions(_viewModel.Language);
-        _isColorPresetSyncing = true;
+        textBlock.Dispatcher.BeginInvoke(
+            () =>
+            {
+                try
+                {
+                    UpdateColorPresetMarquee(textBlock);
+                }
+                catch (InvalidOperationException)
+                {
+                    ResetColorPresetMarqueeTransform(textBlock);
+                }
+            },
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private static void QueueColorPresetMarqueeReset(WpfControls.TextBlock? textBlock)
+    {
+        if (textBlock is null || textBlock.Dispatcher.HasShutdownStarted)
+        {
+            return;
+        }
+
+        textBlock.Dispatcher.BeginInvoke(
+            () =>
+            {
+                try
+                {
+                    ResetColorPresetMarqueeTransform(textBlock);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Decorative text reset should never terminate the widget.
+                }
+            },
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private static void UpdateColorPresetMarquee(WpfControls.TextBlock textBlock)
+    {
+        var transform = textBlock.RenderTransform as TranslateTransform;
+        if (transform is null || transform.IsFrozen)
+        {
+            transform = ResetColorPresetMarqueeTransform(textBlock);
+        }
+        else
+        {
+            try
+            {
+                transform.BeginAnimation(TranslateTransform.XProperty, null);
+                transform.X = 0d;
+            }
+            catch (InvalidOperationException)
+            {
+                transform = ResetColorPresetMarqueeTransform(textBlock);
+            }
+        }
+
+        var viewport = FindColorPresetMarqueeViewport(textBlock);
+        if (viewport is null ||
+            viewport.ActualWidth <= 1d ||
+            textBlock.ActualWidth <= viewport.ActualWidth + 1d)
+        {
+            return;
+        }
+
+        var overflow = Math.Ceiling(textBlock.ActualWidth - viewport.ActualWidth + ColorPresetMarqueeGap);
+        var scrollSeconds = Math.Clamp(
+            overflow / ColorPresetMarqueePixelsPerSecond,
+            2.4d,
+            8.0d);
+        var totalSeconds = ColorPresetMarqueeStartDelaySeconds + scrollSeconds + ColorPresetMarqueeEndDelaySeconds;
+
+        var animation = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromSeconds(totalSeconds),
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0d, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0d, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(ColorPresetMarqueeStartDelaySeconds))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(-overflow, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(ColorPresetMarqueeStartDelaySeconds + scrollSeconds))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(-overflow, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(totalSeconds))));
+
         try
         {
-            ColorPresetComboBox.ItemsSource = options;
-            ColorPresetComboBox.DisplayMemberPath = nameof(ColorPresetOption.Label);
+            transform.BeginAnimation(TranslateTransform.XProperty, animation, HandoffBehavior.SnapshotAndReplace);
         }
-        finally
+        catch (InvalidOperationException)
         {
-            _isColorPresetSyncing = false;
+            ResetColorPresetMarqueeTransform(textBlock);
         }
+    }
+
+    private static TranslateTransform ResetColorPresetMarqueeTransform(WpfControls.TextBlock textBlock)
+    {
+        var transform = new TranslateTransform();
+        textBlock.RenderTransform = transform;
+        transform.X = 0d;
+        return transform;
+    }
+
+    private static FrameworkElement? FindColorPresetMarqueeViewport(DependencyObject source)
+    {
+        var current = GetDependencyParent(source);
+        while (current is not null)
+        {
+            if (current is FrameworkElement { Name: "ColorPresetMarqueeViewport" } viewport)
+            {
+                return viewport;
+            }
+
+            current = GetDependencyParent(current);
+        }
+
+        return null;
+    }
+
+    private static WpfControls.TextBlock? FindColorPresetMarqueeText(DependencyObject source)
+    {
+        if (source is WpfControls.TextBlock { Name: "ColorPresetMarqueeText" } textBlock)
+        {
+            return textBlock;
+        }
+
+        var childCount = 0;
+        try
+        {
+            childCount = VisualTreeHelper.GetChildrenCount(source);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < childCount; i++)
+        {
+            var child = VisualTreeHelper.GetChild(source, i);
+            var found = FindColorPresetMarqueeText(child);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private void SyncLanguageSelection()
@@ -1375,57 +1947,489 @@ public partial class MainWindow : Window
     private void ApplyColorPreset(string presetId)
     {
         var preset = ColorPresetCatalog.GetById(presetId);
+        var useExactWhiteBlue = string.Equals(preset.Id, WidgetSettings.WhiteBluePreset, StringComparison.Ordinal);
+
         SetResourceColor("PrimaryTextBrush", preset.PrimaryText);
         SetResourceColor("SecondaryTextBrush", preset.SecondaryText);
         SetResourceColor("BatteryTextBrush", preset.BatteryText);
-        SetResourceColor("CardTintBrush", EnhanceThemeColor(preset.CardTint, 1.28d, 1.15d, 1.08d));
-        SetResourceColor("CardBorderBrush", EnhanceThemeColor(preset.CardBorder, 1.34d, 1.12d, 1.10d));
-        SetResourceColor("TrackBrush", EnhanceThemeColor(preset.Track, 1.30d, 1.12d, 1.10d));
-        SetResourceColor("IconBackBrush", EnhanceThemeColor(preset.IconBack, 1.20d, 1.08d, 1.05d));
-        SetResourceColor("IconBorderBrush", EnhanceThemeColor(preset.IconBorder, 1.24d, 1.10d, 1.08d));
+        ApplyFixedSettingsTextResources();
+        SetResourceColor("CardTintBrush", useExactWhiteBlue ? preset.CardTint : EnhanceThemeColor(preset.CardTint, 1.28d, 1.15d, 1.08d));
+        SetResourceColor("CardBorderBrush", useExactWhiteBlue ? preset.CardBorder : EnhanceThemeColor(preset.CardBorder, 1.34d, 1.12d, 1.10d));
+        SetResourceColor("TrackBrush", useExactWhiteBlue ? preset.Track : EnhanceThemeColor(preset.Track, 1.30d, 1.12d, 1.10d));
+        SetResourceColor("IconBackBrush", useExactWhiteBlue ? preset.IconBack : EnhanceThemeColor(preset.IconBack, 1.20d, 1.08d, 1.05d));
+        SetResourceColor("IconBorderBrush", useExactWhiteBlue ? preset.IconBorder : EnhanceThemeColor(preset.IconBorder, 1.24d, 1.10d, 1.08d));
         SetResourceColor("ActionButtonBackBrush", EnsureMinimumLuminance(
-            EnhanceThemeColor(preset.ActionButtonBack, 1.22d, 1.12d, 1.10d),
+            useExactWhiteBlue ? preset.ActionButtonBack : EnhanceThemeColor(preset.ActionButtonBack, 1.22d, 1.12d, 1.10d),
             0.56d));
         SetResourceColor("ActionButtonBorderBrush", EnsureMinimumLuminance(
-            EnhanceThemeColor(preset.ActionButtonBorder, 1.26d, 1.10d, 1.10d),
+            useExactWhiteBlue ? preset.ActionButtonBorder : EnhanceThemeColor(preset.ActionButtonBorder, 1.26d, 1.10d, 1.10d),
             0.48d));
 
         if (ListTopStop is not null)
         {
-            ListTopStop.Color = EnhanceThemeColor(preset.ListTop, 1.24d, 1.10d, 1.08d);
+            ListTopStop.Color = useExactWhiteBlue ? preset.ListTop : EnhanceThemeColor(preset.ListTop, 1.24d, 1.10d, 1.08d);
         }
 
         if (ListBottomStop is not null)
         {
-            ListBottomStop.Color = EnhanceThemeColor(preset.ListBottom, 1.28d, 1.12d, 1.10d);
+            ListBottomStop.Color = useExactWhiteBlue ? preset.ListBottom : EnhanceThemeColor(preset.ListBottom, 1.28d, 1.12d, 1.10d);
         }
 
         if (FooterTopStop is not null)
         {
-            FooterTopStop.Color = EnhanceThemeColor(preset.FooterTop, 1.22d, 1.10d, 1.08d);
+            FooterTopStop.Color = useExactWhiteBlue ? preset.FooterTop : EnhanceThemeColor(preset.FooterTop, 1.22d, 1.10d, 1.08d);
         }
 
         if (FooterBottomStop is not null)
         {
-            FooterBottomStop.Color = EnhanceThemeColor(preset.FooterBottom, 1.26d, 1.12d, 1.10d);
+            FooterBottomStop.Color = useExactWhiteBlue ? preset.FooterBottom : EnhanceThemeColor(preset.FooterBottom, 1.26d, 1.12d, 1.10d);
         }
+
+        if (useExactWhiteBlue)
+        {
+            ApplyWhiteBlueGlassDefaults();
+        }
+        else
+        {
+            ApplyGlassAtmosphere(preset);
+        }
+
+        if (_viewModel.UseCustomColors)
+        {
+            foreach (var pair in _viewModel.CustomElementColors)
+            {
+                if (TryParseWpfColor(pair.Value, out var color))
+                {
+                    ApplyCustomElementColorResource(pair.Key, color);
+                }
+            }
+        }
+
+        ApplyFixedSettingsTextResources();
+        UpdateColorEditorState();
+    }
+
+    private void ApplyFixedSettingsTextResources()
+    {
+        SetResourceColor("SettingsTitleBrush", FixedSettingsTitleColor);
+        SetResourceColor("SettingsTextBrush", FixedSettingsTextColor);
+    }
+
+    private void ApplyWhiteBlueGlassDefaults()
+    {
+        if (GsTop is not null)
+        {
+            GsTop.Color = System.Windows.Media.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF);
+        }
+
+        if (GsMid is not null)
+        {
+            GsMid.Color = System.Windows.Media.Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF);
+        }
+
+        if (GsBottom is not null)
+        {
+            GsBottom.Color = System.Windows.Media.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF);
+        }
+
+        ApplyGlassTexture(
+            System.Windows.Media.Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF),
+            System.Windows.Media.Color.FromArgb(0x08, 0xFF, 0xFF, 0xFF),
+            System.Windows.Media.Color.FromArgb(0x24, 0xCF, 0xEA, 0xFF),
+            System.Windows.Media.Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF),
+            System.Windows.Media.Color.FromArgb(0x1E, 0x9B, 0xC4, 0xDF));
+    }
+
+    private void ApplyGlassAtmosphere(ColorPreset preset)
+    {
+        if (GsTop is not null)
+        {
+            GsTop.Color = WithAlpha(BlendColors(preset.CardTint, System.Windows.Media.Colors.White, 0.12d), 42);
+        }
+
+        if (GsMid is not null)
+        {
+            GsMid.Color = WithAlpha(BlendColors(preset.ListBottom, preset.BatteryText, 0.08d), 62);
+        }
+
+        if (GsBottom is not null)
+        {
+            GsBottom.Color = WithAlpha(BlendColors(preset.FooterBottom, preset.BatteryText, 0.10d), 88);
+        }
+
+        ApplyGlassTexture(
+            WithAlpha(BlendColors(preset.CardTint, System.Windows.Media.Colors.White, 0.20d), 46),
+            WithAlpha(BlendColors(preset.ListTop, preset.BatteryText, 0.08d), 22),
+            WithAlpha(BlendColors(preset.FooterBottom, preset.BatteryText, 0.18d), 54),
+            WithAlpha(BlendColors(preset.CardBorder, System.Windows.Media.Colors.White, 0.18d), 36),
+            WithAlpha(BlendColors(preset.ListBottom, preset.BatteryText, 0.20d), 44));
+    }
+
+    private void ApplyGlassTexture(
+        System.Windows.Media.Color sheenTop,
+        System.Windows.Media.Color sheenMiddle,
+        System.Windows.Media.Color sheenBottom,
+        System.Windows.Media.Color depthTop,
+        System.Windows.Media.Color depthBottom)
+    {
+        if (GlassSheenTop is not null)
+        {
+            GlassSheenTop.Color = sheenTop;
+        }
+
+        if (GlassSheenMiddle is not null)
+        {
+            GlassSheenMiddle.Color = sheenMiddle;
+        }
+
+        if (GlassSheenBottom is not null)
+        {
+            GlassSheenBottom.Color = sheenBottom;
+        }
+
+        if (GlassDepthTop is not null)
+        {
+            GlassDepthTop.Color = depthTop;
+        }
+
+        if (GlassDepthBottom is not null)
+        {
+            GlassDepthBottom.Color = depthBottom;
+        }
+    }
+
+    private void ApplyCustomColorResources(System.Windows.Media.Color textColor, System.Windows.Media.Color backgroundColor)
+    {
+        var text = WithAlpha(textColor, byte.MaxValue);
+        var background = WithAlpha(backgroundColor, byte.MaxValue);
+        var secondaryText = BlendColors(text, background, 0.28d);
+        var surfaceBlend = GetRelativeSimpleLuminance(background) < 0.45d
+            ? System.Windows.Media.Colors.White
+            : System.Windows.Media.Colors.Black;
+        var softSurface = BlendColors(background, surfaceBlend, 0.10d);
+        var softerSurface = BlendColors(background, surfaceBlend, 0.18d);
+        var lineSurface = BlendColors(background, text, 0.24d);
+
+        SetResourceColor("PrimaryTextBrush", text);
+        SetResourceColor("SecondaryTextBrush", secondaryText);
+        SetResourceColor("BatteryTextBrush", text);
+        ApplyFixedSettingsTextResources();
+        SetResourceColor("CardTintBrush", WithAlpha(background, 238));
+        SetResourceColor("CardBorderBrush", WithAlpha(lineSurface, 218));
+        SetResourceColor("TrackBrush", WithAlpha(BlendColors(background, text, 0.12d), 142));
+        SetResourceColor("IconBackBrush", WithAlpha(softerSurface, 232));
+        SetResourceColor("IconBorderBrush", WithAlpha(lineSurface, 170));
+        SetResourceColor("ActionButtonBackBrush", WithAlpha(softSurface, 218));
+        SetResourceColor("ActionButtonBorderBrush", WithAlpha(lineSurface, 160));
+
+        if (ListTopStop is not null)
+        {
+            ListTopStop.Color = WithAlpha(softerSurface, 224);
+        }
+
+        if (ListBottomStop is not null)
+        {
+            ListBottomStop.Color = WithAlpha(background, 196);
+        }
+
+        if (FooterTopStop is not null)
+        {
+            FooterTopStop.Color = WithAlpha(softSurface, 214);
+        }
+
+        if (FooterBottomStop is not null)
+        {
+            FooterBottomStop.Color = WithAlpha(background, 186);
+        }
+
+        ApplyGlassTexture(
+            WithAlpha(BlendColors(background, System.Windows.Media.Colors.White, 0.24d), 48),
+            WithAlpha(BlendColors(background, text, 0.06d), 20),
+            WithAlpha(BlendColors(background, text, 0.18d), 56),
+            WithAlpha(BlendColors(softSurface, System.Windows.Media.Colors.White, 0.18d), 34),
+            WithAlpha(BlendColors(background, text, 0.22d), 46));
+    }
+
+    private void ApplyCustomElementColorResource(string elementKey, System.Windows.Media.Color color)
+    {
+        var opaqueColor = WithAlpha(color, byte.MaxValue);
+        switch (elementKey)
+        {
+            case "PrimaryText":
+                SetResourceColor("PrimaryTextBrush", opaqueColor);
+                break;
+            case "SecondaryText":
+                SetResourceColor("SecondaryTextBrush", opaqueColor);
+                break;
+            case "BatteryText":
+                SetResourceColor("BatteryTextBrush", opaqueColor);
+                break;
+            case "CardTint":
+                SetResourceColor("CardTintBrush", WithAlpha(opaqueColor, 238));
+                break;
+            case "CardBorder":
+                SetResourceColor("CardBorderBrush", WithAlpha(opaqueColor, 230));
+                SetResourceColor("IconBorderBrush", WithAlpha(opaqueColor, 210));
+                break;
+            case "Track":
+                SetResourceColor("TrackBrush", WithAlpha(opaqueColor, 154));
+                break;
+            case "Panel":
+                SetResourceColor("ActionButtonBackBrush", WithAlpha(opaqueColor, 218));
+                SetResourceColor("ActionButtonBorderBrush", WithAlpha(BlendColors(opaqueColor, System.Windows.Media.Colors.Black, 0.18d), 172));
+                SetResourceColor("IconBackBrush", WithAlpha(BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.14d), 226));
+                if (FooterTopStop is not null)
+                {
+                    FooterTopStop.Color = WithAlpha(BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.18d), 218);
+                }
+
+                if (FooterBottomStop is not null)
+                {
+                    FooterBottomStop.Color = WithAlpha(opaqueColor, 190);
+                }
+
+                break;
+        }
+    }
+
+    private void ApplyCustomFont()
+    {
+        FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+
+        if (!_viewModel.UseCustomFont || string.IsNullOrWhiteSpace(_viewModel.CustomFontPath))
+        {
+            return;
+        }
+
+        try
+        {
+            if (!File.Exists(_viewModel.CustomFontPath))
+            {
+                return;
+            }
+
+            var fontFamily = System.Windows.Media.Fonts
+                .GetFontFamilies(_viewModel.CustomFontPath)
+                .FirstOrDefault();
+            if (fontFamily is not null)
+            {
+                FontFamily = fontFamily;
+            }
+        }
+        catch
+        {
+            FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+        }
+    }
+
+    private void UpdateSelectedColorFromPalette(System.Windows.Point point)
+    {
+        var width = Math.Max(1d, PaletteSurface.ActualWidth);
+        var height = Math.Max(1d, PaletteSurface.ActualHeight);
+        var x = Math.Clamp(point.X, 0d, width);
+        var y = Math.Clamp(point.Y, 0d, height);
+        var color = GetPaletteColor(x, y, width, height);
+        var hex = ToRgbHex(color);
+
+        PaletteCursor.Margin = new Thickness(x - 8d, y - 8d, 0d, 0d);
+        _viewModel.SetCustomElementColor(_selectedColorElementKey, hex, save: false);
+        ApplyCustomElementColorResource(_selectedColorElementKey, color);
+        UpdateColorEditorState();
+    }
+
+    private void FinishPaletteDrag()
+    {
+        _isPaletteDragging = false;
+        PaletteSurface.ReleaseMouseCapture();
+        _viewModel.SaveSettings();
+    }
+
+    private void UpdateColorEditorState()
+    {
+        if (PrimaryTextSwatch is null)
+        {
+            return;
+        }
+
+        SetSwatch(PrimaryTextSwatch, "PrimaryTextBrush");
+        SetSwatch(SecondaryTextSwatch, "SecondaryTextBrush");
+        SetSwatch(BatteryTextSwatch, "BatteryTextBrush");
+        SetSwatch(CardTintSwatch, "CardTintBrush");
+        SetSwatch(CardBorderSwatch, "CardBorderBrush");
+        SetSwatch(TrackSwatch, "TrackBrush");
+        SetSwatch(PanelSwatch, "ActionButtonBackBrush");
+        SetColorElementButtonState(PrimaryTextColorButton, "PrimaryText");
+        SetColorElementButtonState(SecondaryTextColorButton, "SecondaryText");
+        SetColorElementButtonState(BatteryTextColorButton, "BatteryText");
+        SetColorElementButtonState(CardTintColorButton, "CardTint");
+        SetColorElementButtonState(CardBorderColorButton, "CardBorder");
+        SetColorElementButtonState(TrackColorButton, "Track");
+        SetColorElementButtonState(PanelColorButton, "Panel");
+
+        SelectedColorNameText.Text = ColorElementLabels.TryGetValue(_selectedColorElementKey, out var label)
+            ? label
+            : "전체 글자";
+        if (TryGetElementCurrentColor(_selectedColorElementKey, out var selectedColor))
+        {
+            SelectedColorPreviewBorder.Background = new SolidColorBrush(selectedColor);
+            SelectedColorHexText.Text = ToRgbHex(selectedColor);
+        }
+    }
+
+    private void SetColorElementButtonState(WpfControls.Button button, string elementKey)
+    {
+        var selected = string.Equals(_selectedColorElementKey, elementKey, StringComparison.OrdinalIgnoreCase);
+        button.Background = new SolidColorBrush(selected
+            ? System.Windows.Media.Color.FromRgb(221, 241, 255)
+            : System.Windows.Media.Color.FromRgb(236, 247, 251));
+        button.BorderBrush = new SolidColorBrush(selected
+            ? System.Windows.Media.Color.FromRgb(68, 133, 208)
+            : System.Windows.Media.Color.FromRgb(136, 189, 214));
+    }
+
+    private void SetSwatch(WpfControls.Border swatch, string resourceKey)
+    {
+        if (TryGetResourceColor(resourceKey, out var color))
+        {
+            swatch.Background = new SolidColorBrush(color);
+        }
+    }
+
+    private bool TryGetElementCurrentColor(string elementKey, out System.Windows.Media.Color color)
+    {
+        var resourceKey = elementKey switch
+        {
+            "PrimaryText" => "PrimaryTextBrush",
+            "SecondaryText" => "SecondaryTextBrush",
+            "BatteryText" => "BatteryTextBrush",
+            "CardTint" => "CardTintBrush",
+            "CardBorder" => "CardBorderBrush",
+            "Track" => "TrackBrush",
+            "Panel" => "ActionButtonBackBrush",
+            _ => "PrimaryTextBrush"
+        };
+
+        return TryGetResourceColor(resourceKey, out color);
+    }
+
+    private bool TryGetResourceColor(string resourceKey, out System.Windows.Media.Color color)
+    {
+        if (TryFindResource(resourceKey) is SolidColorBrush brush)
+        {
+            color = brush.Color;
+            return true;
+        }
+
+        color = default;
+        return false;
     }
 
     private void SetResourceColor(string key, System.Windows.Media.Color color)
     {
-        if (TryFindResource(key) is not SolidColorBrush existing)
+        Resources[key] = new SolidColorBrush(color);
+    }
+
+    private static bool TryPickColor(string initialHex, out string selectedHex)
+    {
+        selectedHex = string.Empty;
+        var initial = TryParseWpfColor(initialHex, out var parsed)
+            ? parsed
+            : System.Windows.Media.Colors.White;
+
+        using var dialog = new Forms.ColorDialog
         {
-            Resources[key] = new SolidColorBrush(color);
-            return;
+            FullOpen = true,
+            Color = System.Drawing.Color.FromArgb(initial.R, initial.G, initial.B)
+        };
+
+        if (dialog.ShowDialog() != Forms.DialogResult.OK)
+        {
+            return false;
         }
 
-        if (existing.IsFrozen || existing.IsSealed || existing.Dispatcher is null)
+        selectedHex = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+        return true;
+    }
+
+    private static bool TryParseWpfColor(string? value, out System.Windows.Media.Color color)
+    {
+        color = default;
+        var normalized = WidgetSettings.NormalizeOptionalHexColor(value);
+        if (string.IsNullOrWhiteSpace(normalized))
         {
-            Resources[key] = new SolidColorBrush(color);
-            return;
+            return false;
         }
 
-        existing.Color = color;
+        try
+        {
+            color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(normalized);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string ToRgbHex(System.Windows.Media.Color color)
+    {
+        return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+    }
+
+    private static System.Windows.Media.Color WithAlpha(System.Windows.Media.Color color, byte alpha)
+    {
+        return System.Windows.Media.Color.FromArgb(alpha, color.R, color.G, color.B);
+    }
+
+    private static System.Windows.Media.Color BlendColors(
+        System.Windows.Media.Color first,
+        System.Windows.Media.Color second,
+        double secondAmount)
+    {
+        var amount = Math.Clamp(secondAmount, 0d, 1d);
+        var firstAmount = 1d - amount;
+        return System.Windows.Media.Color.FromArgb(
+            (byte)Math.Clamp(Math.Round((first.A * firstAmount) + (second.A * amount)), 0d, 255d),
+            (byte)Math.Clamp(Math.Round((first.R * firstAmount) + (second.R * amount)), 0d, 255d),
+            (byte)Math.Clamp(Math.Round((first.G * firstAmount) + (second.G * amount)), 0d, 255d),
+            (byte)Math.Clamp(Math.Round((first.B * firstAmount) + (second.B * amount)), 0d, 255d));
+    }
+
+    private static System.Windows.Media.Color GetPaletteColor(double x, double y, double width, double height)
+    {
+        var hue = Math.Clamp(x / Math.Max(1d, width), 0d, 1d) * 360d;
+        var vertical = Math.Clamp(y / Math.Max(1d, height), 0d, 1d);
+        var saturation = 0.76d;
+        var lightness = 0.90d - (vertical * 0.62d);
+        return ColorFromHsl(hue, saturation, lightness);
+    }
+
+    private static System.Windows.Media.Color ColorFromHsl(double hue, double saturation, double lightness)
+    {
+        var chroma = (1d - Math.Abs((2d * lightness) - 1d)) * saturation;
+        var huePrime = hue / 60d;
+        var x = chroma * (1d - Math.Abs((huePrime % 2d) - 1d));
+        var match = lightness - (chroma / 2d);
+
+        var (red, green, blue) = huePrime switch
+        {
+            >= 0d and < 1d => (chroma, x, 0d),
+            >= 1d and < 2d => (x, chroma, 0d),
+            >= 2d and < 3d => (0d, chroma, x),
+            >= 3d and < 4d => (0d, x, chroma),
+            >= 4d and < 5d => (x, 0d, chroma),
+            _ => (chroma, 0d, x)
+        };
+
+        return System.Windows.Media.Color.FromRgb(
+            (byte)Math.Clamp(Math.Round((red + match) * 255d), 0d, 255d),
+            (byte)Math.Clamp(Math.Round((green + match) * 255d), 0d, 255d),
+            (byte)Math.Clamp(Math.Round((blue + match) * 255d), 0d, 255d));
+    }
+
+    private static double GetRelativeSimpleLuminance(System.Windows.Media.Color color)
+    {
+        return ((0.2126d * color.R) + (0.7152d * color.G) + (0.0722d * color.B)) / 255d;
     }
 
     private static System.Windows.Media.Color EnsureMinimumLuminance(System.Windows.Media.Color color, double minimumLuminance)
@@ -1999,15 +3003,129 @@ public partial class MainWindow : Window
                 source is WpfControls.ListBoxItem ||
                 source is WpfThumb ||
                 source is WpfControls.TextBlock textBlock && textBlock.Name == "DisplayNameTextBlock" ||
-                source is FrameworkElement frameworkElement && frameworkElement.Name == "DeviceIconHitArea")
+                source is FrameworkElement frameworkElement && IsNamedInteractiveElement(frameworkElement.Name))
             {
                 return true;
             }
 
-            source = System.Windows.Media.VisualTreeHelper.GetParent(source);
+            source = GetDependencyParent(source);
         }
 
         return false;
+    }
+
+    private static bool IsPopupDragBlocked(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is WpfControls.Button ||
+                source is WpfToggleButton ||
+                source is WpfControls.TextBox ||
+                source is WpfControls.ComboBox ||
+                source is WpfControls.Slider ||
+                source is WpfScrollBar ||
+                source is WpfControls.ListBoxItem ||
+                source is WpfThumb ||
+                source is FrameworkElement frameworkElement && IsNamedPopupInteractiveElement(frameworkElement.Name))
+            {
+                return true;
+            }
+
+            source = GetDependencyParent(source);
+        }
+
+        return false;
+    }
+
+    private bool IsInsidePopupChrome(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (ReferenceEquals(source, SettingsPopupChrome) ||
+                ReferenceEquals(source, ColorPopupChrome))
+            {
+                return true;
+            }
+
+            source = GetDependencyParent(source);
+        }
+
+        return false;
+    }
+
+    private WpfPopup? GetPopupForChrome(FrameworkElement chrome)
+    {
+        if (ReferenceEquals(chrome, SettingsPopupChrome))
+        {
+            return SettingsPopup;
+        }
+
+        if (ReferenceEquals(chrome, ColorPopupChrome))
+        {
+            return ColorCustomPopup;
+        }
+
+        return null;
+    }
+
+    private void FinishPopupDrag()
+    {
+        var chrome = _popupDragChrome;
+        _draggingPopup = null;
+        _popupDragChrome = null;
+
+        if (chrome?.IsMouseCaptured == true)
+        {
+            chrome.ReleaseMouseCapture();
+        }
+    }
+
+    private static DependencyObject? GetDependencyParent(DependencyObject source)
+    {
+        try
+        {
+            return System.Windows.Media.VisualTreeHelper.GetParent(source) ??
+                   LogicalTreeHelper.GetParent(source);
+        }
+        catch (InvalidOperationException)
+        {
+            return LogicalTreeHelper.GetParent(source);
+        }
+    }
+
+    private static bool IsNamedInteractiveElement(string name)
+    {
+        return name is "DeviceIconHitArea"
+            or "ColorCustomizeButton"
+            or "SettingsPopupChrome"
+            or "ColorPopupChrome"
+            or "ColorCustomPopup"
+            or "PaletteSurface"
+            or "PaletteCursor"
+            or "SelectedColorPreviewBorder"
+            or "SelectedColorHexText"
+            or "PrimaryTextColorButton"
+            or "SecondaryTextColorButton"
+            or "BatteryTextColorButton"
+            or "CardTintColorButton"
+            or "CardBorderColorButton"
+            or "TrackColorButton"
+            or "PanelColorButton";
+    }
+
+    private static bool IsNamedPopupInteractiveElement(string name)
+    {
+        return name is "PaletteSurface"
+            or "PaletteCursor"
+            or "SelectedColorPreviewBorder"
+            or "SelectedColorHexText"
+            or "PrimaryTextColorButton"
+            or "SecondaryTextColorButton"
+            or "BatteryTextColorButton"
+            or "CardTintColorButton"
+            or "CardBorderColorButton"
+            or "TrackColorButton"
+            or "PanelColorButton";
     }
 
     private void BeginRename(DeviceItemViewModel item)
@@ -2102,15 +3220,8 @@ public partial class MainWindow : Window
 
             Directory.CreateDirectory(CustomIconDirectory);
 
-            var extension = Path.GetExtension(trimmedPath);
-            if (string.IsNullOrWhiteSpace(extension))
-            {
-                extension = ".png";
-            }
-
-            var normalizedExtension = extension.ToLowerInvariant();
             var fileStamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
-            var targetPath = Path.Combine(CustomIconDirectory, $"{normalizedAddress}_{fileStamp}{normalizedExtension}");
+            var targetPath = Path.Combine(CustomIconDirectory, $"{normalizedAddress}_{fileStamp}.png");
             foreach (var existingFile in Directory.GetFiles(CustomIconDirectory, $"{normalizedAddress}*.*"))
             {
                 if (!string.Equals(existingFile, targetPath, StringComparison.OrdinalIgnoreCase))
@@ -2126,6 +3237,52 @@ public partial class MainWindow : Window
                 }
             }
 
+            return CustomIconImageProcessor.TryCreateSoftRoundIcon(trimmedPath, targetPath)
+                ? targetPath
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? PersistCustomFont(string sourcePath)
+    {
+        var trimmedPath = sourcePath?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (!File.Exists(trimmedPath))
+            {
+                return null;
+            }
+
+            var extension = Path.GetExtension(trimmedPath).ToLowerInvariant();
+            if (extension is not ".ttf" and not ".otf")
+            {
+                return null;
+            }
+
+            Directory.CreateDirectory(CustomFontDirectory);
+
+            var baseName = Path.GetFileNameWithoutExtension(trimmedPath);
+            foreach (var invalidChar in Path.GetInvalidFileNameChars())
+            {
+                baseName = baseName.Replace(invalidChar, '_');
+            }
+
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = "custom-font";
+            }
+
+            var fileStamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+            var targetPath = Path.Combine(CustomFontDirectory, $"{baseName}_{fileStamp}{extension}");
             File.Copy(trimmedPath, targetPath, overwrite: false);
             return targetPath;
         }

@@ -75,13 +75,13 @@ public sealed class BatteryEvidenceResolverTests
         {
             new(
                 InstanceId: "GAMEINPUT_SLOT_0",
-                Address: "A05A5FBB663E",
+                Address: "AABBCCDDE003",
                 DisplayName: "Xbox Wireless Controller",
                 BatteryPercent: 100,
                 BatteryConfidence: BatteryConfidence.Estimated,
                 SourceKind: BatterySourceKind.GameInput,
                 RawMetric: 100,
-                ModelKey: "ID=VID_045E|PID_0B22|TR=VID_045E|PID_0B22|FP=FP_A05A5FBB663E",
+                ModelKey: "ID=VID_045E|PID_0B22|TR=VID_045E|PID_0B22|FP=FP_AABBCCDDE003",
                 SuggestCalibration: true,
                 IsBatterySuspect: true)
         };
@@ -182,7 +182,7 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         observationStore.Record(
@@ -200,7 +200,7 @@ public sealed class BatteryEvidenceResolverTests
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -231,7 +231,7 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         observationStore.Record(
@@ -249,7 +249,7 @@ public sealed class BatteryEvidenceResolverTests
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -278,7 +278,7 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         observationStore.Record(
@@ -303,7 +303,7 @@ public sealed class BatteryEvidenceResolverTests
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -333,13 +333,13 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -370,7 +370,7 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         observationStore.Record(
@@ -388,7 +388,7 @@ public sealed class BatteryEvidenceResolverTests
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -420,14 +420,14 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var fullAt = DateTimeOffset.UtcNow;
         var undockedAt = fullAt.AddSeconds(30);
 
         var docked = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -449,7 +449,7 @@ public sealed class BatteryEvidenceResolverTests
         var undocked = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 97,
@@ -481,13 +481,13 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 97,
@@ -535,8 +535,8 @@ public sealed class BatteryEvidenceResolverTests
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
-                    Address: "AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
+                    Address: "AABBCCDDE010",
                     DisplayName: "Steam Controller",
                     BatteryPercent: 97,
                     BatteryConfidence: BatteryConfidence.Confirmed,
@@ -563,7 +563,7 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         observationStore.Record(
@@ -584,7 +584,7 @@ public sealed class BatteryEvidenceResolverTests
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 94,
@@ -617,9 +617,9 @@ public sealed class BatteryEvidenceResolverTests
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_112233445566",
-                    Address: "112233445566",
-                    DisplayName: "Steam Ctrl (BT) FXA0000000001",
+                    InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_AABBCCDDE011",
+                    Address: "AABBCCDDE011",
+                    DisplayName: "Steam Ctrl (BT) FXA0000000000",
                     BatteryPercent: 97,
                     BatteryConfidence: BatteryConfidence.Confirmed,
                     SourceKind: BatterySourceKind.BleGatt,
@@ -747,13 +747,13 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -785,13 +785,13 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -834,13 +834,13 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 94,
@@ -883,7 +883,7 @@ public sealed class BatteryEvidenceResolverTests
         var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
         var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
 
         observationStore.Record(
@@ -901,7 +901,7 @@ public sealed class BatteryEvidenceResolverTests
         var resolved = resolver.ResolveAndRecord(
             [
                 new PnpBatteryReading(
-                    InstanceId: "steam-triton:AABBCCDDEEFF",
+                    InstanceId: "steam-triton:AABBCCDDE010",
                     Address: address,
                     DisplayName: "Steam Controller",
                     BatteryPercent: 100,
@@ -992,7 +992,7 @@ public sealed class BatteryEvidenceResolverTests
         var root = CreateTempDirectory();
         var store = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
         var modelKey = "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK";
-        var address = "AABBCCDDEEFF";
+        var address = "AABBCCDDE010";
         var now = DateTimeOffset.UtcNow;
         var batch = new List<BatteryEvidence>
         {
@@ -1049,7 +1049,7 @@ public sealed class BatteryEvidenceResolverTests
         observationStore.Record(
             [
                 new BatteryEvidence(
-                    Address: "AABBCCDDEEFF",
+                    Address: "AABBCCDDE010",
                     ModelKey: "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK",
                     SourceKind: BatterySourceKind.SteamHid,
                     DerivedPercent: 100,
@@ -1068,9 +1068,9 @@ public sealed class BatteryEvidenceResolverTests
         BatterySourceKind sourceKind)
     {
         return new PnpBatteryReading(
-            InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_112233445566",
-            Address: "112233445566",
-            DisplayName: "Steam Ctrl (BT) FXA0000000001",
+            InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_AABBCCDDE011",
+            Address: "AABBCCDDE011",
+            DisplayName: "Steam Ctrl (BT) FXA0000000000",
             BatteryPercent: batteryPercent,
             BatteryConfidence: BatteryConfidence.Confirmed,
             SourceKind: sourceKind,

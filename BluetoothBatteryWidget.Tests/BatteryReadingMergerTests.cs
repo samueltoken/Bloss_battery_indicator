@@ -10,22 +10,22 @@ public sealed class BatteryReadingMergerTests
     {
         var setup = new List<PnpBatteryReading>
         {
-            new("setup", "112233445566", "DualSense", 25)
+            new("setup", "AABBCCDDE002", "DualSense", 25)
         };
         var xinput = new List<PnpBatteryReading>
         {
-            new("xinput", "112233445566", "DualSense", null)
+            new("xinput", "AABBCCDDE002", "DualSense", null)
         };
         var sony = new List<PnpBatteryReading>
         {
-            new("sony", "112233445566", "DualSense", 65)
+            new("sony", "AABBCCDDE002", "DualSense", 65)
         };
 
         var merged = BatteryReadingMerger.MergeByAddress(setup, xinput, sony);
 
         Assert.Single(merged);
         Assert.Equal(65, merged[0].BatteryPercent);
-        Assert.Equal("112233445566", merged[0].Address);
+        Assert.Equal("AABBCCDDE002", merged[0].Address);
         Assert.Equal(BatteryConfidence.Confirmed, merged[0].BatteryConfidence);
     }
 
@@ -34,11 +34,11 @@ public sealed class BatteryReadingMergerTests
     {
         var setup = new List<PnpBatteryReading>
         {
-            new("setup", "112233445566", "DualSense", 40)
+            new("setup", "AABBCCDDE002", "DualSense", 40)
         };
         var sony = new List<PnpBatteryReading>
         {
-            new("sony", "112233445566", "DualSense", null)
+            new("sony", "AABBCCDDE002", "DualSense", null)
         };
 
         var merged = BatteryReadingMerger.MergeByAddress(setup, sony);
@@ -65,15 +65,15 @@ public sealed class BatteryReadingMergerTests
     {
         var setup = new List<PnpBatteryReading>
         {
-            new("setup", "112233445566", "Pad", null)
+            new("setup", "AABBCCDDE002", "Pad", null)
         };
         var learned = new List<PnpBatteryReading>
         {
-            new("learned", "112233445566", "Pad", 55)
+            new("learned", "AABBCCDDE002", "Pad", 55)
         };
         var xinput = new List<PnpBatteryReading>
         {
-            new("xinput", "112233445566", "Pad", 85)
+            new("xinput", "AABBCCDDE002", "Pad", 85)
         };
 
         var merged = BatteryReadingMerger.MergeByAddress(setup, learned, xinput);
@@ -87,15 +87,15 @@ public sealed class BatteryReadingMergerTests
     {
         var setup = new List<PnpBatteryReading>
         {
-            new("setup", "112233445566", "Pad", null)
+            new("setup", "AABBCCDDE002", "Pad", null)
         };
         var learned = new List<PnpBatteryReading>
         {
-            new("learned", "112233445566", "Pad", 60)
+            new("learned", "AABBCCDDE002", "Pad", 60)
         };
         var xinput = new List<PnpBatteryReading>
         {
-            new("xinput", "112233445566", "Pad", null)
+            new("xinput", "AABBCCDDE002", "Pad", null)
         };
 
         var merged = BatteryReadingMerger.MergeByAddress(setup, learned, xinput);
@@ -109,11 +109,11 @@ public sealed class BatteryReadingMergerTests
     {
         var learned = new List<PnpBatteryReading>
         {
-            new("learned", "112233445566", "Pad", 58, BatteryConfidence.Estimated)
+            new("learned", "AABBCCDDE002", "Pad", 58, BatteryConfidence.Estimated)
         };
         var xinput = new List<PnpBatteryReading>
         {
-            new("xinput", "112233445566", "Pad", 85, BatteryConfidence.Confirmed)
+            new("xinput", "AABBCCDDE002", "Pad", 85, BatteryConfidence.Confirmed)
         };
 
         var merged = BatteryReadingMerger.MergeByAddress(learned, xinput);

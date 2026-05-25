@@ -35,6 +35,8 @@ Bloss is a Windows widget app that shows battery levels for Bluetooth-connected 
 ## Key Features
 - In settings, click `Update` to run auto-update when a newer release exists.
 - After update installation, the widget app closes and starts again automatically.
+- Shows Steam Controller 2026 battery in Bluetooth and Puck receiver modes.
+- Shows DualSense battery when connected through the supported Pico2W USB bridge path.
 - Optimized for desktop widget use with low CPU/RAM overhead.
 - Supports launch at Windows startup.
 - Supports tray/background running even after closing the main window.
@@ -42,5 +44,7 @@ Bloss is a Windows widget app that shows battery levels for Bluetooth-connected 
 
 ## Notes
 - Third-party game controllers may need extra time before battery data appears.
-- If status shows `Connecting` or `N/A`, wait up to about 5 minutes.
+- Steam Controller charging may show a lower raw value than Steam Client's rounded full-charge display.
+- Pico2W support depends on the bridge firmware exposing the expected DualSense USB HID data.
+- If status shows `Connecting` or `N/A`, wait a little and try refresh once.
 - Some devices may not be supported yet.

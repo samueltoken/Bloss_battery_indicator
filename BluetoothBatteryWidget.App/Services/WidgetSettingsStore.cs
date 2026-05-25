@@ -84,6 +84,30 @@ public sealed class WidgetSettingsStore
         }
 
         settings.ColorPresetId = WidgetSettings.NormalizeColorPresetId(settings.ColorPresetId);
+        settings.CustomTextColor = WidgetSettings.NormalizeOptionalHexColor(settings.CustomTextColor);
+        settings.CustomBackgroundColor = WidgetSettings.NormalizeOptionalHexColor(settings.CustomBackgroundColor);
+        settings.CustomElementColors ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        settings.CustomElementColors = settings.CustomElementColors
+            .Select(pair => new
+            {
+                Key = pair.Key?.Trim() ?? string.Empty,
+                Value = WidgetSettings.NormalizeOptionalHexColor(pair.Value)
+            })
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(settings.CustomTextColor))
+        {
+            settings.CustomElementColors.TryAdd("PrimaryText", settings.CustomTextColor);
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.CustomBackgroundColor))
+        {
+            settings.CustomElementColors.TryAdd("CardTint", settings.CustomBackgroundColor);
+        }
+
+        settings.UseCustomColors = settings.UseCustomColors && settings.CustomElementColors.Count > 0;
+        settings.CustomFontPath = settings.CustomFontPath?.Trim() ?? string.Empty;
+        settings.UseCustomFont = settings.UseCustomFont && !string.IsNullOrWhiteSpace(settings.CustomFontPath);
         settings.Language = WidgetSettings.NormalizeLanguage(settings.Language);
         settings.UiScaleStep = WidgetSettings.NormalizeUiScaleStep(settings.UiScaleStep);
         var normalizedHold = WidgetSettings.NormalizeBatteryHoldSeconds(settings.BatteryHoldSeconds);

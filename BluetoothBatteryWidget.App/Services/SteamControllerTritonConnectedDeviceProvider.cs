@@ -15,7 +15,7 @@ public sealed class SteamControllerTritonConnectedDeviceProvider : IConnectedDev
     public async Task<IReadOnlyList<ConnectedBluetoothDevice>> GetConnectedDevicesAsync(CancellationToken cancellationToken)
     {
         var snapshots = await Task.Run(
-            () => _reader.ReadSnapshots(cancellationToken, waitForBattery: true),
+            () => _reader.ReadSnapshots(cancellationToken, waitForBattery: false),
             cancellationToken).ConfigureAwait(false);
 
         return snapshots

@@ -30,11 +30,11 @@ public sealed class SteamControllerTritonHidReaderTests
     }
 
     [Fact]
-    public void IsSuspiciousDockedFullBattery_ChargingHundred_ReturnsFalse()
+    public void IsSuspiciousDockedFullBattery_ChargingHundred_ReturnsTrue()
     {
         var status = CreateStatus(100, SteamControllerChargeState.Charging);
 
-        Assert.False(SteamControllerTritonHidReader.IsSuspiciousDockedFullBattery(status));
+        Assert.True(SteamControllerTritonHidReader.IsSuspiciousDockedFullBattery(status));
     }
 
     [Fact]
@@ -46,15 +46,23 @@ public sealed class SteamControllerTritonHidReaderTests
     }
 
     [Fact]
-    public void ChoosePreferredBatteryStatus_CurrentChargingHundredCandidateNonFull_KeepsCurrent()
+    public void IsSuspiciousDockedFullBattery_DischargingHundred_ReturnsFalse()
+    {
+        var status = CreateStatus(100, SteamControllerChargeState.Discharging);
+
+        Assert.False(SteamControllerTritonHidReader.IsSuspiciousDockedFullBattery(status));
+    }
+
+    [Fact]
+    public void ChoosePreferredBatteryStatus_CurrentChargingHundredCandidateNonFull_UsesCandidate()
     {
         var current = CreateStatus(100, SteamControllerChargeState.Charging);
         var candidate = CreateStatus(96, SteamControllerChargeState.Discharging);
 
         var selected = SteamControllerTritonHidReader.ChoosePreferredBatteryStatus(current, candidate);
 
-        Assert.Equal(100, selected.BatteryPercent);
-        Assert.Equal(SteamControllerChargeState.Charging, selected.ChargeState);
+        Assert.Equal(96, selected.BatteryPercent);
+        Assert.Equal(SteamControllerChargeState.Discharging, selected.ChargeState);
     }
 
     [Fact]
@@ -67,6 +75,36 @@ public sealed class SteamControllerTritonHidReaderTests
 
         Assert.Equal(96, selected.BatteryPercent);
         Assert.Equal(SteamControllerChargeState.Discharging, selected.ChargeState);
+    }
+
+    [Fact]
+    public void CreateReading_SuspiciousChargingFullWithVoltage_PassesVoltageToResolver()
+    {
+        var snapshot = CreateSnapshot();
+        var status = CreateStatus(100, SteamControllerChargeState.Charging, batteryVoltage: 4133);
+
+        var reading = SteamControllerTritonBatteryProvider.CreateReading(snapshot, status, DateTimeOffset.UtcNow);
+
+        Assert.Equal(100, reading.BatteryPercent);
+        Assert.Equal(4133, reading.RawMetric);
+        Assert.Equal(BatteryConfidence.Estimated, reading.BatteryConfidence);
+        Assert.False(reading.IsBatterySuspect);
+        Assert.Equal("steam_triton_charging", reading.ReasonCode);
+    }
+
+    [Fact]
+    public void CreateReading_SuspiciousChargingFullWithoutVoltage_MarksPending()
+    {
+        var snapshot = CreateSnapshot();
+        var status = CreateStatus(100, SteamControllerChargeState.Charging);
+
+        var reading = SteamControllerTritonBatteryProvider.CreateReading(snapshot, status, DateTimeOffset.UtcNow);
+
+        Assert.Null(reading.BatteryPercent);
+        Assert.Null(reading.RawMetric);
+        Assert.Equal(BatteryConfidence.Estimated, reading.BatteryConfidence);
+        Assert.True(reading.IsBatterySuspect);
+        Assert.Equal("steam_triton_docked_full_pending", reading.ReasonCode);
     }
 
     [Fact]
@@ -111,12 +149,28 @@ public sealed class SteamControllerTritonHidReaderTests
             sawDisconnectedSignal: true));
     }
 
-    private static SteamControllerBatteryStatus CreateStatus(int percent, SteamControllerChargeState state)
+    private static SteamControllerTritonSnapshot CreateSnapshot()
+    {
+        return new SteamControllerTritonSnapshot(
+            DeviceId: "steam-triton:AABBCCDDE010",
+            Address: "AABBCCDDE010",
+            DisplayName: "Steam Controller",
+            ProductId: "1304",
+            ModelKey: "USB\\VID_28DE&PID_1304\\STEAM_TRITON_PUCK",
+            IsConnected: true,
+            BatteryStatus: null,
+            EndpointCount: 1);
+    }
+
+    private static SteamControllerBatteryStatus CreateStatus(
+        int percent,
+        SteamControllerChargeState state,
+        ushort batteryVoltage = 0)
     {
         return new SteamControllerBatteryStatus(
             BatteryPercent: percent,
             ChargeState: state,
-            BatteryVoltage: 0,
+            BatteryVoltage: batteryVoltage,
             SystemVoltage: 0,
             InputVoltage: 0,
             Current: 0,

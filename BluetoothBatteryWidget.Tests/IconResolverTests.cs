@@ -11,10 +11,10 @@ public sealed class IconResolverTests
         var resolver = new IconResolver();
         var overrides = new Dictionary<string, IconKey>(StringComparer.OrdinalIgnoreCase)
         {
-            ["AABBCCDDEEFF"] = IconKey.Headset
+            ["AABBCCDDE001"] = IconKey.Headset
         };
 
-        var icon = resolver.Resolve("AA:BB:CC:DD:EE:FF", DeviceCategory.Mouse, "MX Master 4", overrides);
+        var icon = resolver.Resolve("AA:BB:CC:DD:E0:01", DeviceCategory.Mouse, "MX Master 4", overrides);
 
         Assert.Equal(IconKey.Headset, icon);
     }
@@ -23,7 +23,7 @@ public sealed class IconResolverTests
     public void Resolve_UsesCategory_WhenNoOverride()
     {
         var resolver = new IconResolver();
-        var icon = resolver.Resolve("AABBCCDDEEFF", DeviceCategory.Mouse, "MX Master 4", new Dictionary<string, IconKey>());
+        var icon = resolver.Resolve("AABBCCDDE001", DeviceCategory.Mouse, "MX Master 4", new Dictionary<string, IconKey>());
 
         Assert.Equal(IconKey.Mouse, icon);
     }

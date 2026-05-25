@@ -7,11 +7,11 @@ public sealed class HidProbeTextParserTests
     [Fact]
     public void ExtractAddress_LowerCaseDevToken_ParsesSuccessfully()
     {
-        var text = @"BTHENUM\DEV_112233445566\8&2A5F5B95&0&BLUETOOTHDEVICE_112233445566";
+        var text = @"BTHENUM\DEV_aabbccdde002\8&2A5F5B95&0&BLUETOOTHDEVICE_AABBCCDDE002";
 
         var address = HidProbeTextParser.ExtractAddress(text);
 
-        Assert.Equal("112233445566", address);
+        Assert.Equal("AABBCCDDE002", address);
     }
 
     [Fact]
