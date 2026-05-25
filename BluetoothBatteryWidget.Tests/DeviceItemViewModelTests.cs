@@ -1,4 +1,4 @@
-using BluetoothBatteryWidget.App.ViewModels;
+﻿using BluetoothBatteryWidget.App.ViewModels;
 using BluetoothBatteryWidget.Core.Models;
 
 namespace BluetoothBatteryWidget.Tests;
@@ -48,5 +48,30 @@ public sealed class DeviceItemViewModelTests
 
         Assert.True(vm.IsCharging);
         Assert.True(vm.IsChargeComplete);
+    }
+
+    [Fact]
+    public void BatteryGuideVisibility_CanBeShownAndHidden()
+    {
+        var snapshot = new DeviceBatterySnapshot(
+            DeviceId: "dualsense:AABBCCDDE020",
+            Address: "AABBCCDDE020",
+            DisplayName: "DualSense Wireless Controller",
+            BatteryPercent: 75,
+            BatteryConfidence: BatteryConfidence.Confirmed,
+            IsConnected: true,
+            Category: DeviceCategory.Gamepad,
+            IconKey: IconKey.Gamepad,
+            LastUpdated: DateTimeOffset.Now);
+        var vm = new DeviceItemViewModel(snapshot);
+
+        vm.ShowBatteryGuide("DualSense: 75%");
+
+        Assert.True(vm.IsBatteryGuideVisible);
+        Assert.Equal("DualSense: 75%", vm.BatteryGuideMessage);
+
+        vm.HideBatteryGuide();
+
+        Assert.False(vm.IsBatteryGuideVisible);
     }
 }

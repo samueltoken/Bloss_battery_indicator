@@ -14,6 +14,8 @@ public sealed class DeviceItemViewModel : INotifyPropertyChanged
     private int _probeProgress;
     private string _probeStatus = string.Empty;
     private bool _isProbeActionEnabled = true;
+    private bool _isBatteryGuideVisible;
+    private string _batteryGuideMessage = string.Empty;
 
     public DeviceItemViewModel(DeviceBatterySnapshot snapshot)
     {
@@ -194,6 +196,37 @@ public sealed class DeviceItemViewModel : INotifyPropertyChanged
 
     public bool ShowProbeArea => IsProbeEligible || IsProbing || !string.IsNullOrWhiteSpace(ProbeStatus);
 
+    public bool IsBatteryGuideVisible
+    {
+        get => _isBatteryGuideVisible;
+        private set
+        {
+            if (_isBatteryGuideVisible == value)
+            {
+                return;
+            }
+
+            _isBatteryGuideVisible = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string BatteryGuideMessage
+    {
+        get => _batteryGuideMessage;
+        private set
+        {
+            var normalized = value ?? string.Empty;
+            if (string.Equals(_batteryGuideMessage, normalized, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _batteryGuideMessage = normalized;
+            OnPropertyChanged();
+        }
+    }
+
     public void UpdateSnapshot(DeviceBatterySnapshot snapshot)
     {
         _snapshot = snapshot;
@@ -346,6 +379,17 @@ public sealed class DeviceItemViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CustomIconImagePath));
         OnPropertyChanged(nameof(HasCustomIconImage));
         IsIconEditing = false;
+    }
+
+    public void ShowBatteryGuide(string message)
+    {
+        BatteryGuideMessage = message;
+        IsBatteryGuideVisible = true;
+    }
+
+    public void HideBatteryGuide()
+    {
+        IsBatteryGuideVisible = false;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

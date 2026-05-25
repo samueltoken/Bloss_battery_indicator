@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -38,6 +39,7 @@ public partial class MainWindow : Window
     private const double StartupDefaultHeight = 420d;
     private const double StartupMaxAbsoluteWidth = 680d;
     private const double StartupMaxAbsoluteHeight = 760d;
+    private static readonly byte[] BatteryGuideChimeWave = BatteryGuideChimeAudio.LoadWave();
     private const double UiScaleStepFactor = 0.08d;
     private const int UiScaleAnimationMilliseconds = 140;
     private const double ResizeGripBaseInset = 4d;
@@ -50,7 +52,12 @@ public partial class MainWindow : Window
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.3";
+    private const string FallbackVersion = "1.0.4";
+    private static readonly TimeSpan GuideButtonGlobalDebounce = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan SteamGuideButtonToastCooldown = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan SteamRawInputPreferredWindow = TimeSpan.FromSeconds(1.5);
+    private static readonly TimeSpan SteamSecondaryFallbackDelay = TimeSpan.FromMilliseconds(380);
+    private static readonly TimeSpan SteamSecondaryFallbackBurstWindow = TimeSpan.FromSeconds(6);
     private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
     private const string UpdateExpectedAssetName = "setup.exe";
     private const string UpdateExpectedChecksumAssetName = "setup.exe.sha256";
@@ -102,6 +109,18 @@ public partial class MainWindow : Window
     private Forms.ToolStripMenuItem? _trayRefreshMenuItem;
     private Forms.ToolStripMenuItem? _trayExitMenuItem;
     private readonly HttpClient _httpClient = new();
+    private readonly GuideButtonMonitorService _guideButtonMonitor = new();
+    private readonly SteamControllerRawInputMonitorService _steamRawInputMonitor = new();
+    private readonly BatteryGuideChimePlayer _batteryGuideChimePlayer = new(BatteryGuideChimeWave);
+    private readonly Dictionary<string, System.Windows.Threading.DispatcherTimer> _batteryGuideHideTimers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _lastGuideButtonToastByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _lastSteamRawGuideButtonByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PendingSteamSecondaryGuideFallback> _pendingSteamSecondaryGuideFallbackByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _steamSecondaryGuideFallbackBlockedUntilByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _guideButtonToastSync = new();
+    private readonly HashSet<string> _lowBatteryToastKeys = new(StringComparer.OrdinalIgnoreCase);
+    private BatteryToastWindow? _activeBatteryToastWindow;
+    private HwndSource? _windowMessageSource;
     private bool _isUpdating;
 
     private static readonly IReadOnlyDictionary<string, string> ColorElementLabels =
@@ -131,6 +150,11 @@ public partial class MainWindow : Window
         UpdateVersionMenuHeader();
         ResetUpdateProgressUi();
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        _viewModel.Devices.CollectionChanged += Devices_CollectionChanged;
+        _guideButtonMonitor.GuideButtonPressed += GuideButtonMonitor_GuideButtonPressed;
+        _guideButtonMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
+        _steamRawInputMonitor.GuideButtonPressed += GuideButtonMonitor_GuideButtonPressed;
+        _steamRawInputMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
 
         LocationChanged += (_, _) =>
         {
@@ -172,6 +196,8 @@ public partial class MainWindow : Window
         UpdateResizeGripPlacement();
         UpdateDwmBlurBehindRegion();
         ApplyVisualModeState();
+        _guideButtonMonitor.Start();
+        _steamRawInputMonitor.LogRawDeviceSummary();
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
@@ -190,6 +216,21 @@ public partial class MainWindow : Window
     private void Window_Closed(object? sender, EventArgs e)
     {
         _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        _viewModel.Devices.CollectionChanged -= Devices_CollectionChanged;
+        foreach (var item in _viewModel.Devices)
+        {
+            item.PropertyChanged -= DeviceItem_PropertyChanged;
+        }
+
+        _guideButtonMonitor.GuideButtonPressed -= GuideButtonMonitor_GuideButtonPressed;
+        _guideButtonMonitor.Dispose();
+        _steamRawInputMonitor.GuideButtonPressed -= GuideButtonMonitor_GuideButtonPressed;
+        _steamRawInputMonitor.Dispose();
+        _windowMessageSource?.RemoveHook(MainWindow_WndProc);
+        _windowMessageSource = null;
+        StopBatteryGuideTimers();
+        CloseActiveBatteryToast();
+        _batteryGuideChimePlayer.Dispose();
         StopGlassWave();
 
         if (GlassCard is not null)
@@ -1477,9 +1518,21 @@ public partial class MainWindow : Window
     {
         ApplyToolWindowStyle();
         EnableDwmBlurBehindWindow();
+        _windowMessageSource = PresentationSource.FromVisual(this) as HwndSource;
+        if (_windowMessageSource is not null)
+        {
+            _windowMessageSource.AddHook(MainWindow_WndProc);
+            _steamRawInputMonitor.Start(_windowMessageSource.Handle);
+        }
+
         UpdateCompactMode();
         UpdateGlassCardClip();
         UpdateDwmBlurBehindRegion();
+    }
+
+    private IntPtr MainWindow_WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        return _steamRawInputMonitor.HandleWindowMessage(hwnd, msg, wParam, lParam, ref handled);
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -2975,6 +3028,538 @@ public partial class MainWindow : Window
         return FallbackVersion;
     }
 
+    private void GuideButtonMonitor_GuideButtonPressed(object? sender, GuideButtonPressedEventArgs e)
+    {
+        try
+        {
+            if (ShouldSuppressSecondarySteamGuideButtonPath(sender, e))
+            {
+                return;
+            }
+
+            if (ShouldSuppressDuplicateGuideButtonToast(e))
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(new Action(() => ShowBatteryGuide(e)));
+        }
+        catch
+        {
+            // Ignore shutdown races while the background monitor is stopping.
+        }
+    }
+
+    private bool ShouldSuppressSecondarySteamGuideButtonPath(object? sender, GuideButtonPressedEventArgs e)
+    {
+        if (e.DeviceKind != GuideButtonDeviceKind.SteamController)
+        {
+            return false;
+        }
+
+        var key = BuildGuideButtonToastKey(e);
+        var now = DateTimeOffset.Now;
+        lock (_guideButtonToastSync)
+        {
+            if (sender is SteamControllerRawInputMonitorService)
+            {
+                CancelPendingSteamSecondaryGuideFallbackLocked(key);
+                _lastSteamRawGuideButtonByDevice[key] = now;
+                if (e.Gesture == GuideButtonGesture.LongPress)
+                {
+                    _steamSecondaryGuideFallbackBlockedUntilByDevice[key] = now + SteamSecondaryFallbackBurstWindow;
+                    GuideButtonEventLog.Write(
+                        "raw_long_press_secondary_blocked",
+                        e.DeviceKind.ToString(),
+                        e.Address,
+                        e.DisplayName,
+                        "RawInput classified this Steam-button sequence as a long hold, so secondary fallback is temporarily blocked.");
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (sender is not GuideButtonMonitorService)
+            {
+                return false;
+            }
+
+            if (e.Gesture != GuideButtonGesture.ShortPress)
+            {
+                GuideButtonEventLog.Write(
+                    "secondary_press_suppressed",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    "Secondary Steam HID monitor press-start event was ignored so long-press power-off does not show a toast.");
+                return true;
+            }
+
+            if (_lastSteamRawGuideButtonByDevice.TryGetValue(key, out var lastRawPress) &&
+                now - lastRawPress <= SteamRawInputPreferredWindow)
+            {
+                GuideButtonEventLog.Write(
+                    "secondary_press_suppressed",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    "Secondary Steam HID monitor event was ignored because RawInput already handled this Steam button press.");
+                return true;
+            }
+
+            if (_steamSecondaryGuideFallbackBlockedUntilByDevice.TryGetValue(key, out var blockedUntil) &&
+                now <= blockedUntil)
+            {
+                GuideButtonEventLog.Write(
+                    "secondary_press_suppressed",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    "Secondary Steam HID monitor event was ignored because the current Steam-button sequence looks like a hold.");
+                return true;
+            }
+
+            if (_pendingSteamSecondaryGuideFallbackByDevice.ContainsKey(key))
+            {
+                CancelPendingSteamSecondaryGuideFallbackLocked(key);
+                _steamSecondaryGuideFallbackBlockedUntilByDevice[key] = now + SteamSecondaryFallbackBurstWindow;
+                GuideButtonEventLog.Write(
+                    "secondary_press_suppressed",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    "Secondary Steam HID monitor event was ignored because repeated fallback events look like a hold.");
+                return true;
+            }
+
+            var cts = new CancellationTokenSource();
+            _pendingSteamSecondaryGuideFallbackByDevice[key] = new PendingSteamSecondaryGuideFallback(e, cts);
+            _ = CompleteSteamSecondaryGuideFallbackAsync(key, e, cts);
+            GuideButtonEventLog.Write(
+                "secondary_fallback_pending",
+                e.DeviceKind.ToString(),
+                e.Address,
+                e.DisplayName,
+                "Secondary Steam HID monitor event will be used if no repeated hold signal arrives.");
+            return true;
+        }
+    }
+
+    private async Task CompleteSteamSecondaryGuideFallbackAsync(
+        string key,
+        GuideButtonPressedEventArgs e,
+        CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(SteamSecondaryFallbackDelay, cts.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            return;
+        }
+
+        lock (_guideButtonToastSync)
+        {
+            if (!_pendingSteamSecondaryGuideFallbackByDevice.TryGetValue(key, out var pending) ||
+                !ReferenceEquals(pending.Cancellation, cts))
+            {
+                return;
+            }
+
+            _pendingSteamSecondaryGuideFallbackByDevice.Remove(key);
+            cts.Dispose();
+
+            var now = DateTimeOffset.Now;
+            if (_lastSteamRawGuideButtonByDevice.TryGetValue(key, out var lastRawPress) &&
+                now - lastRawPress <= SteamRawInputPreferredWindow)
+            {
+                return;
+            }
+
+            if (_steamSecondaryGuideFallbackBlockedUntilByDevice.TryGetValue(key, out var blockedUntil) &&
+                now <= blockedUntil)
+            {
+                return;
+            }
+        }
+
+        if (ShouldSuppressDuplicateGuideButtonToast(e))
+        {
+            return;
+        }
+
+        GuideButtonEventLog.Write(
+            "secondary_fallback_accepted",
+            e.DeviceKind.ToString(),
+            e.Address,
+            e.DisplayName,
+            "Secondary Steam HID monitor event was used because RawInput did not produce a toast for this press.");
+
+        _ = Dispatcher.BeginInvoke(new Action(() => ShowBatteryGuide(e)));
+    }
+
+    private void CancelPendingSteamSecondaryGuideFallbackLocked(string key)
+    {
+        if (!_pendingSteamSecondaryGuideFallbackByDevice.Remove(key, out var pending))
+        {
+            return;
+        }
+
+        try
+        {
+            pending.Cancellation.Cancel();
+        }
+        catch
+        {
+            // Ignore cancellation races.
+        }
+        finally
+        {
+            pending.Cancellation.Dispose();
+        }
+    }
+
+    private bool ShouldSuppressDuplicateGuideButtonToast(GuideButtonPressedEventArgs e)
+    {
+        var key = BuildGuideButtonToastKey(e);
+        var now = DateTimeOffset.Now;
+        var cooldown = GetGuideButtonToastCooldown(e.DeviceKind);
+        lock (_guideButtonToastSync)
+        {
+            var lastSeen = _lastGuideButtonToastByDevice.TryGetValue(key, out var recordedLastSeen)
+                ? recordedLastSeen
+                : (DateTimeOffset?)null;
+
+            if (ShouldSuppressGuideButtonToast(lastSeen, now, e.DeviceKind))
+            {
+                GuideButtonEventLog.Write(
+                    "duplicate_press_suppressed",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    $"Duplicate guide-button event was ignored because another input path or recent toast already showed the toast. cooldownMs={(int)cooldown.TotalMilliseconds}.");
+                return true;
+            }
+
+            _lastGuideButtonToastByDevice[key] = now;
+            return false;
+        }
+    }
+
+    internal static bool ShouldSuppressGuideButtonToast(DateTimeOffset? lastSeen, DateTimeOffset now, GuideButtonDeviceKind deviceKind)
+    {
+        return lastSeen.HasValue && now - lastSeen.Value <= GetGuideButtonToastCooldown(deviceKind);
+    }
+
+    internal static TimeSpan GetGuideButtonToastCooldown(GuideButtonDeviceKind deviceKind)
+    {
+        return deviceKind == GuideButtonDeviceKind.SteamController
+            ? SteamGuideButtonToastCooldown
+            : GuideButtonGlobalDebounce;
+    }
+
+    internal static TimeSpan GetSteamSecondaryFallbackBurstWindow()
+    {
+        return SteamSecondaryFallbackBurstWindow;
+    }
+
+    internal static TimeSpan GetSteamSecondaryFallbackDelay()
+    {
+        return SteamSecondaryFallbackDelay;
+    }
+
+    private static string BuildGuideButtonToastKey(GuideButtonPressedEventArgs e)
+    {
+        var address = AddressNormalizer.NormalizeAddress(e.Address);
+        return string.IsNullOrWhiteSpace(address)
+            ? $"{e.DeviceKind}:{e.DisplayName}"
+            : $"{e.DeviceKind}:{address}";
+    }
+
+    private void ShowBatteryGuide(GuideButtonPressedEventArgs e)
+    {
+        var item = FindGuideButtonDevice(e);
+        var message = item is null
+            ? BuildMissingGuideDeviceMessage(e)
+            : BatteryGuideMessageBuilder.Build(item.Snapshot, _viewModel.Language);
+
+        if (item is not null)
+        {
+            ShowBatteryToast(item.Snapshot, automatic: false);
+            GuideButtonEventLog.Write(
+                "popup_shown",
+                e.DeviceKind.ToString(),
+                e.Address,
+                e.DisplayName,
+                "Battery guide toast was shown at the bottom-right of the screen.");
+        }
+        else
+        {
+            GuideButtonEventLog.Write(
+                "popup_missing_device",
+                e.DeviceKind.ToString(),
+                e.Address,
+                e.DisplayName,
+                "Guide button was detected, but no matching visible device card was found.");
+        }
+
+        if (item is null)
+        {
+            ShowTrayNotification(AppDisplayName, message, Forms.ToolTipIcon.Info);
+            GuideButtonEventLog.Write(
+                "tray_fallback",
+                e.DeviceKind.ToString(),
+                e.Address,
+                e.DisplayName,
+                "Battery guide was shown through the tray notification fallback.");
+        }
+
+        if (item is null)
+        {
+            RestartBatteryGuideChime();
+        }
+    }
+
+    private void Devices_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+        {
+            foreach (DeviceItemViewModel item in e.OldItems)
+            {
+                item.PropertyChanged -= DeviceItem_PropertyChanged;
+                _lowBatteryToastKeys.Remove(BuildBatteryToastKey(item));
+            }
+        }
+
+        if (e.NewItems is not null)
+        {
+            foreach (DeviceItemViewModel item in e.NewItems)
+            {
+                item.PropertyChanged += DeviceItem_PropertyChanged;
+                CheckLowBatteryToast(item);
+            }
+        }
+    }
+
+    private void DeviceItem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not DeviceItemViewModel item)
+        {
+            return;
+        }
+
+        if (e.PropertyName is nameof(DeviceItemViewModel.BatteryPercent) or
+            nameof(DeviceItemViewModel.IsConnected) or
+            nameof(DeviceItemViewModel.IsBatteryConnecting) or
+            nameof(DeviceItemViewModel.IsStale))
+        {
+            CheckLowBatteryToast(item);
+        }
+    }
+
+    private void CheckLowBatteryToast(DeviceItemViewModel item)
+    {
+        var key = BuildBatteryToastKey(item);
+        if (!item.IsConnected || item.IsStale || item.IsBatteryConnecting || item.BatteryPercent is not int percent)
+        {
+            _lowBatteryToastKeys.Remove(key);
+            return;
+        }
+
+        if (percent >= 30)
+        {
+            _lowBatteryToastKeys.Remove(key);
+            return;
+        }
+
+        if (!_lowBatteryToastKeys.Add(key))
+        {
+            return;
+        }
+
+        ShowBatteryToast(item.Snapshot, automatic: true);
+    }
+
+    private void ShowBatteryToast(DeviceBatterySnapshot snapshot, bool automatic)
+    {
+        if (snapshot.BatteryPercent is not int percent)
+        {
+            return;
+        }
+
+        CloseActiveBatteryToast();
+        var severity = BatteryToastStyle.ResolveSeverity(percent);
+        var subtitle = BatteryGuideMessageBuilder.BuildToastSubtitle(snapshot, _viewModel.Language, automatic);
+        var toast = new BatteryToastWindow(snapshot.DisplayName, percent, subtitle, severity);
+        _activeBatteryToastWindow = toast;
+        toast.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_activeBatteryToastWindow, toast))
+            {
+                _activeBatteryToastWindow = null;
+                StopBatteryGuideChime();
+            }
+        };
+        toast.ShowAtBottomRight();
+        RestartBatteryGuideChime();
+    }
+
+    private void CloseActiveBatteryToast()
+    {
+        try
+        {
+            _activeBatteryToastWindow?.Close();
+        }
+        catch
+        {
+            // Ignore toast shutdown races.
+        }
+        finally
+        {
+            _activeBatteryToastWindow = null;
+            StopBatteryGuideChime();
+        }
+    }
+
+    private static string BuildBatteryToastKey(DeviceItemViewModel item)
+    {
+        var address = AddressNormalizer.NormalizeAddress(item.Address);
+        return string.IsNullOrWhiteSpace(address) ? item.DeviceId : address;
+    }
+
+    private void RestartBatteryGuideChime()
+    {
+        try
+        {
+            _batteryGuideChimePlayer.PlayFromStart();
+        }
+        catch
+        {
+            // Ignore shutdown races.
+        }
+    }
+
+    private void StopBatteryGuideChime()
+    {
+        try
+        {
+            _batteryGuideChimePlayer.Stop();
+        }
+        catch
+        {
+            // Ignore shutdown races.
+        }
+    }
+
+    private DeviceItemViewModel? FindGuideButtonDevice(GuideButtonPressedEventArgs e)
+    {
+        var normalizedAddress = AddressNormalizer.NormalizeAddress(e.Address);
+        if (!string.IsNullOrWhiteSpace(normalizedAddress))
+        {
+            var byAddress = _viewModel.Devices.FirstOrDefault(device =>
+                string.Equals(
+                    AddressNormalizer.NormalizeAddress(device.Address),
+                    normalizedAddress,
+                    StringComparison.OrdinalIgnoreCase));
+            if (byAddress is not null)
+            {
+                return byAddress;
+            }
+        }
+
+        return e.DeviceKind switch
+        {
+            GuideButtonDeviceKind.DualSense => _viewModel.Devices.FirstOrDefault(device =>
+                device.DisplayName.Contains("DualSense", StringComparison.OrdinalIgnoreCase) ||
+                (device.ModelKey?.Contains("VID_054C", StringComparison.OrdinalIgnoreCase) ?? false)),
+            GuideButtonDeviceKind.SteamController => _viewModel.Devices.FirstOrDefault(device =>
+                device.DisplayName.Contains("Steam Controller", StringComparison.OrdinalIgnoreCase) ||
+                device.DisplayName.Contains("Steam Ctrl", StringComparison.OrdinalIgnoreCase) ||
+                (device.ModelKey?.Contains("VID_28DE", StringComparison.OrdinalIgnoreCase) ?? false)),
+            _ => null
+        };
+    }
+
+    private IReadOnlyList<GuideButtonKnownDevice> GetGuideButtonKnownDevices()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            return Dispatcher.Invoke(GetGuideButtonKnownDevices);
+        }
+
+        return _viewModel.Devices
+            .Where(IsSteamControllerDevice)
+            .Select(device => new GuideButtonKnownDevice(
+                device.Address,
+                device.DisplayName,
+                GuideButtonDeviceKind.SteamController))
+            .GroupBy(device => AddressNormalizer.NormalizeAddress(device.Address), StringComparer.OrdinalIgnoreCase)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group => group.First())
+            .ToList();
+    }
+
+    private static bool IsSteamControllerDevice(DeviceItemViewModel device)
+    {
+        return device.SourceKind == BatterySourceKind.SteamHid ||
+               device.DeviceId.StartsWith("steam-triton:", StringComparison.OrdinalIgnoreCase) ||
+               device.DisplayName.Contains("Steam Controller", StringComparison.OrdinalIgnoreCase) ||
+               device.DisplayName.Contains("Steam Ctrl", StringComparison.OrdinalIgnoreCase) ||
+               (device.ModelKey?.Contains("VID_28DE", StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private string BuildMissingGuideDeviceMessage(GuideButtonPressedEventArgs e)
+    {
+        var name = string.IsNullOrWhiteSpace(e.DisplayName)
+            ? "Controller"
+            : e.DisplayName.Trim();
+
+        return string.Equals(_viewModel.Language, "ko", StringComparison.OrdinalIgnoreCase)
+            ? $"{name}: 배터리 정보를 아직 화면 목록에서 찾지 못했습니다."
+            : $"{name}: battery info is not in the list yet.";
+    }
+
+    private void RestartBatteryGuideHideTimer(DeviceItemViewModel item)
+    {
+        var key = AddressNormalizer.NormalizeAddress(item.Address);
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            key = item.DeviceId;
+        }
+
+        if (_batteryGuideHideTimers.TryGetValue(key, out var existing))
+        {
+            existing.Stop();
+            _batteryGuideHideTimers.Remove(key);
+        }
+
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3.2)
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            _batteryGuideHideTimers.Remove(key);
+            item.HideBatteryGuide();
+        };
+
+        _batteryGuideHideTimers[key] = timer;
+        timer.Start();
+    }
+
+    private void StopBatteryGuideTimers()
+    {
+        foreach (var timer in _batteryGuideHideTimers.Values)
+        {
+            timer.Stop();
+        }
+
+        _batteryGuideHideTimers.Clear();
+    }
+
     private void ShowTrayNotification(string title, string message, Forms.ToolTipIcon icon)
     {
         try
@@ -3341,6 +3926,10 @@ public partial class MainWindow : Window
         string Version,
         string SetupDownloadUrl,
         string ChecksumDownloadUrl);
+
+    private sealed record PendingSteamSecondaryGuideFallback(
+        GuideButtonPressedEventArgs EventArgs,
+        CancellationTokenSource Cancellation);
 
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;

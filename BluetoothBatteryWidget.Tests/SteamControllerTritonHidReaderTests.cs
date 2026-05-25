@@ -1,4 +1,4 @@
-using BluetoothBatteryWidget.App.Services;
+﻿using BluetoothBatteryWidget.App.Services;
 using BluetoothBatteryWidget.Core.Models;
 
 namespace BluetoothBatteryWidget.Tests;

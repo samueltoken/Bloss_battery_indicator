@@ -719,14 +719,18 @@
                                                              KeyDown="NameEditorTextBox_KeyDown"
                                                              IsVisibleChanged="NameEditorTextBox_IsVisibleChanged" />
 
-                                                    <StackPanel Orientation="Horizontal">
+                                                    <WrapPanel Orientation="Horizontal"
+                                                               MaxWidth="{Binding ActualWidth, ElementName=RenameEditorPanel}">
                                                         <Button Content="{Binding DataContext.TextInlineSave, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 Style="{StaticResource InlineNameActionButtonStyle}"
+                                                                Margin="0,0,6,6"
                                                                 Click="NameSaveButton_Click" />
                                                         <Button Content="{Binding DataContext.TextInlineCancel, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 Style="{StaticResource InlineNameActionButtonStyle}"
+                                                                Margin="0,0,6,6"
                                                                 Click="NameCancelButton_Click" />
                                                         <Button Content="{Binding DataContext.TextRestoreDefault, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                Margin="0,0,0,6"
                                                                 Click="NameResetButton_Click">
                                                             <Button.Style>
                                                                 <Style TargetType="Button"
@@ -740,7 +744,7 @@
                                                                 </Style>
                                                             </Button.Style>
                                                         </Button>
-                                                    </StackPanel>
+                                                    </WrapPanel>
                                                 </StackPanel>
 
                                                 <TextBlock Text="{Binding Address}"
@@ -790,6 +794,39 @@
                                                     </TextBlock.Style>
                                                 </TextBlock>
                                             </StackPanel>
+
+                                            <Popup PlacementTarget="{Binding ElementName=DisplayNameTextBlock}"
+                                                   Placement="Top"
+                                                   AllowsTransparency="True"
+                                                   PopupAnimation="Fade"
+                                                   StaysOpen="True"
+                                                   IsHitTestVisible="False"
+                                                   IsOpen="{Binding IsBatteryGuideVisible, Mode=OneWay}">
+                                                <Popup.DataContext>
+                                                    <Binding ElementName="DisplayNameTextBlock" Path="DataContext" />
+                                                </Popup.DataContext>
+                                                <Border Margin="0,0,0,10"
+                                                        Padding="18,12"
+                                                        MinWidth="250"
+                                                        MaxWidth="390"
+                                                        CornerRadius="16"
+                                                        BorderThickness="1.4"
+                                                        Background="#FBFFF9E8"
+                                                        BorderBrush="#E7C553">
+                                                    <Border.Effect>
+                                                        <DropShadowEffect Color="#56000000"
+                                                                          BlurRadius="22"
+                                                                          ShadowDepth="3"
+                                                                          Opacity="0.30" />
+                                                    </Border.Effect>
+                                                    <TextBlock Text="{Binding BatteryGuideMessage}"
+                                                               TextWrapping="Wrap"
+                                                               FontSize="16"
+                                                               LineHeight="21"
+                                                               FontWeight="Bold"
+                                                               Foreground="#2C4057" />
+                                                </Border>
+                                            </Popup>
 
                                             <Grid Grid.Row="1"
                                                   Grid.Column="1"
@@ -1346,7 +1383,7 @@
                                HorizontalAlignment="Right"
                                FontSize="12"
                                Foreground="{StaticResource SettingsTextBrush}"
-                               Text="버전 1.0.3" />
+                               Text="버전 1.0.1" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>

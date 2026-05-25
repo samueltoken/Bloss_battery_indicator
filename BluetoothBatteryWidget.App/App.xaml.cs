@@ -9,8 +9,8 @@ namespace BluetoothBatteryWidget.App;
 
 public partial class App : System.Windows.Application
 {
-    private const string SingleInstanceMutexName = @"Local\Bloss.SingleInstance";
-    private const string ActivateSignalName = @"Local\Bloss.Activate";
+    private const string SingleInstanceMutexName = @"Local\Bloss.Test.SingleInstance";
+    private const string ActivateSignalName = @"Local\Bloss.Test.Activate";
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _activateSignal;
     private CancellationTokenSource? _activateSignalCts;

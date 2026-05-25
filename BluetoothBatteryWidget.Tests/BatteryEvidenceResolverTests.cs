@@ -1,4 +1,4 @@
-using BluetoothBatteryWidget.Core.Models;
+﻿using BluetoothBatteryWidget.Core.Models;
 using BluetoothBatteryWidget.Core.Services;
 
 namespace BluetoothBatteryWidget.Tests;
@@ -172,6 +172,87 @@ public sealed class BatteryEvidenceResolverTests
         Assert.Equal(100, resolved[0].BatteryPercent);
         Assert.False(resolved[0].SuggestCalibration);
         Assert.Equal(BatteryConfidence.Confirmed, resolved[0].BatteryConfidence);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_SonyPico2WDualSenseSingleUpwardBucketSpike_HoldsPreviousStableValue()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        RecordSonyPico2WObservation(observationStore, 75, now.AddMinutes(-2));
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                CreateSonyPico2WReading(85)
+            ],
+            now);
+
+        Assert.Single(resolved);
+        Assert.Equal(75, resolved[0].BatteryPercent);
+        Assert.Equal(85, resolved[0].RawMetric);
+        Assert.Equal(BatteryConfidence.Estimated, resolved[0].BatteryConfidence);
+        Assert.True(resolved[0].IsBatterySuspect);
+        Assert.Equal("sony_hid_usb_pico2w_hold_previous_stable", resolved[0].ReasonCode);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_SonyPico2WDualSenseRepeatedUpwardBucketSpike_AcceptsRepeatedValue()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        RecordSonyPico2WObservation(observationStore, 75, now.AddMinutes(-2));
+
+        var first = resolver.ResolveAndRecord(
+            [
+                CreateSonyPico2WReading(85)
+            ],
+            now);
+        var second = resolver.ResolveAndRecord(
+            [
+                CreateSonyPico2WReading(85)
+            ],
+            now.AddSeconds(8));
+
+        Assert.Single(first);
+        Assert.Equal(75, first[0].BatteryPercent);
+        Assert.Single(second);
+        Assert.Equal(85, second[0].BatteryPercent);
+        Assert.Equal(85, second[0].RawMetric);
+        Assert.Equal(BatteryConfidence.Confirmed, second[0].BatteryConfidence);
+        Assert.False(second[0].IsBatterySuspect);
+        Assert.Equal("sony_hid_usb_pico2w_confirmed_after_repeat", second[0].ReasonCode);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_SonyBluetoothDualSense_IsNotHeldByPico2WGuard()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        RecordSonyPico2WObservation(observationStore, 75, now.AddMinutes(-2));
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                CreateSonyPico2WReading(85) with
+                {
+                    DisplayName = "DualSense Wireless Controller",
+                    ReasonCode = "sony_hid_bluetooth",
+                    PathType = "bluetooth_hid"
+                }
+            ],
+            now);
+
+        Assert.Single(resolved);
+        Assert.Equal(85, resolved[0].BatteryPercent);
+        Assert.Equal("sonyhid_direct", resolved[0].ReasonCode);
     }
 
     [Fact]
@@ -619,7 +700,7 @@ public sealed class BatteryEvidenceResolverTests
                 new PnpBatteryReading(
                     InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_AABBCCDDE011",
                     Address: "AABBCCDDE011",
-                    DisplayName: "Steam Ctrl (BT) FXA0000000000",
+                    DisplayName: "Steam Ctrl (BT) SAMPLE000001",
                     BatteryPercent: 97,
                     BatteryConfidence: BatteryConfidence.Confirmed,
                     SourceKind: BatterySourceKind.BleGatt,
@@ -1062,6 +1143,39 @@ public sealed class BatteryEvidenceResolverTests
             observedAt);
     }
 
+    private static void RecordSonyPico2WObservation(BatteryObservationStore observationStore, int batteryPercent, DateTimeOffset observedAt)
+    {
+        observationStore.Record(
+            [
+                new BatteryEvidence(
+                    Address: "AABBCCDDE020",
+                    ModelKey: "VID_054C|PID_0CE6",
+                    SourceKind: BatterySourceKind.SonyHid,
+                    DerivedPercent: batteryPercent,
+                    RawMetric: batteryPercent,
+                    ObservedAt: observedAt,
+                    ReasonCode: "sony_hid_usb_pico2w_dualsense")
+            ],
+            observedAt);
+    }
+
+    private static PnpBatteryReading CreateSonyPico2WReading(int batteryPercent)
+    {
+        return new PnpBatteryReading(
+            InstanceId: @"USB\VID_054C&PID_0CE6\DUALSENSE_PICO2W",
+            Address: "AABBCCDDE020",
+            DisplayName: "DualSense Wireless Controller (USB/Pico2W)",
+            BatteryPercent: batteryPercent,
+            BatteryConfidence: BatteryConfidence.Confirmed,
+            SourceKind: BatterySourceKind.SonyHid,
+            RawMetric: batteryPercent,
+            ModelKey: "VID_054C|PID_0CE6",
+            ReasonCode: "sony_hid_usb_pico2w_dualsense",
+            ActiveSource: "sony_hid",
+            PathType: "usb_pico2w",
+            DisplayState: BatteryDisplayState.Verified);
+    }
+
     private static PnpBatteryReading CreateSteamBluetoothReading(
         int batteryPercent,
         double rawMetric,
@@ -1070,7 +1184,7 @@ public sealed class BatteryEvidenceResolverTests
         return new PnpBatteryReading(
             InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_AABBCCDDE011",
             Address: "AABBCCDDE011",
-            DisplayName: "Steam Ctrl (BT) FXA0000000000",
+            DisplayName: "Steam Ctrl (BT) SAMPLE000001",
             BatteryPercent: batteryPercent,
             BatteryConfidence: BatteryConfidence.Confirmed,
             SourceKind: sourceKind,
