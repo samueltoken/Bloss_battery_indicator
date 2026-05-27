@@ -282,6 +282,47 @@ public sealed class GuideButtonReportParserTests
         Assert.False(parsed);
     }
 
+    [Theory]
+    [InlineData(0x43, 0x57)]
+    [InlineData(0x43, 0x5A)]
+    [InlineData(0x43, 0x5B)]
+    [InlineData(0x44, 0x57)]
+    [InlineData(0x44, 0x5A)]
+    [InlineData(0x44, 0x5B)]
+    public void IsSteamControllerStatusReport_RecognizesFullRawStatusReport(int reportId, int marker)
+    {
+        var report = new byte[54];
+        report[0] = (byte)reportId;
+        report[1] = 0x01;
+        report[2] = (byte)marker;
+        report[3] = 0xD8;
+        report[4] = 0x0F;
+        report[5] = 0xF0;
+        report[6] = 0x0F;
+
+        Assert.True(GuideButtonReportParser.IsSteamControllerStatusReport(report));
+
+        var parsed = GuideButtonReportParser.TryParseGuideButton(
+            GuideButtonDeviceKind.SteamController,
+            report,
+            out var pressed);
+
+        Assert.False(parsed);
+        Assert.False(pressed);
+    }
+
+    [Fact]
+    public void IsSteamControllerStatusReport_DoesNotTreatShortBatteryReportAsReleaseHint()
+    {
+        var report = new byte[17];
+        report[0] = 0x43;
+        report[1] = 0x01;
+        report[2] = 0x57;
+        report[9] = 0x20;
+
+        Assert.False(GuideButtonReportParser.IsSteamControllerStatusReport(report));
+    }
+
     [Fact]
     public void BatteryGuideMessageBuilder_DualSenseKoreanMessage_IncludesEstimatedTime()
     {

@@ -571,39 +571,47 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
-    public void SteamControllerGuideButtonToastCooldown_MatchesVisibleToastLifetime()
+    public void SteamControllerGuideButtonToastCooldown_KeepsRepeatedTapsResponsive()
     {
-        Assert.Equal(TimeSpan.FromSeconds(4), MainWindow.GetGuideButtonToastCooldown(GuideButtonDeviceKind.SteamController));
+        Assert.Equal(TimeSpan.FromMilliseconds(350), MainWindow.GetGuideButtonToastCooldown(GuideButtonDeviceKind.SteamController));
     }
 
     [Fact]
-    public void SteamControllerGuideButtonToastCooldown_SuppressesPowerOffReopenWhileToastIsVisible()
+    public void SteamControllerGuideButtonToastCooldown_AllowsNextIntentBeforeToastFullyExpires()
     {
         var firstToast = new DateTimeOffset(2026, 5, 26, 1, 20, 0, TimeSpan.Zero);
 
         Assert.True(MainWindow.ShouldSuppressGuideButtonToast(
             firstToast,
-            firstToast + TimeSpan.FromSeconds(3.8),
+            firstToast + TimeSpan.FromMilliseconds(250),
             GuideButtonDeviceKind.SteamController));
         Assert.False(MainWindow.ShouldSuppressGuideButtonToast(
             firstToast,
-            firstToast + TimeSpan.FromSeconds(4.1),
+            firstToast + TimeSpan.FromMilliseconds(450),
             GuideButtonDeviceKind.SteamController));
     }
 
     [Fact]
-    public void SteamSecondaryFallbackBurstWindow_BlocksPowerOffRepeatLongerThanToastCooldown()
+    public void SteamSecondaryFallbackBurstWindow_OnlyBlocksImmediatePowerOffEcho()
     {
-        Assert.True(MainWindow.GetSteamSecondaryFallbackBurstWindow() >= TimeSpan.FromSeconds(6));
+        Assert.Equal(TimeSpan.FromMilliseconds(450), MainWindow.GetSteamSecondaryFallbackBurstWindow());
         Assert.True(MainWindow.GetSteamSecondaryFallbackBurstWindow() > MainWindow.GetGuideButtonToastCooldown(GuideButtonDeviceKind.SteamController));
+        Assert.True(MainWindow.GetSteamSecondaryFallbackBurstWindow() < TimeSpan.FromSeconds(1));
     }
 
     [Fact]
     public void SteamSecondaryFallbackDelay_IsShortButStillCatchesRepeatedHoldSignals()
     {
-        Assert.Equal(TimeSpan.FromMilliseconds(380), MainWindow.GetSteamSecondaryFallbackDelay());
-        Assert.True(MainWindow.GetSteamSecondaryFallbackDelay() > TimeSpan.FromMilliseconds(350));
-        Assert.True(MainWindow.GetSteamSecondaryFallbackDelay() < TimeSpan.FromMilliseconds(450));
+        Assert.Equal(TimeSpan.FromMilliseconds(120), MainWindow.GetSteamSecondaryFallbackDelay());
+        Assert.True(MainWindow.GetSteamSecondaryFallbackDelay() > TimeSpan.FromMilliseconds(80));
+        Assert.True(MainWindow.GetSteamSecondaryFallbackDelay() < TimeSpan.FromMilliseconds(180));
+    }
+
+    [Fact]
+    public void SteamRawInputPreferredWindow_DoesNotSwallowRapidRepeatTaps()
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(300), MainWindow.GetSteamRawInputPreferredWindow());
+        Assert.True(MainWindow.GetSteamRawInputPreferredWindow() < MainWindow.GetGuideButtonToastCooldown(GuideButtonDeviceKind.SteamController));
     }
 
     [Fact]
@@ -621,6 +629,40 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("e.Gesture == GuideButtonGesture.LongPress", source);
         Assert.Contains("raw_long_press_secondary_blocked", source);
         Assert.Contains("_steamSecondaryGuideFallbackBlockedUntilByDevice[key] = now + SteamSecondaryFallbackBurstWindow", source);
+        Assert.Contains("secondary_duplicate_pending_suppressed", source);
+        Assert.Contains("secondary_fallback_waiting_for_raw_hid", source);
+        Assert.Contains("secondary_fallback_raw_hid_hold_suppressed", source);
+        Assert.Contains("secondary_fallback_raw_hid_pending_suppressed", source);
+        Assert.Contains("secondary_fallback_stale_raw_hid_ignored", source);
+        Assert.Contains("fixed Steam power-off guard window", source);
+        Assert.Contains("GetGuideButtonActivity(e.Address)", source);
+        Assert.Contains("SteamSecondaryFallbackRawHidAmbiguousMaximumWait = TimeSpan.FromMilliseconds(2500)", source);
+        Assert.Contains("SteamSecondaryFallbackRawHidStaleStateAge = TimeSpan.FromMilliseconds(1200)", source);
+        Assert.Contains("SteamSecondaryFallbackRawHidPreExistingHoldAge = TimeSpan.FromMilliseconds(2500)", source);
+        Assert.DoesNotContain("Secondary Steam HID monitor event was ignored because repeated fallback events look like a hold.", source);
+    }
+
+    [Fact]
+    public void SteamRawInputStatusReportsReleaseOnlyExistingPressedState()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "Services",
+            "SteamControllerRawInputMonitorService.cs"));
+
+        Assert.Contains("raw_hid_status_release_hint", source);
+        Assert.Contains("raw_hid_status_release_skipped", source);
+        Assert.Contains("raw_hid_guide_state", source);
+        Assert.Contains("raw_hid_stale_state_cleared", source);
+        Assert.Contains("activity.IsPressed", source);
+        Assert.Contains("IsSteamControllerStatusReport(report)", source);
+        Assert.DoesNotContain("raw_hid_battery_release_hint", source);
+        Assert.DoesNotContain("_rawHidGuideButtonStateTracker.ClearStalePressedSession(address, now);", source);
     }
 
     [Fact]

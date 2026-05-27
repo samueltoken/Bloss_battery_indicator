@@ -34,6 +34,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private static readonly TimeSpan WeakSignalFailureMinCooldown = TimeSpan.FromMinutes(4);
     private static readonly TimeSpan RefreshOperationTimeout = TimeSpan.FromSeconds(12);
     private static readonly TimeSpan DualShock4InitialLowReadingWindow = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan SteamControllerSetupApiFullSpikeHoldWindow = TimeSpan.FromMinutes(10);
     private const int AutoProbeMaxBackoffExponent = 4;
     private const int MaxPendingProbeFollowUps = 2;
     private const int MinimumMissingRefreshesBeforeDisconnect = 1;
@@ -567,6 +568,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
             var previousPercent = previous.BatteryPercent.Value;
             var currentPercent = reading.BatteryPercent.Value;
+            if (TryHoldSteamControllerSetupApiFullSpike(previous, reading, now, out var heldReading))
+            {
+                _pendingBatteryDropByAddress.Remove(normalizedAddress);
+                guarded.Add(heldReading with { Address = normalizedAddress });
+                continue;
+            }
+
             if (!ShouldHoldSuddenDrop(previousPercent, currentPercent, reading.SourceKind))
             {
                 _pendingBatteryDropByAddress.Remove(normalizedAddress);
@@ -634,6 +642,73 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         return previousPercent - currentPercent >= 60;
+    }
+
+    internal static bool TryHoldSteamControllerSetupApiFullSpike(
+        PnpBatteryReading previous,
+        PnpBatteryReading current,
+        DateTimeOffset now,
+        out PnpBatteryReading heldReading)
+    {
+        heldReading = current;
+
+        if (current.SourceKind != BatterySourceKind.SetupApi ||
+            current.BatteryPercent != 100 ||
+            current.IsCharging ||
+            current.IsChargeComplete ||
+            !IsSteamControllerBluetoothReading(current))
+        {
+            return false;
+        }
+
+        if (previous.BatteryPercent is not int previousPercent ||
+            previousPercent <= 0 ||
+            previousPercent > 94 ||
+            !IsSteamControllerBluetoothReading(previous))
+        {
+            return false;
+        }
+
+        if (previous.ObservedAt is DateTimeOffset observedAt &&
+            now - observedAt > SteamControllerSetupApiFullSpikeHoldWindow)
+        {
+            return false;
+        }
+
+        heldReading = current with
+        {
+            BatteryPercent = previousPercent,
+            BatteryConfidence = BatteryConfidence.Estimated,
+            RawMetric = current.RawMetric ?? current.BatteryPercent,
+            IsBatterySuspect = true,
+            ReasonCode = "steam_controller_setupapi_recent_nonfull_hold"
+        };
+        return true;
+    }
+
+    private static bool IsSteamControllerBluetoothReading(PnpBatteryReading reading)
+    {
+        return ContainsSteamControllerName(reading.DisplayName) ||
+               ContainsSteamControllerVidPid(reading.InstanceId) ||
+               ContainsSteamControllerVidPid(reading.ModelKey);
+    }
+
+    private static bool ContainsSteamControllerName(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               (value.Contains("Steam Controller", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("Steam Ctrl", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool ContainsSteamControllerVidPid(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Contains("VID_28DE", StringComparison.OrdinalIgnoreCase) ||
+               value.Contains("VID&0228DE", StringComparison.OrdinalIgnoreCase);
     }
 
     private TimeSpan GetDeviceDisconnectGrace()
