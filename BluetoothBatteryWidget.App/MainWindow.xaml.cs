@@ -58,10 +58,17 @@ public partial class MainWindow : Window
     private const string AppDisplayName = "Bloss";
     private const string FallbackVersion = "1.0.5";
     private static readonly TimeSpan GuideButtonGlobalDebounce = TimeSpan.FromMilliseconds(350);
-    private static readonly TimeSpan SteamGuideButtonToastCooldown = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan SteamRawInputPreferredWindow = TimeSpan.FromSeconds(1.5);
-    private static readonly TimeSpan SteamSecondaryFallbackDelay = TimeSpan.FromMilliseconds(380);
-    private static readonly TimeSpan SteamSecondaryFallbackBurstWindow = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan SteamGuideButtonToastCooldown = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan SteamRawInputPreferredWindow = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan SteamSecondaryFallbackDelay = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan SteamSecondaryFallbackRawHidRecheckDelay = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan SteamSecondaryFallbackRawHidShortTapMaximumWait = TimeSpan.FromMilliseconds(550);
+    private static readonly TimeSpan SteamSecondaryFallbackRawHidAmbiguousMaximumWait = TimeSpan.FromMilliseconds(2500);
+    private static readonly TimeSpan SteamSecondaryFallbackRawHidHoldSuppressDuration = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan SteamSecondaryFallbackRawHidActivePressFreshWindow = TimeSpan.FromMilliseconds(700);
+    private static readonly TimeSpan SteamSecondaryFallbackRawHidStaleStateAge = TimeSpan.FromMilliseconds(1200);
+    private static readonly TimeSpan SteamSecondaryFallbackRawHidPreExistingHoldAge = TimeSpan.FromMilliseconds(2500);
+    private static readonly TimeSpan SteamSecondaryFallbackBurstWindow = TimeSpan.FromMilliseconds(450);
     private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
     private const string Ds5DongleLatestReleaseApiUrl = "https://api.github.com/repos/awalol/DS5Dongle/releases/latest";
     private const string Ds5DongleReleasePageUrl = "https://github.com/awalol/DS5Dongle/releases";
@@ -4358,20 +4365,23 @@ public partial class MainWindow : Window
                     e.DeviceKind.ToString(),
                     e.Address,
                     e.DisplayName,
-                    "Secondary Steam HID monitor event was ignored because the current Steam-button sequence looks like a hold.");
+                    "Secondary Steam HID monitor event was ignored during the fixed Steam power-off guard window.");
                 return true;
+            }
+
+            if (_steamSecondaryGuideFallbackBlockedUntilByDevice.ContainsKey(key))
+            {
+                _steamSecondaryGuideFallbackBlockedUntilByDevice.Remove(key);
             }
 
             if (_pendingSteamSecondaryGuideFallbackByDevice.ContainsKey(key))
             {
-                CancelPendingSteamSecondaryGuideFallbackLocked(key);
-                _steamSecondaryGuideFallbackBlockedUntilByDevice[key] = now + SteamSecondaryFallbackBurstWindow;
                 GuideButtonEventLog.Write(
-                    "secondary_press_suppressed",
+                    "secondary_duplicate_pending_suppressed",
                     e.DeviceKind.ToString(),
                     e.Address,
                     e.DisplayName,
-                    "Secondary Steam HID monitor event was ignored because repeated fallback events look like a hold.");
+                    "Secondary Steam HID monitor duplicate was ignored while the first fallback event was still pending.");
                 return true;
             }
 
@@ -4393,38 +4403,241 @@ public partial class MainWindow : Window
         GuideButtonPressedEventArgs e,
         CancellationTokenSource cts)
     {
-        try
-        {
-            await Task.Delay(SteamSecondaryFallbackDelay, cts.Token).ConfigureAwait(false);
-        }
-        catch
-        {
-            return;
-        }
+        var startedAt = DateTimeOffset.Now;
+        var delay = SteamSecondaryFallbackDelay;
+        var rawHidWaitLogged = false;
+        var rawHidWasFreshForThisFallback = false;
 
-        lock (_guideButtonToastSync)
+        while (true)
         {
-            if (!_pendingSteamSecondaryGuideFallbackByDevice.TryGetValue(key, out var pending) ||
-                !ReferenceEquals(pending.Cancellation, cts))
+            try
+            {
+                await Task.Delay(delay, cts.Token).ConfigureAwait(false);
+            }
+            catch
             {
                 return;
             }
-
-            _pendingSteamSecondaryGuideFallbackByDevice.Remove(key);
-            cts.Dispose();
 
             var now = DateTimeOffset.Now;
-            if (_lastSteamRawGuideButtonByDevice.TryGetValue(key, out var lastRawPress) &&
-                now - lastRawPress <= SteamRawInputPreferredWindow)
+            lock (_guideButtonToastSync)
             {
+                if (!_pendingSteamSecondaryGuideFallbackByDevice.TryGetValue(key, out var pending) ||
+                    !ReferenceEquals(pending.Cancellation, cts))
+                {
+                    return;
+                }
+
+                if (_lastSteamRawGuideButtonByDevice.TryGetValue(key, out var lastRawPress) &&
+                    now - lastRawPress <= SteamRawInputPreferredWindow)
+                {
+                    _pendingSteamSecondaryGuideFallbackByDevice.Remove(key);
+                    cts.Dispose();
+                    return;
+                }
+
+                if (_steamSecondaryGuideFallbackBlockedUntilByDevice.TryGetValue(key, out var blockedUntil) &&
+                    now <= blockedUntil)
+                {
+                    _pendingSteamSecondaryGuideFallbackByDevice.Remove(key);
+                    cts.Dispose();
+                    return;
+                }
+
+                if (_steamSecondaryGuideFallbackBlockedUntilByDevice.ContainsKey(key))
+                {
+                    _steamSecondaryGuideFallbackBlockedUntilByDevice.Remove(key);
+                }
+            }
+
+            var rawHidActivity = _steamRawInputMonitor.GetGuideButtonActivity(e.Address);
+            if (rawHidActivity.IsPressed)
+            {
+                if (!rawHidWasFreshForThisFallback &&
+                    rawHidActivity.PressedDuration >= SteamSecondaryFallbackRawHidPreExistingHoldAge)
+                {
+                    _steamRawInputMonitor.ClearGuideButtonActivity(e.Address);
+                    GuideButtonEventLog.Write(
+                        "secondary_fallback_stale_raw_hid_ignored",
+                        e.DeviceKind.ToString(),
+                        e.Address,
+                        e.DisplayName,
+                        $"Secondary Steam HID monitor ignored a pre-existing Raw HID pressed-state so a fresh short tap can still show. rawHeldMs={(int)rawHidActivity.PressedDuration.TotalMilliseconds}; rawLastStateAgeMs={(int)rawHidActivity.LastStateAge.TotalMilliseconds}.");
+                }
+                else
+                {
+                    var rawHidLooksActiveHold =
+                        rawHidActivity.LastStateAge <= SteamSecondaryFallbackRawHidActivePressFreshWindow;
+
+                    rawHidWasFreshForThisFallback =
+                        rawHidWasFreshForThisFallback ||
+                        rawHidActivity.PressedDuration < SteamSecondaryFallbackRawHidHoldSuppressDuration ||
+                        rawHidLooksActiveHold;
+
+                    if (rawHidActivity.PressedDuration >= SteamSecondaryFallbackRawHidHoldSuppressDuration &&
+                        !rawHidLooksActiveHold)
+                    {
+                        _steamRawInputMonitor.ClearGuideButtonActivity(e.Address);
+                        GuideButtonEventLog.Write(
+                            "secondary_fallback_stale_raw_hid_ignored",
+                            e.DeviceKind.ToString(),
+                            e.Address,
+                            e.DisplayName,
+                            $"Secondary Steam HID monitor ignored an old Raw HID pressed-state so a fresh short tap can still show. rawHeldMs={(int)rawHidActivity.PressedDuration.TotalMilliseconds}; rawLastStateAgeMs={(int)rawHidActivity.LastStateAge.TotalMilliseconds}.");
+                        rawHidActivity = SteamRawHidGuideButtonActivity.None;
+                    }
+                    else if ((rawHidActivity.PressedDuration >= SteamSecondaryFallbackRawHidHoldSuppressDuration &&
+                              rawHidLooksActiveHold) ||
+                             (now - startedAt >= SteamSecondaryFallbackRawHidAmbiguousMaximumWait &&
+                              rawHidLooksActiveHold))
+                    {
+                        lock (_guideButtonToastSync)
+                        {
+                            if (_pendingSteamSecondaryGuideFallbackByDevice.TryGetValue(key, out var pending) &&
+                                ReferenceEquals(pending.Cancellation, cts))
+                            {
+                                _pendingSteamSecondaryGuideFallbackByDevice.Remove(key);
+                                cts.Dispose();
+                            }
+                        }
+
+                        GuideButtonEventLog.Write(
+                            "secondary_fallback_raw_hid_hold_suppressed",
+                            e.DeviceKind.ToString(),
+                            e.Address,
+                            e.DisplayName,
+                            $"Secondary Steam HID monitor event was ignored because Raw HID still sees a fresh Steam-button hold. rawHeldMs={(int)rawHidActivity.PressedDuration.TotalMilliseconds}; rawLastStateAgeMs={(int)rawHidActivity.LastStateAge.TotalMilliseconds}.");
+                        return;
+                    }
+
+                    if (rawHidActivity.IsPressed)
+                    {
+                        if (!rawHidWaitLogged)
+                        {
+                            rawHidWaitLogged = true;
+                            GuideButtonEventLog.Write(
+                                "secondary_fallback_waiting_for_raw_hid",
+                                e.DeviceKind.ToString(),
+                                e.Address,
+                                e.DisplayName,
+                                "Secondary Steam HID monitor event is waiting for Raw HID to decide whether this is a short tap or a power-off hold.");
+                        }
+
+                        delay = SteamSecondaryFallbackRawHidRecheckDelay;
+                        continue;
+                    }
+                }
+            }
+
+            if (rawHidActivity.HasPendingRelease &&
+                rawHidActivity.PendingPressDuration >= SteamSecondaryFallbackRawHidHoldSuppressDuration &&
+                rawHidWasFreshForThisFallback)
+            {
+                lock (_guideButtonToastSync)
+                {
+                    if (_pendingSteamSecondaryGuideFallbackByDevice.TryGetValue(key, out var pending) &&
+                        ReferenceEquals(pending.Cancellation, cts))
+                    {
+                        _pendingSteamSecondaryGuideFallbackByDevice.Remove(key);
+                        _steamSecondaryGuideFallbackBlockedUntilByDevice[key] = now + SteamSecondaryFallbackBurstWindow;
+                        cts.Dispose();
+                    }
+                }
+
+                GuideButtonEventLog.Write(
+                    "secondary_fallback_raw_hid_pending_hold_suppressed",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    $"Secondary Steam HID monitor event was ignored because Raw HID release validation came from a long hold. rawPressMs={(int)rawHidActivity.PendingPressDuration.TotalMilliseconds}.");
                 return;
             }
 
-            if (_steamSecondaryGuideFallbackBlockedUntilByDevice.TryGetValue(key, out var blockedUntil) &&
-                now <= blockedUntil)
+            if (rawHidActivity.HasPendingRelease &&
+                rawHidActivity.PendingPressDuration >= SteamSecondaryFallbackRawHidHoldSuppressDuration)
             {
+                _steamRawInputMonitor.ClearGuideButtonActivity(e.Address);
+                GuideButtonEventLog.Write(
+                    "secondary_fallback_stale_raw_hid_ignored",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    $"Secondary Steam HID monitor ignored an old Raw HID release validation so a fresh short tap can still show. rawPressMs={(int)rawHidActivity.PendingPressDuration.TotalMilliseconds}; rawLastPressedAgeMs={(int)rawHidActivity.PendingLastPressedAge.TotalMilliseconds}.");
+                rawHidActivity = SteamRawHidGuideButtonActivity.None;
+            }
+
+            if (rawHidActivity.HasPendingRelease &&
+                now - startedAt < SteamSecondaryFallbackRawHidShortTapMaximumWait)
+            {
+                if (!rawHidWaitLogged)
+                {
+                    rawHidWaitLogged = true;
+                    GuideButtonEventLog.Write(
+                        "secondary_fallback_waiting_for_raw_hid",
+                        e.DeviceKind.ToString(),
+                        e.Address,
+                        e.DisplayName,
+                        "Secondary Steam HID monitor event is waiting for Raw HID to finish release validation.");
+                }
+
+                delay = SteamSecondaryFallbackRawHidRecheckDelay;
+                continue;
+            }
+
+            if (rawHidActivity.HasPendingRelease &&
+                rawHidActivity.PendingReleaseAge >= SteamSecondaryFallbackRawHidAmbiguousMaximumWait)
+            {
+                lock (_guideButtonToastSync)
+                {
+                    if (_pendingSteamSecondaryGuideFallbackByDevice.TryGetValue(key, out var pending) &&
+                        ReferenceEquals(pending.Cancellation, cts))
+                    {
+                        _pendingSteamSecondaryGuideFallbackByDevice.Remove(key);
+                        _steamSecondaryGuideFallbackBlockedUntilByDevice[key] = now + SteamSecondaryFallbackBurstWindow;
+                        cts.Dispose();
+                    }
+                }
+
+                GuideButtonEventLog.Write(
+                    "secondary_fallback_raw_hid_pending_suppressed",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    $"Secondary Steam HID monitor event was ignored because Raw HID did not finish release validation in time. pendingReleaseMs={(int)rawHidActivity.PendingReleaseAge.TotalMilliseconds}.");
                 return;
             }
+
+            lock (_guideButtonToastSync)
+            {
+                if (!_pendingSteamSecondaryGuideFallbackByDevice.TryGetValue(key, out var pending) ||
+                    !ReferenceEquals(pending.Cancellation, cts))
+                {
+                    return;
+                }
+
+                _pendingSteamSecondaryGuideFallbackByDevice.Remove(key);
+                cts.Dispose();
+
+                now = DateTimeOffset.Now;
+                if (_lastSteamRawGuideButtonByDevice.TryGetValue(key, out var lastRawPress) &&
+                    now - lastRawPress <= SteamRawInputPreferredWindow)
+                {
+                    return;
+                }
+
+                if (_steamSecondaryGuideFallbackBlockedUntilByDevice.TryGetValue(key, out var blockedUntil) &&
+                    now <= blockedUntil)
+                {
+                    return;
+                }
+
+                if (_steamSecondaryGuideFallbackBlockedUntilByDevice.ContainsKey(key))
+                {
+                    _steamSecondaryGuideFallbackBlockedUntilByDevice.Remove(key);
+                }
+            }
+
+            break;
         }
 
         if (ShouldSuppressDuplicateGuideButtonToast(e))
@@ -4510,6 +4723,11 @@ public partial class MainWindow : Window
     internal static TimeSpan GetSteamSecondaryFallbackDelay()
     {
         return SteamSecondaryFallbackDelay;
+    }
+
+    internal static TimeSpan GetSteamRawInputPreferredWindow()
+    {
+        return SteamRawInputPreferredWindow;
     }
 
     private static string BuildGuideButtonToastKey(GuideButtonPressedEventArgs e)

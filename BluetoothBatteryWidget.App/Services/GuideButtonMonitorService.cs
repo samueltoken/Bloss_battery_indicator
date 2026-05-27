@@ -306,6 +306,14 @@ internal sealed class GuideButtonMonitorService : IDisposable
             if (!GuideButtonReportParser.TryParseGuideButton(endpoint.DeviceKind, frame.Data, out var pressed))
             {
                 if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
+                    lastPressed &&
+                    GuideButtonReportParser.IsSteamControllerStatusReport(frame.Data))
+                {
+                    HandleGuideButtonState(endpoint, pressed: false, ref lastPressed, ref pressedAt);
+                    continue;
+                }
+
+                if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
                     !unparsedReportLogged)
                 {
                     unparsedReportLogged = true;

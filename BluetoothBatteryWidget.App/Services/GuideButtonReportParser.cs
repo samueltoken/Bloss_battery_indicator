@@ -22,6 +22,14 @@ internal static class GuideButtonReportParser
         };
     }
 
+    public static bool IsSteamControllerStatusReport(ReadOnlySpan<byte> report)
+    {
+        return report.Length >= 54 &&
+               (report[0] is 0x43 or 0x44) &&
+               report[1] == 0x01 &&
+               (report[2] is > 0 and <= 100 or 0x58 or 0x59 or 0x5A or 0x5B);
+    }
+
     private static bool TryParseDualSenseGuideButton(ReadOnlySpan<byte> report, out bool isPressed)
     {
         isPressed = false;

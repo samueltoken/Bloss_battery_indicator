@@ -29,6 +29,8 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
     private static readonly TimeSpan RawHidFastShortPressMaximumDuration = TimeSpan.FromMilliseconds(320);
     private static readonly TimeSpan RawHidFastReleaseStabilityDelay = TimeSpan.FromMilliseconds(180);
     private static readonly TimeSpan RawHidCautiousReleaseStabilityDelay = TimeSpan.FromMilliseconds(450);
+    private static readonly TimeSpan RawHidStalePressedResetGap = TimeSpan.FromMilliseconds(1800);
+    private static readonly TimeSpan RawHidMissedReleaseRecoveryGap = TimeSpan.FromMilliseconds(700);
 
     private readonly object _sync = new();
     private readonly Dictionary<string, DateTimeOffset> _lastPressByAddress = new(StringComparer.OrdinalIgnoreCase);
@@ -37,7 +39,9 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         ShortPressMaximumDuration,
         RawHidFastShortPressMaximumDuration,
         RawHidFastReleaseStabilityDelay,
-        RawHidCautiousReleaseStabilityDelay);
+        RawHidCautiousReleaseStabilityDelay,
+        RawHidStalePressedResetGap,
+        RawHidMissedReleaseRecoveryGap);
     private readonly Dictionary<string, DateTimeOffset> _lastDiagnosticByKey = new(StringComparer.OrdinalIgnoreCase);
     private Func<IReadOnlyList<GuideButtonKnownDevice>> _knownDeviceProvider = static () => [];
     private bool _isRegistered;
@@ -50,6 +54,35 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         lock (_sync)
         {
             _knownDeviceProvider = provider ?? (static () => []);
+        }
+    }
+
+    public SteamRawHidGuideButtonActivity GetGuideButtonActivity(string address)
+    {
+        address = AddressNormalizer.NormalizeAddress(address);
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return SteamRawHidGuideButtonActivity.None;
+        }
+
+        lock (_sync)
+        {
+            var now = DateTimeOffset.Now;
+            return _rawHidGuideButtonStateTracker.GetActivity(address, now);
+        }
+    }
+
+    public bool ClearGuideButtonActivity(string address)
+    {
+        address = AddressNormalizer.NormalizeAddress(address);
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            return _rawHidGuideButtonStateTracker.ClearActivity(address, DateTimeOffset.Now);
         }
     }
 
@@ -234,9 +267,16 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
                     report,
                     out var pressed))
             {
-                RegisterRawHidGuideState(device, pressed);
+                RegisterRawHidGuideState(device, pressed, report);
                 continue;
             }
+
+            if (TryApplyRawHidStatusReleaseHint(device, report))
+            {
+                continue;
+            }
+
+            TryClearStaleRawHidGuideState(device, report);
 
             WriteDiagnostic(
                 $"raw_hid:{device.Address}:{BuildReportSignature(report)}",
@@ -246,7 +286,92 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         }
     }
 
-    private void RegisterRawHidGuideState(GuideButtonKnownDevice device, bool pressed)
+    private bool TryApplyRawHidStatusReleaseHint(GuideButtonKnownDevice device, ReadOnlySpan<byte> report)
+    {
+        if (!GuideButtonReportParser.IsSteamControllerStatusReport(report))
+        {
+            return false;
+        }
+
+        var address = AddressNormalizer.NormalizeAddress(device.Address);
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return false;
+        }
+
+        SteamRawHidGuideButtonActivity activity;
+        SteamRawHidGuideButtonDecision decision;
+        var now = DateTimeOffset.Now;
+        lock (_sync)
+        {
+            activity = _rawHidGuideButtonStateTracker.GetActivity(address, now);
+            if (!activity.IsPressed)
+            {
+                WriteDiagnostic(
+                    $"raw_hid_status_release_skipped:{device.Address}:{BuildReportSignature(report)}",
+                    "raw_hid_status_release_skipped",
+                    device,
+                    $"Steam raw HID status report was neutral, but no pressed Raw HID state was active. pending={activity.HasPendingRelease}; pendingPressMs={(int)activity.PendingPressDuration.TotalMilliseconds}; pendingLastPressedAgeMs={(int)activity.PendingLastPressedAge.TotalMilliseconds}; {FormatReportSample(report)}");
+                return false;
+            }
+
+            decision = _rawHidGuideButtonStateTracker.RegisterStatusReleaseHint(address, now);
+        }
+
+        WriteDiagnostic(
+            $"raw_hid_status_release:{device.Address}:{BuildReportSignature(report)}",
+            "raw_hid_status_release_hint",
+            device,
+            $"Steam raw HID status report released a stuck pressed-state. rawHeldMs={(int)activity.PressedDuration.TotalMilliseconds}; rawLastStateAgeMs={(int)activity.LastStateAge.TotalMilliseconds}; {FormatReportSample(report)}");
+
+        if (decision.Kind == SteamRawHidGuideButtonDecisionKind.StableShortPress)
+        {
+            RaiseGuideButtonPressed(device, "raw_hid_status_release_hint", GuideButtonGesture.ShortPress);
+        }
+        else if (decision.Kind == SteamRawHidGuideButtonDecisionKind.PendingRelease)
+        {
+            _ = CompleteRawHidShortPressCandidateAsync(device, address, decision.PendingId, decision.ReleaseDueAt);
+        }
+        else if (decision.Kind == SteamRawHidGuideButtonDecisionKind.StableLongPress)
+        {
+            NotifyRawHidLongPressSuppressed(device, address, decision.Duration);
+        }
+
+        return true;
+    }
+
+    private void TryClearStaleRawHidGuideState(GuideButtonKnownDevice device, ReadOnlySpan<byte> report)
+    {
+        if (!GuideButtonReportParser.IsSteamControllerStatusReport(report))
+        {
+            return;
+        }
+
+        var address = AddressNormalizer.NormalizeAddress(device.Address);
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return;
+        }
+
+        var cleared = false;
+        lock (_sync)
+        {
+            cleared = _rawHidGuideButtonStateTracker.ClearStalePressedSession(address, DateTimeOffset.Now);
+        }
+
+        if (!cleared)
+        {
+            return;
+        }
+
+        WriteDiagnostic(
+            $"raw_hid_stale_clear:{device.Address}",
+            "raw_hid_stale_state_cleared",
+            device,
+            $"Steam raw HID pressed-state was stale and was cleared without showing a toast. {FormatReportSample(report)}");
+    }
+
+    private void RegisterRawHidGuideState(GuideButtonKnownDevice device, bool pressed, ReadOnlySpan<byte> report)
     {
         var address = AddressNormalizer.NormalizeAddress(device.Address);
         if (string.IsNullOrWhiteSpace(address))
@@ -260,9 +385,27 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             decision = _rawHidGuideButtonStateTracker.RegisterState(address, pressed, DateTimeOffset.Now);
         }
 
+        if (decision.Kind != SteamRawHidGuideButtonDecisionKind.None)
+        {
+            GuideButtonEventLog.Write(
+                "raw_hid_guide_state",
+                "SteamController",
+                address,
+                string.IsNullOrWhiteSpace(device.DisplayName) ? "Steam Controller" : device.DisplayName,
+                $"Steam raw HID guide state parsed. pressed={pressed}; decision={decision.Kind}; {FormatReportSample(report)}");
+        }
+
         if (decision.Kind == SteamRawHidGuideButtonDecisionKind.PendingRelease)
         {
             _ = CompleteRawHidShortPressCandidateAsync(device, address, decision.PendingId, decision.ReleaseDueAt);
+        }
+        else if (decision.Kind == SteamRawHidGuideButtonDecisionKind.StableShortPress)
+        {
+            RaiseGuideButtonPressed(device, "raw_hid_release_short_press", GuideButtonGesture.ShortPress);
+        }
+        else if (decision.Kind == SteamRawHidGuideButtonDecisionKind.StableLongPress)
+        {
+            NotifyRawHidLongPressSuppressed(device, address, decision.Duration);
         }
     }
 
