@@ -109,7 +109,24 @@ public sealed class WidgetSettingsStore
         settings.CustomFontPath = settings.CustomFontPath?.Trim() ?? string.Empty;
         settings.UseCustomFont = settings.UseCustomFont && !string.IsNullOrWhiteSpace(settings.CustomFontPath);
         settings.Language = WidgetSettings.NormalizeLanguage(settings.Language);
+        settings.CustomGuideSoundPath = WidgetSettings.NormalizeOptionalAudioPath(settings.CustomGuideSoundPath);
+        settings.GuideSoundId = WidgetSettings.NormalizeGuideSoundId(settings.GuideSoundId);
+        settings.LastDs5DongleFirmwareVersion =
+            WidgetSettings.NormalizeFirmwareVersionText(settings.LastDs5DongleFirmwareVersion);
+        if (settings.GuideSoundId == WidgetSettings.GuideSoundCustomFile &&
+            string.IsNullOrWhiteSpace(settings.CustomGuideSoundPath))
+        {
+            settings.GuideSoundId = WidgetSettings.DefaultGuideSoundId;
+        }
+
         settings.UiScaleStep = WidgetSettings.NormalizeUiScaleStep(settings.UiScaleStep);
+        settings.SettingsTextFontSize = WidgetSettings.NormalizeSettingsTextFontSize(settings.SettingsTextFontSize);
+        settings.UseCustomSettingsTextStyle =
+            settings.UseCustomSettingsTextStyle ||
+            settings.SettingsTextBold ||
+            Math.Abs(settings.SettingsTextFontSize - WidgetSettings.DefaultSettingsTextFontSize) > 0.01d ||
+            settings.CustomElementColors.ContainsKey("SettingsText");
+
         var normalizedHold = WidgetSettings.NormalizeBatteryHoldSeconds(settings.BatteryHoldSeconds);
         if (normalizedHold == WidgetSettings.LegacyDefaultBatteryHoldSeconds)
         {

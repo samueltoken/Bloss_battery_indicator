@@ -2,6 +2,7 @@ using System.Windows;
 using BluetoothBatteryWidget.App.Services;
 using BluetoothBatteryWidget.App.ViewModels;
 using BluetoothBatteryWidget.Core.Services;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -91,6 +92,12 @@ public partial class App : System.Windows.Application
 
         var mainWindow = new MainWindow(viewModel);
         MainWindow = mainWindow;
+        if (viewModel.StartMinimizedToTrayEnabled &&
+            e.Args.Any(arg => string.Equals(arg, "--start-in-tray", StringComparison.OrdinalIgnoreCase)))
+        {
+            mainWindow.PrepareStartHiddenInTray();
+        }
+
         mainWindow.Show();
         StartActivateSignalListener();
     }
@@ -154,6 +161,12 @@ public partial class App : System.Windows.Application
                 {
                     if (MainWindow is null)
                     {
+                        return;
+                    }
+
+                    if (MainWindow is MainWindow blossWindow)
+                    {
+                        blossWindow.ShowWidgetFromTray();
                         return;
                     }
 

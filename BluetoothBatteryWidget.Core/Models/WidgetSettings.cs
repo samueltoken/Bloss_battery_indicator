@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace BluetoothBatteryWidget.Core.Models;
 
 public sealed class WidgetSettings
@@ -35,6 +37,14 @@ public sealed class WidgetSettings
     public const string ChineseTraditionalLanguage = "zh-TW";
     public const string LatinLanguage = "la-LA";
     public const string FrenchLanguage = "fr-FR";
+    public const string GuideSoundInfographic2Seconds = "infographic-2s";
+    public const string GuideSoundInfographic1Second = "infographic-1s";
+    public const string GuideSoundLongAgo = "long-ago";
+    public const string GuideSoundRick = "rick";
+    public const string GuideSoundWarning = "warning";
+    public const string GuideSoundSmile = "smile";
+    public const string GuideSoundCustomFile = "custom-file";
+    public const string DefaultGuideSoundId = GuideSoundInfographic2Seconds;
     public const int DefaultBatteryHoldSeconds = 600;
     public const int LegacyDefaultBatteryHoldSeconds = 90;
     public const int MinimumBatteryHoldSeconds = 60;
@@ -43,8 +53,14 @@ public sealed class WidgetSettings
     public const int LegacyDefaultGamepadDisconnectGraceSeconds = 70;
     public const int MinimumGamepadDisconnectGraceSeconds = 0;
     public const int MaximumGamepadDisconnectGraceSeconds = 180;
+    public const double DefaultSettingsTextFontSize = 13d;
+    public const double MinimumSettingsTextFontSize = 11d;
+    public const double MaximumSettingsTextFontSize = 18d;
+    public const int MaximumFirmwareVersionTextLength = 64;
 
     public bool Autostart { get; set; } = true;
+
+    public bool StartMinimizedToTray { get; set; } = false;
 
     public bool CloseToTray { get; set; } = true;
 
@@ -70,9 +86,23 @@ public sealed class WidgetSettings
 
     public bool GuidedProbeEnabled { get; set; } = false;
 
+    public bool GuideSoundEnabled { get; set; } = true;
+
+    public string GuideSoundId { get; set; } = DefaultGuideSoundId;
+
+    public string CustomGuideSoundPath { get; set; } = string.Empty;
+
+    public string LastDs5DongleFirmwareVersion { get; set; } = string.Empty;
+
     public bool StatusPanelCollapsed { get; set; } = false;
 
     public int UiScaleStep { get; set; } = 0;
+
+    public bool UseCustomSettingsTextStyle { get; set; } = false;
+
+    public double SettingsTextFontSize { get; set; } = DefaultSettingsTextFontSize;
+
+    public bool SettingsTextBold { get; set; } = false;
 
     public ThirdPartyBatteryPolicy ThirdPartyBatteryPolicy { get; set; } = ThirdPartyBatteryPolicy.Aggressive;
 
@@ -154,6 +184,19 @@ public sealed class WidgetSettings
         return Math.Clamp(uiScaleStep, -5, 0);
     }
 
+    public static double NormalizeSettingsTextFontSize(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
+        {
+            return DefaultSettingsTextFontSize;
+        }
+
+        return Math.Clamp(
+            Math.Round(value, MidpointRounding.AwayFromZero),
+            MinimumSettingsTextFontSize,
+            MaximumSettingsTextFontSize);
+    }
+
     public static string NormalizeLanguage(string? language)
     {
         return language switch
@@ -166,6 +209,57 @@ public sealed class WidgetSettings
             LatinLanguage => LatinLanguage,
             FrenchLanguage => FrenchLanguage,
             _ => KoreanLanguage
+        };
+    }
+
+    public static string NormalizeGuideSoundId(string? soundId)
+    {
+        return soundId switch
+        {
+            GuideSoundInfographic2Seconds => GuideSoundInfographic2Seconds,
+            GuideSoundInfographic1Second => GuideSoundInfographic1Second,
+            GuideSoundLongAgo => GuideSoundLongAgo,
+            GuideSoundRick => GuideSoundRick,
+            GuideSoundWarning => GuideSoundWarning,
+            GuideSoundSmile => GuideSoundSmile,
+            GuideSoundCustomFile => GuideSoundCustomFile,
+            _ => DefaultGuideSoundId
+        };
+    }
+
+    public static string NormalizeFirmwareVersionText(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return string.Empty;
+        }
+
+        var normalized = new string(version
+            .Trim()
+            .Where(character => !char.IsControl(character))
+            .Take(MaximumFirmwareVersionTextLength)
+            .ToArray());
+        return normalized.Trim();
+    }
+
+    public static string NormalizeOptionalAudioPath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = value.Trim();
+        var extension = Path.GetExtension(trimmed);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return string.Empty;
+        }
+
+        return extension.ToLowerInvariant() switch
+        {
+            ".wav" or ".mp3" or ".wma" or ".m4a" => trimmed,
+            _ => string.Empty
         };
     }
 

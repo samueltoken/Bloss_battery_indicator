@@ -25,6 +25,8 @@
         <SolidColorBrush x:Key="BatteryTextBrush" Color="#132F4D" />
         <SolidColorBrush x:Key="CardTintBrush" Color="#C2FFFFFF" />
         <SolidColorBrush x:Key="CardBorderBrush" Color="#93FFFFFF" />
+        <SolidColorBrush x:Key="WidgetBackgroundBrush" Color="#ECF5FF" />
+        <SolidColorBrush x:Key="GlassSurfaceBrush" Color="#DDEAF3FF" />
         <SolidColorBrush x:Key="TrackBrush" Color="#7AB8C8D7" />
         <SolidColorBrush x:Key="IconBackBrush" Color="#E7F2F8FC" />
         <SolidColorBrush x:Key="IconBorderBrush" Color="#A3CBDDEE" />
@@ -212,6 +214,129 @@
             </Setter>
         </Style>
 
+        <Style x:Key="UiScaleSliderTrackButtonStyle" TargetType="RepeatButton">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="UiScaleSliderStyle" TargetType="Slider">
+            <Setter Property="Height" Value="44" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Height="44"
+                              Margin="2,0"
+                              ClipToBounds="False">
+                            <Border Height="11"
+                                    Margin="7,0"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="6"
+                                    Background="#EDF4FAFF"
+                                    BorderBrush="#A8C4D8EA"
+                                    BorderThickness="1" />
+                            <Border Height="5"
+                                    Margin="15,0"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="3"
+                                    Background="#C8D4E4F2" />
+                            <Track x:Name="PART_Track"
+                                   Height="34"
+                                   Margin="15,0"
+                                   VerticalAlignment="Center">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge"
+                                                  Style="{StaticResource UiScaleSliderTrackButtonStyle}" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge"
+                                                  Style="{StaticResource UiScaleSliderTrackButtonStyle}" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="26"
+                                           Height="26"
+                                           Cursor="Hand">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Grid Width="26"
+                                                      Height="26"
+                                                      ClipToBounds="False">
+                                                    <Ellipse Fill="#FFFFFFFF"
+                                                             Stroke="#FF2F7DF0"
+                                                             StrokeThickness="2">
+                                                        <Ellipse.Effect>
+                                                            <DropShadowEffect Color="#4D1D4D84"
+                                                                              BlurRadius="8"
+                                                                              ShadowDepth="1"
+                                                                              Opacity="0.28" />
+                                                        </Ellipse.Effect>
+                                                    </Ellipse>
+                                                    <Ellipse Width="7"
+                                                             Height="7"
+                                                             HorizontalAlignment="Center"
+                                                             VerticalAlignment="Center"
+                                                             Fill="#FF2F7DF0" />
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SettingsMenuButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+            <Setter Property="Foreground" Value="#202B36" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="#78F7FBFF" />
+            <Setter Property="BorderBrush" Value="#00FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="MenuButtonBorder"
+                                CornerRadius="10"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="10,0">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="MenuButtonBorder" Property="Background" Value="#ECF4F9FF" />
+                                <Setter TargetName="MenuButtonBorder" Property="BorderBrush" Value="#9CC7DAEC" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="MenuButtonBorder" Property="Background" Value="#DDECF7FF" />
+                                <Setter TargetName="MenuButtonBorder" Property="BorderBrush" Value="#7CB2CEE8" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="ColorElementButtonStyle"
                TargetType="Button"
                BasedOn="{StaticResource GlassPanelActionButtonStyle}">
@@ -328,6 +453,7 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Padding" Value="10,4,30,4" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
@@ -345,6 +471,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                                   VerticalAlignment="Center"
                                                   Content="{TemplateBinding SelectionBoxItem}"
                                                   ContentTemplate="{TemplateBinding ItemTemplate}"
@@ -962,7 +1089,14 @@
                                             Style="{StaticResource RoundActionButtonStyle}"
                                             Click="SettingsButton_Click"
                                             ToolTip="{Binding TextSettingsTooltip}">
-                                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" />
+                                        <TextBlock x:Name="SettingsGearIcon"
+                                                   FontFamily="Segoe MDL2 Assets"
+                                                   RenderTransformOrigin="0.5,0.5"
+                                                   Text="&#xE713;">
+                                            <TextBlock.RenderTransform>
+                                                <RotateTransform x:Name="SettingsGearRotateTransform" Angle="0" />
+                                            </TextBlock.RenderTransform>
+                                        </TextBlock>
                                     </Button>
                                 </Border>
 
@@ -1048,113 +1182,761 @@
 
         <Popup x:Name="SettingsPopup"
                AllowsTransparency="True"
-               PlacementTarget="{Binding ElementName=StatusPanelBorder}"
+               PlacementTarget="{Binding ElementName=GlassCard}"
                Placement="Bottom"
-               HorizontalOffset="8"
+               HorizontalOffset="0"
                VerticalOffset="8"
                StaysOpen="True">
             <Border x:Name="SettingsPopupChrome"
-                    Width="340"
-                    Padding="12"
-                    CornerRadius="18"
+                    Width="348"
+                    Padding="8"
+                    CornerRadius="14"
                     BorderThickness="1"
                     BorderBrush="#9DD0E1F4"
-                    Background="#F2EAF6FF"
+                    Background="{DynamicResource GlassSurfaceBrush}"
                     Cursor="Arrow"
                     Focusable="False"
-                    FocusVisualStyle="{x:Null}">
+                    FocusVisualStyle="{x:Null}"
+                    MouseEnter="SettingsPopupArea_MouseEnter"
+                    MouseLeave="SettingsPopupArea_MouseLeave">
                 <Border.Effect>
                     <DropShadowEffect Color="#70000000"
                                       BlurRadius="16"
                                       ShadowDepth="4"
                                       Opacity="0.25" />
                 </Border.Effect>
-                <ScrollViewer MaxHeight="600"
-                              VerticalScrollBarVisibility="Hidden"
-                              HorizontalScrollBarVisibility="Disabled"
-                              CanContentScroll="False"
-                              Cursor="Arrow">
-                    <StackPanel Cursor="Arrow">
+                <StackPanel Cursor="Arrow">
                     <Grid MinHeight="24"
-                          Margin="0,0,0,8"
+                          Margin="0,0,0,6"
                           Background="Transparent"
                           Cursor="Arrow">
                         <TextBlock x:Name="SettingsTitleTextBlock"
                                     VerticalAlignment="Center"
-                                    FontSize="15"
+                                    FontSize="14"
                                     FontWeight="SemiBold"
                                     Foreground="{StaticResource SettingsTitleBrush}"
                                     IsHitTestVisible="False"
                                     Text="{Binding TextSettingsTitle}" />
                     </Grid>
 
-                    <Grid Margin="0,0,0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="AutostartLabelTextBlock"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="{Binding TextAutostart}" />
-                        <ToggleButton x:Name="AutostartToggle"
-                                      Grid.Column="1"
-                                      Style="{StaticResource GlassToggleSwitchStyle}"
-                                      IsChecked="{Binding AutostartEnabled, Mode=OneWay}"
-                                      Checked="AutostartToggle_Checked"
-                                      Unchecked="AutostartToggle_Unchecked" />
-                    </Grid>
+                    <Button x:Name="EnvironmentSettingsGroupButton"
+                            Style="{StaticResource SettingsMenuButtonStyle}"
+                            Click="EnvironmentSettingsGroupButton_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="34" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Viewbox x:Name="EnvironmentSettingsIconRoot"
+                                     Grid.Column="0"
+                                     Width="25"
+                                     Height="25"
+                                     HorizontalAlignment="Left"
+                                     VerticalAlignment="Center"
+                                     ClipToBounds="True"
+                                     Stretch="Uniform">
+                                <Canvas Width="32"
+                                        Height="32"
+                                        ClipToBounds="True"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Canvas.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="EnvironmentIconScale" />
+                                            <RotateTransform x:Name="EnvironmentIconRotate" />
+                                            <TranslateTransform x:Name="EnvironmentIconMotion" />
+                                        </TransformGroup>
+                                    </Canvas.RenderTransform>
+                                    <Canvas.Triggers>
+                                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetName="EnvironmentIconMotion"
+                                                                     Storyboard.TargetProperty="Y"
+                                                                     From="0"
+                                                                     To="-0.8"
+                                                                     Duration="0:0:3.8"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="EnvironmentIconScale"
+                                                                     Storyboard.TargetProperty="ScaleX"
+                                                                     From="1"
+                                                                     To="1.07"
+                                                                     Duration="0:0:4.4"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="EnvironmentIconScale"
+                                                                     Storyboard.TargetProperty="ScaleY"
+                                                                     From="1"
+                                                                     To="1.07"
+                                                                     Duration="0:0:4.4"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="EnvironmentIconRotate"
+                                                                     Storyboard.TargetProperty="Angle"
+                                                                     From="0"
+                                                                     To="360"
+                                                                     Duration="0:0:18" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Canvas.Triggers>
+                                    <Path Data="M16,5.7 L26.3,16 L16,26.3 L5.7,16 Z"
+                                          Stroke="#999999"
+                                          Fill="Transparent"
+                                          StrokeThickness="2"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                    <Path Data="M10,10 L22,10 L22,22 L10,22 Z"
+                                          Stroke="#050505"
+                                          Fill="Transparent"
+                                          StrokeThickness="2"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                    <Path Data="M14,14 L18,14 L18,18 L14,18 Z"
+                                          Stroke="#999999"
+                                          Fill="Transparent"
+                                          StrokeThickness="2"
+                                          StrokeLineJoin="Round" />
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Grid.Column="1"
+                                       VerticalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding TextEnvironmentSettingsGroup}" />
+                            <TextBlock x:Name="EnvironmentAccordionArrow"
+                                       Grid.Column="2"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       FontSize="18"
+                                       Foreground="#394957"
+                                       Text="⌄" />
+                        </Grid>
+                    </Button>
 
-                    <Grid Margin="0,0,0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="CloseToTrayLabelTextBlock"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="{Binding TextCloseToTray}" />
-                        <ToggleButton x:Name="CloseToTrayToggle"
-                                      Grid.Column="1"
-                                      Style="{StaticResource GlassToggleSwitchStyle}"
-                                      IsChecked="{Binding CloseToTrayEnabled, Mode=OneWay}"
-                                      Checked="CloseToTrayToggle_Checked"
-                                      Unchecked="CloseToTrayToggle_Unchecked" />
-                    </Grid>
+                    <Border x:Name="EnvironmentAccordionBody"
+                            Margin="0,-2,0,6"
+                            Padding="12,10"
+                            CornerRadius="0,0,13,13"
+                            BorderThickness="1,0,1,1"
+                            BorderBrush="#AEC8DAED"
+                            Background="{DynamicResource GlassSurfaceBrush}"
+                            ClipToBounds="True"
+                            Visibility="Collapsed">
+                        <StackPanel Cursor="Arrow">
+                            <Grid Height="32"
+                                  Margin="0,0,0,10"
+                                  SnapsToDevicePixels="True"
+                                  UseLayoutRounding="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="AutostartLabelTextBlock"
+                                           Margin="0,0,14,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding TextAutostart}" />
+                                <ToggleButton x:Name="AutostartToggle"
+                                              Grid.Column="1"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource GlassToggleSwitchStyle}"
+                                              IsChecked="{Binding AutostartEnabled, Mode=OneWay}"
+                                              Checked="AutostartToggle_Checked"
+                                              Unchecked="AutostartToggle_Unchecked" />
+                            </Grid>
 
-                    <Grid Margin="0,0,0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="GuidedProbeLabelTextBlock"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="{Binding TextGuidedProbe}" />
-                        <ToggleButton x:Name="GuidedProbeToggle"
-                                      Grid.Column="1"
-                                      Style="{StaticResource GlassToggleSwitchStyle}"
-                                      IsChecked="{Binding GuidedProbeEnabled, Mode=OneWay}"
-                                      Checked="GuidedProbeToggle_Checked"
-                                      Unchecked="GuidedProbeToggle_Unchecked" />
-                    </Grid>
+                            <Grid Height="32"
+                                  Margin="0,0,0,10"
+                                  SnapsToDevicePixels="True"
+                                  UseLayoutRounding="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="StartMinimizedToTrayLabelTextBlock"
+                                           Margin="0,0,14,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding TextStartMinimizedToTray}" />
+                                <ToggleButton x:Name="StartMinimizedToTrayToggle"
+                                              Grid.Column="1"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource GlassToggleSwitchStyle}"
+                                              IsChecked="{Binding StartMinimizedToTrayEnabled, Mode=OneWay}"
+                                              Checked="StartMinimizedToTrayToggle_Checked"
+                                              Unchecked="StartMinimizedToTrayToggle_Unchecked" />
+                            </Grid>
 
-                    <Grid Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="AggressivePolicyLabelTextBlock"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="{Binding TextAggressivePolicy}" />
-                        <ToggleButton x:Name="AggressivePolicyToggle"
-                                      Grid.Column="1"
-                                      Style="{StaticResource GlassToggleSwitchStyle}"
-                                      IsChecked="{Binding IsAggressiveThirdPartyPolicy, Mode=OneWay}"
-                                      Checked="AggressivePolicyToggle_Checked"
-                                      Unchecked="AggressivePolicyToggle_Unchecked" />
-                    </Grid>
+                            <Grid Height="32"
+                                  Margin="0,0,0,10"
+                                  SnapsToDevicePixels="True"
+                                  UseLayoutRounding="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="CloseToTrayLabelTextBlock"
+                                           Margin="0,0,14,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding TextCloseToTray}" />
+                                <ToggleButton x:Name="CloseToTrayToggle"
+                                              Grid.Column="1"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource GlassToggleSwitchStyle}"
+                                              IsChecked="{Binding CloseToTrayEnabled, Mode=OneWay}"
+                                              Checked="CloseToTrayToggle_Checked"
+                                              Unchecked="CloseToTrayToggle_Unchecked" />
+                            </Grid>
+
+                            <Grid Height="32"
+                                  SnapsToDevicePixels="True"
+                                  UseLayoutRounding="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="GuideSoundEnabledLabelTextBlock"
+                                           Margin="0,0,14,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding TextGuideSound}" />
+                                <ToggleButton x:Name="GuideSoundToggle"
+                                              Grid.Column="1"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource GlassToggleSwitchStyle}"
+                                              IsChecked="{Binding GuideSoundEnabled, Mode=OneWay}"
+                                              Checked="GuideSoundToggle_Checked"
+                                              Unchecked="GuideSoundToggle_Unchecked" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Button x:Name="CustomizeSettingsGroupButton"
+                            Style="{StaticResource SettingsMenuButtonStyle}"
+                            Click="CustomizeSettingsGroupButton_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="34" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Viewbox x:Name="CustomizeSettingsIconRoot"
+                                     Grid.Column="0"
+                                     Width="25"
+                                     Height="25"
+                                     HorizontalAlignment="Left"
+                                     VerticalAlignment="Center"
+                                     ClipToBounds="True"
+                                     Stretch="Uniform">
+                                <Canvas Width="32"
+                                        Height="32"
+                                        ClipToBounds="True"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Canvas.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="CustomizeIconScale" />
+                                            <RotateTransform x:Name="CustomizeIconRotate" />
+                                            <TranslateTransform x:Name="CustomizeIconMotion" />
+                                        </TransformGroup>
+                                    </Canvas.RenderTransform>
+                                    <Canvas.Triggers>
+                                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetName="CustomizeIconMotion"
+                                                                     Storyboard.TargetProperty="Y"
+                                                                     From="0"
+                                                                     To="-0.8"
+                                                                     Duration="0:0:4"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="CustomizeIconScale"
+                                                                     Storyboard.TargetProperty="ScaleX"
+                                                                     From="1"
+                                                                     To="1.07"
+                                                                     Duration="0:0:4.6"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="CustomizeIconScale"
+                                                                     Storyboard.TargetProperty="ScaleY"
+                                                                     From="1"
+                                                                     To="1.07"
+                                                                     Duration="0:0:4.6"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="CustomizeIconRotate"
+                                                                     Storyboard.TargetProperty="Angle"
+                                                                     From="0"
+                                                                     To="360"
+                                                                     Duration="0:0:20" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Canvas.Triggers>
+                                    <Ellipse Canvas.Left="6.8"
+                                             Canvas.Top="7.1"
+                                             Width="14"
+                                             Height="14"
+                                          Fill="Transparent"
+                                          Stroke="#999999"
+                                             StrokeThickness="2" />
+                                    <Ellipse Canvas.Left="11.2"
+                                             Canvas.Top="7.1"
+                                             Width="14"
+                                             Height="14"
+                                             Fill="Transparent"
+                                             Stroke="#050505"
+                                             StrokeThickness="2" />
+                                    <Ellipse Canvas.Left="9"
+                                             Canvas.Top="12.1"
+                                             Width="14"
+                                             Height="14"
+                                             Fill="Transparent"
+                                          Stroke="#999999"
+                                             StrokeThickness="2" />
+                                    <Ellipse Canvas.Left="14"
+                                             Canvas.Top="14"
+                                             Width="4"
+                                             Height="4"
+                                             Fill="Transparent"
+                                             Stroke="#050505"
+                                             StrokeThickness="2" />
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Grid.Column="1"
+                                       VerticalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding TextCustomizeSettingsGroup}" />
+                            <TextBlock x:Name="CustomizeAccordionArrow"
+                                       Grid.Column="2"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       FontSize="18"
+                                       Foreground="#394957"
+                                       Text="⌄" />
+                        </Grid>
+                    </Button>
+
+                    <Border x:Name="CustomizeAccordionBody"
+                            Margin="0,-2,0,6"
+                            Padding="12,10"
+                            CornerRadius="0,0,13,13"
+                            BorderThickness="1,0,1,1"
+                            BorderBrush="#AEC8DAED"
+                            Background="{DynamicResource GlassSurfaceBrush}"
+                            ClipToBounds="True"
+                            Visibility="Collapsed">
+                        <StackPanel Cursor="Arrow">
+                            <Grid Height="32"
+                                  Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="160" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="ColorPresetLabelTextBlock"
+                                           Grid.Column="0"
+                                           Margin="0,0,10,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextColorPreset}" />
+                                <ComboBox x:Name="ColorPresetComboBox"
+                                          Grid.Column="1"
+                                          Height="32"
+                                          Style="{StaticResource GlassPresetComboBoxStyle}"
+                                          ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
+                                          ItemTemplate="{StaticResource ColorPresetComboTemplate}"
+                                          PreviewMouseLeftButtonDown="ColorPresetComboBox_PreviewMouseLeftButtonDown"
+                                          MouseEnter="ColorPresetComboBox_MouseEnter"
+                                          MouseLeave="ColorPresetComboBox_MouseLeave"
+                                          SelectionChanged="ColorPresetComboBox_SelectionChanged" />
+                            </Grid>
+
+                            <Grid x:Name="ColorCustomizeRowGrid"
+                                  Height="32"
+                                  Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="160" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="ColorCustomizeLabelTextBlock"
+                                           Grid.Column="0"
+                                           Margin="0,0,10,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextColorCustomize}" />
+                                <Button x:Name="ColorCustomizeButton"
+                                        Grid.Column="1"
+                                        Style="{StaticResource GlassPanelActionButtonStyle}"
+                                        Click="ColorCustomizeButton_Click"
+                                        HorizontalContentAlignment="Stretch"
+                                        Height="32"
+                                        VerticalAlignment="Center">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid Width="30"
+                                              Height="18"
+                                              Margin="0,0,9,0"
+                                              VerticalAlignment="Center">
+                                            <Border CornerRadius="9">
+                                                <Border.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                        <GradientStop Color="#FFFFF5EA" Offset="0" />
+                                                        <GradientStop Color="#FFD7F5E8" Offset="0.45" />
+                                                        <GradientStop Color="#FFDAD8FF" Offset="1" />
+                                                    </LinearGradientBrush>
+                                                </Border.Background>
+                                            </Border>
+                                            <Border Width="10"
+                                                    Height="10"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center"
+                                                    CornerRadius="5"
+                                                    Background="#FF2F6BFF" />
+                                        </Grid>
+                                        <TextBlock Grid.Column="1"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   FontWeight="SemiBold"
+                                                   Text="{Binding TextColorSelect}" />
+                                        <TextBlock Grid.Column="2"
+                                                   Margin="8,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="15"
+                                                   Text="›" />
+                                    </Grid>
+                                </Button>
+                            </Grid>
+
+                            <Grid x:Name="GuideSoundSelectorRowGrid"
+                                  Height="32"
+                                  Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="160" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="GuideSoundSelectorLabelTextBlock"
+                                           Grid.Column="0"
+                                           Margin="0,0,10,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextGuideSound}" />
+                                <Grid Grid.Column="1"
+                                      Height="32"
+                                      VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="34" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="GuideSoundComboBox"
+                                              Grid.Column="0"
+                                              Height="32"
+                                              ToolTip="{Binding TextGuideSoundSelectorTooltip}"
+                                              Style="{StaticResource GlassPresetComboBoxStyle}"
+                                              ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
+                                              SelectionChanged="GuideSoundComboBox_SelectionChanged"
+                                              DisplayMemberPath="DisplayName" />
+                                    <Button x:Name="PreviewGuideSoundButton"
+                                            Grid.Column="1"
+                                            Width="30"
+                                            Height="32"
+                                            Margin="4,0,0,0"
+                                            Style="{StaticResource GlassPanelActionButtonStyle}"
+                                            Click="PreviewGuideSoundButton_Click"
+                                            ToolTip="{Binding TextGuideSoundPreviewTooltip}"
+                                            Content="▶" />
+                                </Grid>
+                            </Grid>
+
+                            <Grid x:Name="UserFontRowGrid"
+                                  Height="32"
+                                  Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="160" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="UserFontLabelTextBlock"
+                                           Grid.Column="0"
+                                           Margin="0,0,10,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextUserFont}" />
+                                <Grid Grid.Column="1"
+                                      Height="32"
+                                      VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="LoadCustomFontButton"
+                                            Grid.Column="0"
+                                            Height="32"
+                                            Margin="0,0,4,0"
+                                            Style="{StaticResource GlassPanelActionButtonStyle}"
+                                            Click="LoadCustomFontButton_Click"
+                                            Content="{Binding TextLoadCustomFont}" />
+                                    <Button x:Name="ResetCustomFontButton"
+                                            Grid.Column="1"
+                                            Height="32"
+                                            Margin="4,0,0,0"
+                                            Style="{StaticResource GlassPanelActionButtonStyle}"
+                                            Click="ResetCustomFontButton_Click"
+                                            Content="{Binding TextResetCustomFont}" />
+                                </Grid>
+                            </Grid>
+
+                            <Grid x:Name="CustomGuideSoundFileRowGrid"
+                                  Height="32">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="160" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="CustomGuideSoundFileLabelTextBlock"
+                                           Grid.Column="0"
+                                           Margin="0,0,10,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextCustomGuideSound}" />
+                                <Grid Grid.Column="1"
+                                      Height="32"
+                                      VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="LoadCustomGuideSoundButton"
+                                            Grid.Column="0"
+                                            Height="32"
+                                            Margin="0,0,4,0"
+                                            Style="{StaticResource GlassPanelActionButtonStyle}"
+                                            Click="LoadCustomGuideSoundButton_Click"
+                                            Content="{Binding TextLoadCustomFont}" />
+                                    <Button x:Name="ResetCustomGuideSoundButton"
+                                            Grid.Column="1"
+                                            Height="32"
+                                            Margin="4,0,0,0"
+                                            Style="{StaticResource GlassPanelActionButtonStyle}"
+                                            Click="ResetCustomGuideSoundButton_Click"
+                                            Content="{Binding TextResetCustomFont}" />
+                                </Grid>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Button x:Name="LabsSettingsGroupButton"
+                            Style="{StaticResource SettingsMenuButtonStyle}"
+                            Margin="0,0,0,8"
+                            Click="LabsSettingsGroupButton_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="34" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Viewbox x:Name="LabsSettingsIconRoot"
+                                     Grid.Column="0"
+                                     Width="25"
+                                     Height="25"
+                                     HorizontalAlignment="Left"
+                                     VerticalAlignment="Center"
+                                     ClipToBounds="True"
+                                     Stretch="Uniform">
+                                <Canvas Width="32"
+                                        Height="32"
+                                        ClipToBounds="True"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Canvas.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="LabsIconScale" />
+                                            <RotateTransform x:Name="LabsIconRotate" />
+                                            <TranslateTransform x:Name="LabsIconMotion" />
+                                        </TransformGroup>
+                                    </Canvas.RenderTransform>
+                                    <Canvas.Triggers>
+                                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetName="LabsIconMotion"
+                                                                     Storyboard.TargetProperty="Y"
+                                                                     From="0"
+                                                                     To="-0.8"
+                                                                     Duration="0:0:3.9"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="LabsIconScale"
+                                                                     Storyboard.TargetProperty="ScaleX"
+                                                                     From="1"
+                                                                     To="1.07"
+                                                                     Duration="0:0:4.5"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="LabsIconScale"
+                                                                     Storyboard.TargetProperty="ScaleY"
+                                                                     From="1"
+                                                                     To="1.07"
+                                                                     Duration="0:0:4.5"
+                                                                     AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <SineEase EasingMode="EaseInOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="LabsIconRotate"
+                                                                     Storyboard.TargetProperty="Angle"
+                                                                     From="0"
+                                                                     To="360"
+                                                                     Duration="0:0:16" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Canvas.Triggers>
+                                    <Ellipse Canvas.Left="13.1"
+                                             Canvas.Top="13.1"
+                                             Width="5.8"
+                                             Height="5.8"
+                                             Fill="Transparent"
+                                             Stroke="#050505"
+                                             StrokeThickness="1.9" />
+                                    <Path Data="M16,4.4 L16,8.3 M16,23.7 L16,27.6 M4.4,16 L8.3,16 M23.7,16 L27.6,16 M7.8,7.8 L10.6,10.6 M21.4,21.4 L24.2,24.2 M24.2,7.8 L21.4,10.6 M10.6,21.4 L7.8,24.2"
+                                          Stroke="#050505"
+                                          StrokeThickness="1.8"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" />
+                                    <Path Data="M16,9.7 L16,11.9 M16,20.1 L16,22.3 M9.7,16 L11.9,16 M20.1,16 L22.3,16 M11.6,11.6 L13.1,13.1 M18.9,18.9 L20.4,20.4 M20.4,11.6 L18.9,13.1 M13.1,18.9 L11.6,20.4"
+                                          Stroke="#999999"
+                                          StrokeThickness="1.8"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" />
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Grid.Column="1"
+                                       VerticalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding TextLabsSettingsGroup}" />
+                            <TextBlock x:Name="LabsAccordionArrow"
+                                       Grid.Column="2"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       FontSize="18"
+                                       Foreground="#394957"
+                                       Text="⌄" />
+                        </Grid>
+                    </Button>
+
+                    <Border x:Name="LabsAccordionBody"
+                            Margin="0,-5,0,8"
+                            Padding="12,10"
+                            CornerRadius="0,0,13,13"
+                            BorderThickness="1,0,1,1"
+                            BorderBrush="#AEC8DAED"
+                            Background="{DynamicResource GlassSurfaceBrush}"
+                            ClipToBounds="True"
+                            Visibility="Collapsed">
+                        <StackPanel Cursor="Arrow">
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="GuidedProbeLabelTextBlock"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextGuidedProbe}" />
+                                <ToggleButton x:Name="GuidedProbeToggle"
+                                              Grid.Column="1"
+                                              Style="{StaticResource GlassToggleSwitchStyle}"
+                                              IsChecked="{Binding GuidedProbeEnabled, Mode=OneWay}"
+                                              Checked="GuidedProbeToggle_Checked"
+                                              Unchecked="GuidedProbeToggle_Unchecked" />
+                            </Grid>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="AggressivePolicyLabelTextBlock"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextAggressivePolicy}" />
+                                <ToggleButton x:Name="AggressivePolicyToggle"
+                                              Grid.Column="1"
+                                              Style="{StaticResource GlassToggleSwitchStyle}"
+                                              IsChecked="{Binding IsAggressiveThirdPartyPolicy, Mode=OneWay}"
+                                              Checked="AggressivePolicyToggle_Checked"
+                                              Unchecked="AggressivePolicyToggle_Unchecked" />
+                            </Grid>
+
+                            <Grid x:Name="PicoFirmwareUpdateRowGrid"
+                                  Margin="0,10,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Button x:Name="PicoFirmwareUpdateButton"
+                                        Grid.Row="0"
+                                        Height="32"
+                                        Style="{StaticResource GlassPanelActionButtonStyle}"
+                                        Click="PicoFirmwareUpdateButton_Click"
+                                        Content="{Binding TextPicoFirmwareButton}" />
+                                <TextBlock x:Name="PicoFirmwareUpdateStatusTextBlock"
+                                           Grid.Row="1"
+                                           Margin="2,6,2,0"
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextPicoFirmwareReady}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
 
                     <Grid Margin="0,0,0,10">
                         <Grid.RowDefinitions>
@@ -1179,7 +1961,8 @@
                         <Slider x:Name="UiScaleSlider"
                                 Grid.Row="1"
                                 Grid.ColumnSpan="2"
-                                Margin="0,6,0,0"
+                                Margin="0,3,0,4"
+                                Style="{StaticResource UiScaleSliderStyle}"
                                 Minimum="-5"
                                 Maximum="0"
                                 TickFrequency="1"
@@ -1190,117 +1973,25 @@
                                 ValueChanged="UiScaleSlider_ValueChanged" />
                     </Grid>
 
-                    <Grid Margin="0,0,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="ColorPresetLabelTextBlock"
-                                   Grid.Column="0"
-                                   Margin="0,0,10,6"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="{Binding TextColorPreset}" />
-                        <ComboBox x:Name="ColorPresetComboBox"
-                                  Grid.Column="1"
-                                  Width="166"
-                                  Height="30"
-                                  Style="{StaticResource GlassPresetComboBoxStyle}"
-                                  ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
-                                  ItemTemplate="{StaticResource ColorPresetComboTemplate}"
-                                  PreviewMouseLeftButtonDown="ColorPresetComboBox_PreviewMouseLeftButtonDown"
-                                  MouseEnter="ColorPresetComboBox_MouseEnter"
-                                  MouseLeave="ColorPresetComboBox_MouseLeave"
-                                  SelectionChanged="ColorPresetComboBox_SelectionChanged" />
-                    </Grid>
-
-                    <Grid Margin="0,0,0,10">
-                        <Button x:Name="ColorCustomizeButton"
-                                Style="{StaticResource GlassPanelActionButtonStyle}"
-                                Click="ColorCustomizeButton_Click"
-                                HorizontalContentAlignment="Stretch">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Grid Width="30"
-                                      Height="18"
-                                      Margin="0,0,9,0"
-                                      VerticalAlignment="Center">
-                                    <Border CornerRadius="9">
-                                        <Border.Background>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                <GradientStop Color="#FFFFF5EA" Offset="0" />
-                                                <GradientStop Color="#FFD7F5E8" Offset="0.45" />
-                                                <GradientStop Color="#FFDAD8FF" Offset="1" />
-                                            </LinearGradientBrush>
-                                        </Border.Background>
-                                    </Border>
-                                    <Border Width="10"
-                                            Height="10"
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Center"
-                                            CornerRadius="5"
-                                            Background="#FF2F6BFF" />
-                                </Grid>
-                                <TextBlock Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Text="색상 커스텀" />
-                                <TextBlock Grid.Column="2"
-                                           Margin="8,0,0,0"
-                                           VerticalAlignment="Center"
-                                           FontSize="15"
-                                           Text="›" />
-                            </Grid>
-                        </Button>
-                    </Grid>
-
-                    <Grid Margin="0,0,0,10">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0"
-                                   Margin="0,0,0,6"
-                                   Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="사용자 폰트" />
-                        <Grid Grid.Row="1">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Button x:Name="LoadCustomFontButton"
-                                    Grid.Column="0"
-                                    Margin="0,0,6,0"
-                                    Style="{StaticResource GlassPanelActionButtonStyle}"
-                                    Click="LoadCustomFontButton_Click"
-                                    Content="불러오기" />
-                            <Button x:Name="ResetCustomFontButton"
-                                    Grid.Column="1"
-                                    Margin="6,0,0,0"
-                                    Style="{StaticResource GlassPanelActionButtonStyle}"
-                                    Click="ResetCustomFontButton_Click"
-                                    Content="기본값" />
-                        </Grid>
-                    </Grid>
-
-                    <Grid Margin="0,0,0,10">
+                    <Grid Height="32"
+                          Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="LanguageLabelTextBlock"
                                    Grid.Column="0"
-                                   Margin="0,0,10,6"
+                                   Margin="0,0,10,0"
+                                   HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
+                                   TextAlignment="Center"
                                    Foreground="{StaticResource SettingsTextBrush}"
                                    Text="Language" />
                         <ComboBox x:Name="LanguageComboBox"
                                   Grid.Column="1"
-                                  Width="166"
-                                  Height="30"
+                                  Width="160"
+                                  Height="32"
+                                  HorizontalContentAlignment="Center"
                                   Style="{StaticResource GlassPresetComboBoxStyle}"
                                   ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
                                   SelectionChanged="LanguageComboBox_SelectionChanged"
@@ -1379,13 +2070,25 @@
                         </StackPanel>
                     </Grid>
 
-                    <TextBlock x:Name="VersionTextBlock"
-                               HorizontalAlignment="Right"
-                               FontSize="12"
-                               Foreground="{StaticResource SettingsTextBrush}"
-                               Text="버전 1.0.1" />
-                    </StackPanel>
-                </ScrollViewer>
+                    <Button x:Name="VersionEasterEggButton"
+                            HorizontalAlignment="Right"
+                            Padding="0"
+                            BorderThickness="0"
+                            Background="Transparent"
+                            Cursor="Hand"
+                            FocusVisualStyle="{x:Null}"
+                            Click="VersionEasterEggButton_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="{x:Type Button}">
+                                <ContentPresenter />
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock x:Name="VersionTextBlock"
+                                   FontSize="12"
+                                   Foreground="{StaticResource SettingsTextBrush}"
+                                   Text="{Binding TextVersionPrefix}" />
+                    </Button>
+                </StackPanel>
             </Border>
         </Popup>
 
@@ -1397,12 +2100,12 @@
                VerticalOffset="-8"
                StaysOpen="True">
             <Border x:Name="ColorPopupChrome"
-                    Width="360"
+                    Width="380"
                     Padding="12"
                     CornerRadius="18"
                     BorderThickness="1"
                     BorderBrush="#A6D2E7F4"
-                    Background="#F4F7FBFF"
+                    Background="{DynamicResource GlassSurfaceBrush}"
                     PreviewMouseLeftButtonDown="PopupChrome_MouseLeftButtonDown"
                     MouseLeftButtonDown="PopupChrome_MouseLeftButtonDown"
                     MouseMove="PopupChrome_MouseMove"
@@ -1419,6 +2122,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="0,0,0,10">
@@ -1430,12 +2134,12 @@
                             <TextBlock FontSize="15"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource SettingsTitleBrush}"
-                                       Text="색상 커스텀" />
+                                       Text="{Binding TextColorCustomize}" />
                             <TextBlock x:Name="SelectedColorNameText"
                                        Margin="0,2,0,0"
                                        FontSize="12"
                                        Foreground="{StaticResource SettingsTextBrush}"
-                                       Text="전체 글자" />
+                                       Text="{Binding TextColorTargetPrimaryText}" />
                         </StackPanel>
                         <Thumb x:Name="ColorPopupDragThumb"
                                Grid.Column="0"
@@ -1460,7 +2164,7 @@
 
                     <Grid Grid.Row="1">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="142" />
+                            <ColumnDefinition Width="154" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
@@ -1476,7 +2180,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Border x:Name="PrimaryTextSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource PrimaryTextBrush}" />
-                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="전체 글자" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetPrimaryText}" />
                                 </Grid>
                             </Button>
                             <Button x:Name="SecondaryTextColorButton"
@@ -1489,7 +2193,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Border x:Name="SecondaryTextSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource SecondaryTextBrush}" />
-                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="보조 글자" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetSecondaryText}" />
                                 </Grid>
                             </Button>
                             <Button x:Name="BatteryTextColorButton"
@@ -1502,7 +2206,33 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Border x:Name="BatteryTextSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource BatteryTextBrush}" />
-                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="배터리 숫자" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetBatteryText}" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="WidgetBackgroundColorButton"
+                                    Tag="WidgetBackground"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="WidgetBackgroundSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource WidgetBackgroundBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetWidgetBackground}" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="GlassSurfaceColorButton"
+                                    Tag="GlassSurface"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="GlassSurfaceSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource GlassSurfaceBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetGlassSurface}" />
                                 </Grid>
                             </Button>
                             <Button x:Name="CardTintColorButton"
@@ -1515,7 +2245,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Border x:Name="CardTintSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource CardTintBrush}" />
-                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="기기 칸" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetCardTint}" />
                                 </Grid>
                             </Button>
                             <Button x:Name="CardBorderColorButton"
@@ -1528,7 +2258,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Border x:Name="CardBorderSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource CardBorderBrush}" />
-                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="기기 테두리" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetCardBorder}" />
                                 </Grid>
                             </Button>
                             <Button x:Name="TrackColorButton"
@@ -1541,7 +2271,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Border x:Name="TrackSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource TrackBrush}" />
-                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="막대 배경" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetTrack}" />
                                 </Grid>
                             </Button>
                             <Button x:Name="PanelColorButton"
@@ -1554,7 +2284,20 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Border x:Name="PanelSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource ActionButtonBackBrush}" />
-                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="하단 패널" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetPanel}" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="SettingsTextColorButton"
+                                    Tag="SettingsText"
+                                    Style="{StaticResource ColorElementButtonStyle}"
+                                    Click="ColorElementButton_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="SettingsTextSwatch" Width="20" Height="20" HorizontalAlignment="Left" CornerRadius="10" Background="{DynamicResource SettingsTextBrush}" />
+                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding TextColorTargetSettingsText}" />
                                 </Grid>
                             </Button>
                         </StackPanel>
@@ -1627,15 +2370,94 @@
                             <Button Margin="0,10,0,0"
                                     Style="{StaticResource GlassPanelActionButtonStyle}"
                                     Click="ResetCustomColorsButton_Click"
-                                    Content="색상 초기화" />
+                                    Content="{Binding TextColorReset}" />
                         </StackPanel>
                     </Grid>
 
-                    <TextBlock Grid.Row="2"
+                    <Border Grid.Row="2"
+                            Margin="0,12,0,0"
+                            Padding="10"
+                            CornerRadius="14"
+                            BorderThickness="1"
+                            BorderBrush="#92C4DAEC"
+                            Background="#C8F4FAFF">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Row="0"
+                                       Grid.ColumnSpan="2"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource SettingsTitleBrush}"
+                                       Text="{Binding TextSettingsTextStyle}" />
+
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="0"
+                                       Margin="0,9,10,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SettingsTextBrush}"
+                                       Text="{Binding TextSettingsTextFontSize}" />
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="1"
+                                       Margin="0,9,0,0"
+                                       VerticalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource SettingsTitleBrush}"
+                                       Text="{Binding SettingsTextFontSize, StringFormat={}{0:0}}" />
+                            <Slider x:Name="SettingsTextFontSizeSlider"
+                                    Grid.Row="2"
+                                    Grid.ColumnSpan="2"
+                                    Margin="0,0,0,4"
+                                    Style="{StaticResource UiScaleSliderStyle}"
+                                    Minimum="11"
+                                    Maximum="18"
+                                    TickFrequency="1"
+                                    IsSnapToTickEnabled="True"
+                                    SmallChange="1"
+                                    LargeChange="1"
+                                    Value="{Binding SettingsTextFontSize, Mode=OneWay}"
+                                    ValueChanged="SettingsTextFontSizeSlider_ValueChanged" />
+
+                            <TextBlock Grid.Row="3"
+                                       Grid.Column="0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SettingsTextBrush}"
+                                       Text="{Binding TextSettingsTextBold}" />
+                            <StackPanel Grid.Row="3"
+                                        Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right">
+                                <ToggleButton x:Name="SettingsTextBoldToggle"
+                                              Width="50"
+                                              Height="26"
+                                              Margin="0,0,8,0"
+                                              Style="{StaticResource GlassToggleSwitchStyle}"
+                                              IsChecked="{Binding SettingsTextBold, Mode=OneWay}"
+                                              Checked="SettingsTextBoldToggle_Checked"
+                                              Unchecked="SettingsTextBoldToggle_Unchecked" />
+                                <Button x:Name="ResetSettingsTextStyleButton"
+                                        MinWidth="128"
+                                        Height="36"
+                                        Style="{StaticResource GlassPanelActionButtonStyle}"
+                                        Click="ResetSettingsTextStyleButton_Click"
+                                        Content="{Binding TextSettingsTextReset}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Grid.Row="3"
                                Margin="0,10,0,0"
                                FontSize="11"
-                               Foreground="{StaticResource SettingsTextBrush}"
-                               Text="마우스를 누른 채 움직이면 바로 반영됩니다." />
+                               Foreground="{DynamicResource SettingsTextBrush}"
+                               Text="{Binding TextColorDragHint}" />
                 </Grid>
             </Border>
         </Popup>
