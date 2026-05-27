@@ -29,7 +29,7 @@ public sealed class AutostartService
         }
     }
 
-    public void Apply(bool enabled)
+    public void Apply(bool enabled, bool startMinimizedToTray = false)
     {
         try
         {
@@ -41,7 +41,7 @@ public sealed class AutostartService
 
             if (enabled)
             {
-                var launchCommand = ResolveLaunchCommand();
+                var launchCommand = ResolveLaunchCommand(startMinimizedToTray);
                 if (string.IsNullOrWhiteSpace(launchCommand))
                 {
                     return;
@@ -62,18 +62,19 @@ public sealed class AutostartService
         }
     }
 
-    private static string? ResolveLaunchCommand()
+    private static string? ResolveLaunchCommand(bool startMinimizedToTray)
     {
+        var startupArgument = startMinimizedToTray ? " --start-in-tray" : string.Empty;
         var blossExePath = Path.Combine(AppContext.BaseDirectory, "Bloss.exe");
         if (File.Exists(blossExePath))
         {
-            return $"\"{blossExePath}\"";
+            return $"\"{blossExePath}\"{startupArgument}";
         }
 
         var legacyExePath = Path.Combine(AppContext.BaseDirectory, "BluetoothBatteryWidget.App.exe");
         if (File.Exists(legacyExePath))
         {
-            return $"\"{legacyExePath}\"";
+            return $"\"{legacyExePath}\"{startupArgument}";
         }
 
         var processPath = Environment.ProcessPath;
@@ -87,16 +88,16 @@ public sealed class AutostartService
             var blossDllPath = Path.Combine(AppContext.BaseDirectory, "Bloss.dll");
             if (File.Exists(blossDllPath))
             {
-                return $"\"{processPath}\" \"{blossDllPath}\"";
+                return $"\"{processPath}\" \"{blossDllPath}\"{startupArgument}";
             }
 
             var legacyDllPath = Path.Combine(AppContext.BaseDirectory, "BluetoothBatteryWidget.App.dll");
             if (File.Exists(legacyDllPath))
             {
-                return $"\"{processPath}\" \"{legacyDllPath}\"";
+                return $"\"{processPath}\" \"{legacyDllPath}\"{startupArgument}";
             }
         }
 
-        return $"\"{processPath}\"";
+        return $"\"{processPath}\"{startupArgument}";
     }
 }

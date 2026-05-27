@@ -110,6 +110,68 @@ public sealed class WidgetSettingsColorPresetTests
     }
 
     [Fact]
+    public void GuideSound_DefaultsToEnabledTwoSecondInfographic()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.True(settings.GuideSoundEnabled);
+        Assert.Equal(WidgetSettings.GuideSoundInfographic2Seconds, settings.GuideSoundId);
+    }
+
+    [Fact]
+    public void LastDs5DongleFirmwareVersion_DefaultsToEmpty()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.Empty(settings.LastDs5DongleFirmwareVersion);
+    }
+
+    [Theory]
+    [InlineData(" v0.6.0-hotfix ", "v0.6.0-hotfix")]
+    [InlineData("0.6.1\r\n", "0.6.1")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void NormalizeFirmwareVersionText_TrimsControlCharacters(string? input, string expected)
+    {
+        Assert.Equal(expected, WidgetSettings.NormalizeFirmwareVersionText(input));
+    }
+
+    [Theory]
+    [InlineData(WidgetSettings.GuideSoundInfographic2Seconds)]
+    [InlineData(WidgetSettings.GuideSoundInfographic1Second)]
+    [InlineData(WidgetSettings.GuideSoundLongAgo)]
+    [InlineData(WidgetSettings.GuideSoundRick)]
+    [InlineData(WidgetSettings.GuideSoundWarning)]
+    [InlineData(WidgetSettings.GuideSoundSmile)]
+    [InlineData(WidgetSettings.GuideSoundCustomFile)]
+    public void NormalizeGuideSoundId_ValidValues_ArePreserved(string soundId)
+    {
+        Assert.Equal(soundId, WidgetSettings.NormalizeGuideSoundId(soundId));
+    }
+
+    [Theory]
+    [InlineData(@"C:\sound.wav", @"C:\sound.wav")]
+    [InlineData(@"C:\sound.mp3", @"C:\sound.mp3")]
+    [InlineData(@"C:\sound.wma", @"C:\sound.wma")]
+    [InlineData(@"C:\sound.m4a", @"C:\sound.m4a")]
+    [InlineData(@"C:\sound.txt", "")]
+    [InlineData("", "")]
+    public void NormalizeOptionalAudioPath_OnlyKeepsSupportedAudioExtensions(string input, string expected)
+    {
+        Assert.Equal(expected, WidgetSettings.NormalizeOptionalAudioPath(input));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("outer-space")]
+    [InlineData("missing")]
+    public void NormalizeGuideSoundId_InvalidValues_FallBackToDefault(string? soundId)
+    {
+        Assert.Equal(WidgetSettings.DefaultGuideSoundId, WidgetSettings.NormalizeGuideSoundId(soundId));
+    }
+
+    [Fact]
     public void StatusPanelCollapsed_DefaultsToFalse()
     {
         var settings = new WidgetSettings();
@@ -123,6 +185,29 @@ public sealed class WidgetSettingsColorPresetTests
         var settings = new WidgetSettings();
 
         Assert.Equal(0, settings.UiScaleStep);
+    }
+
+    [Fact]
+    public void SettingsTextStyle_DefaultsToDisabled()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.False(settings.UseCustomSettingsTextStyle);
+        Assert.Equal(WidgetSettings.DefaultSettingsTextFontSize, settings.SettingsTextFontSize);
+        Assert.False(settings.SettingsTextBold);
+    }
+
+    [Theory]
+    [InlineData(-1, 13)]
+    [InlineData(0, 13)]
+    [InlineData(10, 11)]
+    [InlineData(11, 11)]
+    [InlineData(14.4, 14)]
+    [InlineData(18, 18)]
+    [InlineData(20, 18)]
+    public void NormalizeSettingsTextFontSize_ClampsRange(double input, double expected)
+    {
+        Assert.Equal(expected, WidgetSettings.NormalizeSettingsTextFontSize(input));
     }
 
     [Fact]

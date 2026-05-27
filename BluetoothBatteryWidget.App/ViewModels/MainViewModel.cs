@@ -138,8 +138,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             _settings = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(AutostartEnabled));
+            OnPropertyChanged(nameof(StartMinimizedToTrayEnabled));
             OnPropertyChanged(nameof(CloseToTrayEnabled));
             OnPropertyChanged(nameof(GuidedProbeEnabled));
+            OnPropertyChanged(nameof(GuideSoundEnabled));
+            OnPropertyChanged(nameof(GuideSoundId));
+            OnPropertyChanged(nameof(CustomGuideSoundPath));
+            OnPropertyChanged(nameof(LastDs5DongleFirmwareVersion));
             OnPropertyChanged(nameof(VisualMode));
             OnPropertyChanged(nameof(IsLiteVisualMode));
             OnPropertyChanged(nameof(ColorPresetId));
@@ -152,6 +157,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(Language));
             OnPropertyChanged(nameof(StatusPanelCollapsed));
             OnPropertyChanged(nameof(UiScaleStep));
+            OnPropertyChanged(nameof(UseCustomSettingsTextStyle));
+            OnPropertyChanged(nameof(SettingsTextFontSize));
+            OnPropertyChanged(nameof(SettingsTextBold));
             OnPropertyChanged(nameof(ThirdPartyBatteryPolicy));
             OnPropertyChanged(nameof(IsAggressiveThirdPartyPolicy));
             OnPropertyChanged(nameof(LanguageOptions));
@@ -161,9 +169,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public bool AutostartEnabled => Settings.Autostart;
 
+    public bool StartMinimizedToTrayEnabled => Settings.StartMinimizedToTray;
+
     public bool CloseToTrayEnabled => Settings.CloseToTray;
 
     public bool GuidedProbeEnabled => Settings.GuidedProbeEnabled;
+
+    public bool GuideSoundEnabled => Settings.GuideSoundEnabled;
+
+    public string GuideSoundId => Settings.GuideSoundId;
+
+    public string CustomGuideSoundPath => Settings.CustomGuideSoundPath;
+
+    public string LastDs5DongleFirmwareVersion => Settings.LastDs5DongleFirmwareVersion;
 
     public string VisualMode => Settings.VisualMode;
 
@@ -191,6 +209,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public int UiScaleStep => Settings.UiScaleStep;
 
+    public bool UseCustomSettingsTextStyle => Settings.UseCustomSettingsTextStyle;
+
+    public double SettingsTextFontSize => Settings.SettingsTextFontSize;
+
+    public bool SettingsTextBold => Settings.SettingsTextBold;
+
     public ThirdPartyBatteryPolicy ThirdPartyBatteryPolicy => Settings.ThirdPartyBatteryPolicy;
 
     public bool IsAggressiveThirdPartyPolicy => Settings.ThirdPartyBatteryPolicy == ThirdPartyBatteryPolicy.Aggressive;
@@ -209,7 +233,81 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public string TextColorPreset => CurrentLanguageText.ColorPresetLabel;
 
+    public string TextEnvironmentSettingsGroup => CurrentLanguageText.EnvironmentSettingsGroup;
+
+    public string TextCustomizeSettingsGroup => CurrentLanguageText.CustomizeSettingsGroup;
+
+    public string TextLabsSettingsGroup => CurrentLanguageText.LabsSettingsGroup;
+
+    public string TextStartMinimizedToTray => CurrentLanguageText.StartMinimizedToTrayLabel;
+
+    public string TextGuideSound => CurrentLanguageText.GuideSoundLabel;
+
+    public string TextColorCustomize => CurrentLanguageText.ColorCustomizeButton;
+
+    public string TextGuideSoundSelectorTooltip => CurrentLanguageText.GuideSoundSelectorTooltip;
+
+    public string TextGuideSoundPreviewTooltip => CurrentLanguageText.GuideSoundPreviewTooltip;
+
+    public string TextUserFont => CurrentLanguageText.UserFontLabel;
+
+    public string TextLoadCustomFont => CurrentLanguageText.LoadCustomFontButton;
+
+    public string TextResetCustomFont => CurrentLanguageText.ResetCustomFontButton;
+
     public string TextLanguage => "Language";
+
+    public string TextCustomGuideSound => UiLanguageCatalog.GetExtraText(Settings.Language, "CustomGuideSoundLabel");
+
+    public string TextColorSelect => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorSelect");
+
+    public string TextColorTargetPrimaryText => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorPrimaryText");
+
+    public string TextColorTargetSecondaryText => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorSecondaryText");
+
+    public string TextColorTargetBatteryText => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorBatteryText");
+
+    public string TextColorTargetWidgetBackground => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorWidgetBackground");
+
+    public string TextColorTargetGlassSurface => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorGlassSurface");
+
+    public string TextColorTargetCardTint => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorCardTint");
+
+    public string TextColorTargetCardBorder => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorCardBorder");
+
+    public string TextColorTargetTrack => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorTrack");
+
+    public string TextColorTargetPanel => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorPanel");
+
+    public string TextColorTargetSettingsText => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorSettingsText");
+
+    public string TextSettingsTextStyle => UiLanguageCatalog.GetExtraText(Settings.Language, "SettingsTextStyle");
+
+    public string TextSettingsTextFontSize => UiLanguageCatalog.GetExtraText(Settings.Language, "SettingsTextFontSize");
+
+    public string TextSettingsTextBold => UiLanguageCatalog.GetExtraText(Settings.Language, "SettingsTextBold");
+
+    public string TextSettingsTextReset => UiLanguageCatalog.GetExtraText(Settings.Language, "SettingsTextReset");
+
+    public string TextColorReset => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorReset");
+
+    public string TextColorDragHint => UiLanguageCatalog.GetExtraText(Settings.Language, "ColorDragHint");
+
+    public string TextGuideSoundPreviewStopTooltip => UiLanguageCatalog.GetExtraText(Settings.Language, "GuideSoundPreviewStopTooltip");
+
+    public string TextTrayResetPosition => UiLanguageCatalog.GetExtraText(Settings.Language, "TrayResetPosition");
+
+    public string TextCustomGuideSoundSelectTitle => UiLanguageCatalog.GetExtraText(Settings.Language, "CustomGuideSoundSelectTitle");
+
+    public string TextCustomGuideSoundInvalid => UiLanguageCatalog.GetExtraText(Settings.Language, "CustomGuideSoundInvalid");
+
+    public string TextCustomFontSelectTitle => UiLanguageCatalog.GetExtraText(Settings.Language, "CustomFontSelectTitle");
+
+    public string TextCustomFontLoadFailed => UiLanguageCatalog.GetExtraText(Settings.Language, "CustomFontLoadFailed");
+
+    public string TextPicoFirmwareButton => UiLanguageCatalog.GetExtraText(Settings.Language, "PicoFirmwareButton");
+
+    public string TextPicoFirmwareReady => UiLanguageCatalog.GetExtraText(Settings.Language, "PicoFirmwareReady");
 
     public string TextRefreshNow => CurrentLanguageText.RefreshNowButton;
 
@@ -299,7 +397,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         LoadSettingsOnce();
         Settings.RefreshSeconds = 30;
-        _autostartService.Apply(Settings.Autostart);
+        _autostartService.Apply(Settings.Autostart, Settings.StartMinimizedToTray);
         SaveSettings();
 
         _refreshTimer.Interval = TimeSpan.FromSeconds(Settings.RefreshSeconds);
@@ -793,9 +891,22 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public void SetAutostart(bool enabled)
     {
         Settings.Autostart = enabled;
-        _autostartService.Apply(enabled);
+        _autostartService.Apply(enabled, Settings.StartMinimizedToTray);
         SaveSettings();
         OnPropertyChanged(nameof(AutostartEnabled));
+    }
+
+    public void SetStartMinimizedToTray(bool enabled)
+    {
+        if (Settings.StartMinimizedToTray == enabled)
+        {
+            return;
+        }
+
+        Settings.StartMinimizedToTray = enabled;
+        _autostartService.Apply(Settings.Autostart, enabled);
+        SaveSettings();
+        OnPropertyChanged(nameof(StartMinimizedToTrayEnabled));
     }
 
     public void SetCloseToTray(bool enabled)
@@ -815,6 +926,88 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         Settings.GuidedProbeEnabled = enabled;
         SaveSettings();
         OnPropertyChanged(nameof(GuidedProbeEnabled));
+    }
+
+    public void SetGuideSoundEnabled(bool enabled)
+    {
+        if (Settings.GuideSoundEnabled == enabled)
+        {
+            return;
+        }
+
+        Settings.GuideSoundEnabled = enabled;
+        SaveSettings();
+        OnPropertyChanged(nameof(GuideSoundEnabled));
+    }
+
+    public void SetGuideSoundId(string soundId)
+    {
+        var normalized = WidgetSettings.NormalizeGuideSoundId(soundId);
+        if (normalized == WidgetSettings.GuideSoundCustomFile &&
+            string.IsNullOrWhiteSpace(Settings.CustomGuideSoundPath))
+        {
+            normalized = WidgetSettings.DefaultGuideSoundId;
+        }
+
+        if (string.Equals(Settings.GuideSoundId, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Settings.GuideSoundId = normalized;
+        SaveSettings();
+        OnPropertyChanged(nameof(GuideSoundId));
+    }
+
+    public void SetCustomGuideSoundPath(string path)
+    {
+        var normalized = WidgetSettings.NormalizeOptionalAudioPath(path);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return;
+        }
+
+        if (string.Equals(Settings.CustomGuideSoundPath, normalized, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Settings.GuideSoundId, WidgetSettings.GuideSoundCustomFile, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Settings.CustomGuideSoundPath = normalized;
+        Settings.GuideSoundId = WidgetSettings.GuideSoundCustomFile;
+        SaveSettings();
+        OnPropertyChanged(nameof(CustomGuideSoundPath));
+        OnPropertyChanged(nameof(GuideSoundId));
+    }
+
+    public void ResetCustomGuideSound()
+    {
+        var changed = !string.IsNullOrWhiteSpace(Settings.CustomGuideSoundPath) ||
+                      string.Equals(Settings.GuideSoundId, WidgetSettings.GuideSoundCustomFile, StringComparison.Ordinal);
+        if (!changed)
+        {
+            return;
+        }
+
+        Settings.CustomGuideSoundPath = string.Empty;
+        Settings.GuideSoundId = WidgetSettings.DefaultGuideSoundId;
+        SaveSettings();
+        OnPropertyChanged(nameof(CustomGuideSoundPath));
+        OnPropertyChanged(nameof(GuideSoundId));
+    }
+
+    public void RememberDs5DongleFirmwareVersion(string? version)
+    {
+        var normalized = WidgetSettings.NormalizeFirmwareVersionText(version);
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            string.Equals(Settings.LastDs5DongleFirmwareVersion, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Settings.LastDs5DongleFirmwareVersion = normalized;
+        SaveSettings();
+        OnPropertyChanged(nameof(LastDs5DongleFirmwareVersion));
     }
 
     public void SetStatusPanelCollapsed(bool collapsed)
@@ -962,6 +1155,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         Settings.UseCustomColors = true;
         Settings.CustomElementColors[normalizedKey] = normalizedColor;
+        var changedSettingsTextStyle = false;
+        if (string.Equals(normalizedKey, "SettingsText", StringComparison.OrdinalIgnoreCase) &&
+            !Settings.UseCustomSettingsTextStyle)
+        {
+            Settings.UseCustomSettingsTextStyle = true;
+            changedSettingsTextStyle = true;
+        }
+
         if (string.Equals(normalizedKey, "PrimaryText", StringComparison.OrdinalIgnoreCase))
         {
             Settings.CustomTextColor = normalizedColor;
@@ -980,6 +1181,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         OnPropertyChanged(nameof(UseCustomColors));
         OnPropertyChanged(nameof(CustomElementColors));
+        if (changedSettingsTextStyle)
+        {
+            OnPropertyChanged(nameof(UseCustomSettingsTextStyle));
+        }
     }
 
     public void ClearCustomColors()
@@ -1022,6 +1227,60 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         SaveSettings();
         OnPropertyChanged(nameof(UseCustomFont));
         OnPropertyChanged(nameof(CustomFontPath));
+    }
+
+    public void SetSettingsTextFontSize(double fontSize)
+    {
+        var normalized = WidgetSettings.NormalizeSettingsTextFontSize(fontSize);
+        if (Settings.UseCustomSettingsTextStyle &&
+            Math.Abs(Settings.SettingsTextFontSize - normalized) < 0.01d)
+        {
+            return;
+        }
+
+        Settings.UseCustomSettingsTextStyle = true;
+        Settings.SettingsTextFontSize = normalized;
+        SaveSettings();
+        OnPropertyChanged(nameof(UseCustomSettingsTextStyle));
+        OnPropertyChanged(nameof(SettingsTextFontSize));
+    }
+
+    public void SetSettingsTextBold(bool isBold)
+    {
+        if (Settings.UseCustomSettingsTextStyle && Settings.SettingsTextBold == isBold)
+        {
+            return;
+        }
+
+        Settings.UseCustomSettingsTextStyle = true;
+        Settings.SettingsTextBold = isBold;
+        SaveSettings();
+        OnPropertyChanged(nameof(UseCustomSettingsTextStyle));
+        OnPropertyChanged(nameof(SettingsTextBold));
+    }
+
+    public void ClearSettingsTextStyle()
+    {
+        var removedColor = Settings.CustomElementColors.Remove("SettingsText");
+        var changed = Settings.UseCustomSettingsTextStyle ||
+                      Math.Abs(Settings.SettingsTextFontSize - WidgetSettings.DefaultSettingsTextFontSize) > 0.01d ||
+                      Settings.SettingsTextBold ||
+                      removedColor;
+        if (!changed)
+        {
+            return;
+        }
+
+        Settings.UseCustomSettingsTextStyle = false;
+        Settings.SettingsTextFontSize = WidgetSettings.DefaultSettingsTextFontSize;
+        Settings.SettingsTextBold = false;
+        Settings.UseCustomColors = Settings.CustomElementColors.Count > 0;
+        SaveSettings();
+        OnPropertyChanged(nameof(UseCustomSettingsTextStyle));
+        OnPropertyChanged(nameof(SettingsTextFontSize));
+        OnPropertyChanged(nameof(SettingsTextBold));
+        OnPropertyChanged(nameof(UseCustomColors));
+        OnPropertyChanged(nameof(CustomElementColors));
     }
 
     public void ClearCustomFont()
@@ -2007,10 +2266,50 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(TextAutostart));
         OnPropertyChanged(nameof(TextCloseToTray));
         OnPropertyChanged(nameof(TextGuidedProbe));
+        OnPropertyChanged(nameof(GuideSoundEnabled));
+        OnPropertyChanged(nameof(GuideSoundId));
+        OnPropertyChanged(nameof(CustomGuideSoundPath));
         OnPropertyChanged(nameof(TextAggressivePolicy));
         OnPropertyChanged(nameof(TextUiScale));
         OnPropertyChanged(nameof(TextColorPreset));
+        OnPropertyChanged(nameof(TextEnvironmentSettingsGroup));
+        OnPropertyChanged(nameof(TextCustomizeSettingsGroup));
+        OnPropertyChanged(nameof(TextLabsSettingsGroup));
+        OnPropertyChanged(nameof(TextStartMinimizedToTray));
+        OnPropertyChanged(nameof(TextGuideSound));
+        OnPropertyChanged(nameof(TextColorCustomize));
+        OnPropertyChanged(nameof(TextGuideSoundSelectorTooltip));
+        OnPropertyChanged(nameof(TextGuideSoundPreviewTooltip));
+        OnPropertyChanged(nameof(TextUserFont));
+        OnPropertyChanged(nameof(TextLoadCustomFont));
+        OnPropertyChanged(nameof(TextResetCustomFont));
         OnPropertyChanged(nameof(TextLanguage));
+        OnPropertyChanged(nameof(TextCustomGuideSound));
+        OnPropertyChanged(nameof(TextColorSelect));
+        OnPropertyChanged(nameof(TextColorTargetPrimaryText));
+        OnPropertyChanged(nameof(TextColorTargetSecondaryText));
+        OnPropertyChanged(nameof(TextColorTargetBatteryText));
+        OnPropertyChanged(nameof(TextColorTargetWidgetBackground));
+        OnPropertyChanged(nameof(TextColorTargetGlassSurface));
+        OnPropertyChanged(nameof(TextColorTargetCardTint));
+        OnPropertyChanged(nameof(TextColorTargetCardBorder));
+        OnPropertyChanged(nameof(TextColorTargetTrack));
+        OnPropertyChanged(nameof(TextColorTargetPanel));
+        OnPropertyChanged(nameof(TextColorTargetSettingsText));
+        OnPropertyChanged(nameof(TextSettingsTextStyle));
+        OnPropertyChanged(nameof(TextSettingsTextFontSize));
+        OnPropertyChanged(nameof(TextSettingsTextBold));
+        OnPropertyChanged(nameof(TextSettingsTextReset));
+        OnPropertyChanged(nameof(TextColorReset));
+        OnPropertyChanged(nameof(TextColorDragHint));
+        OnPropertyChanged(nameof(TextGuideSoundPreviewStopTooltip));
+        OnPropertyChanged(nameof(TextTrayResetPosition));
+        OnPropertyChanged(nameof(TextCustomGuideSoundSelectTitle));
+        OnPropertyChanged(nameof(TextCustomGuideSoundInvalid));
+        OnPropertyChanged(nameof(TextCustomFontSelectTitle));
+        OnPropertyChanged(nameof(TextCustomFontLoadFailed));
+        OnPropertyChanged(nameof(TextPicoFirmwareButton));
+        OnPropertyChanged(nameof(TextPicoFirmwareReady));
         OnPropertyChanged(nameof(TextRefreshNow));
         OnPropertyChanged(nameof(TextDeveloperContact));
         OnPropertyChanged(nameof(TextSupport));

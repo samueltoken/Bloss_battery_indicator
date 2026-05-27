@@ -15,15 +15,22 @@
     <AssemblyName>Bloss</AssemblyName>
     <Title>Bloss</Title>
     <Product>Bloss</Product>
-    <Version>1.0.4</Version>
-    <AssemblyVersion>1.0.4.0</AssemblyVersion>
-    <FileVersion>1.0.4.0</FileVersion>
-    <InformationalVersion>1.0.4</InformationalVersion>
+    <Version>1.0.5</Version>
+    <AssemblyVersion>1.0.5.0</AssemblyVersion>
+    <FileVersion>1.0.5.0</FileVersion>
+    <InformationalVersion>1.0.5</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
     <EmbeddedResource Include="Assets\battery-guide-chime.wav" LogicalName="BluetoothBatteryWidget.App.Assets.battery-guide-chime.wav" />
+    <EmbeddedResource Include="Assets\guide-sound-infographic-2s.wav" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-infographic-2s.wav" />
+    <EmbeddedResource Include="Assets\guide-sound-infographic-1s.wav" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-infographic-1s.wav" />
+    <EmbeddedResource Include="Assets\guide-sound-long-ago.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-long-ago.mp3" />
+    <EmbeddedResource Include="Assets\guide-sound-rick.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-rick.mp3" />
+    <EmbeddedResource Include="Assets\guide-sound-warning.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-warning.mp3" />
+    <EmbeddedResource Include="Assets\guide-sound-smile.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-smile.mp3" />
+    <EmbeddedResource Include="Assets\labs-outer-space.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.labs-outer-space.mp3" />
     <Resource Include="Assets\kofi_symbol.png" />
   </ItemGroup>
 

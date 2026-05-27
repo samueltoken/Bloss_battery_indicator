@@ -364,6 +364,93 @@ internal static class HidGamepadAccess
         return results;
     }
 
+    public static IReadOnlyList<HidGamepadEndpoint> EnumeratePresentHidEndpoints(CancellationToken cancellationToken)
+    {
+        var results = new List<HidGamepadEndpoint>();
+        var byPath = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        HidD_GetHidGuid(out var hidClassGuid);
+        var infoSet = SetupDiGetClassDevsW(
+            ref hidClassGuid,
+            null,
+            IntPtr.Zero,
+            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+
+        if (infoSet == IntPtr.Zero || infoSet == InvalidHandleValue)
+        {
+            return [];
+        }
+
+        try
+        {
+            for (uint index = 0; ; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var interfaceData = new SP_DEVICE_INTERFACE_DATA
+                {
+                    cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DATA>()
+                };
+
+                if (!SetupDiEnumDeviceInterfaces(infoSet, IntPtr.Zero, ref hidClassGuid, index, ref interfaceData))
+                {
+                    var lastError = Marshal.GetLastWin32Error();
+                    if (lastError == ERROR_NO_MORE_ITEMS)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (!TryReadHidInterfaceDetail(infoSet, ref interfaceData, out var devicePath, out var devInfoData))
+                {
+                    continue;
+                }
+
+                if (!byPath.Add(devicePath))
+                {
+                    continue;
+                }
+
+                var instanceId = TryGetInstanceId(infoSet, ref devInfoData);
+                var ancestorIds = TryGetAncestorInstanceIds(devInfoData.DevInst, 5);
+
+                if (!TryResolveVidPid(infoSet, ref devInfoData, instanceId, ancestorIds, devicePath, out var vendorId, out var productId))
+                {
+                    using var attributeHandle = OpenHandle(devicePath);
+                    if (attributeHandle.IsInvalid ||
+                        !TryGetDeviceAttributes(attributeHandle, out vendorId, out productId))
+                    {
+                        vendorId = string.Empty;
+                        productId = string.Empty;
+                    }
+                }
+
+                var address = ResolveAddress(instanceId, ancestorIds, devicePath);
+                var displayName = TryGetFriendlyName(infoSet, ref devInfoData) ??
+                                  (string.IsNullOrWhiteSpace(vendorId) || string.IsNullOrWhiteSpace(productId)
+                                      ? "HID Device"
+                                      : $"HID {vendorId}:{productId}");
+
+                results.Add(new HidGamepadEndpoint(
+                    DevicePath: devicePath,
+                    InstanceId: instanceId,
+                    Address: address,
+                    DisplayName: displayName,
+                    VendorId: vendorId,
+                    ProductId: productId,
+                    DiscoveryStage: HidEndpointDiscoveryStage.GlobalAggressive));
+            }
+        }
+        finally
+        {
+            SetupDiDestroyDeviceInfoList(infoSet);
+        }
+
+        return results;
+    }
+
     public static IReadOnlyList<HidGamepadEndpoint> EnumerateSteamControllerTritonEndpoints(CancellationToken cancellationToken)
     {
         var results = new List<HidGamepadEndpoint>();
@@ -732,6 +819,54 @@ internal static class HidGamepadAccess
             catch
             {
                 // ignore
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented, clearArray: true);
+            }
+
+            if (attempt < retries)
+            {
+                Thread.Sleep(8);
+            }
+        }
+
+        report = [];
+        return false;
+    }
+
+    public static bool TryReadFeatureReportExact(
+        SafeFileHandle handle,
+        byte reportId,
+        int reportSize,
+        out byte[] report,
+        int retryCount = 1)
+    {
+        if (handle.IsInvalid || handle.IsClosed || reportSize <= 1)
+        {
+            report = [];
+            return false;
+        }
+
+        var bufferLength = Math.Max(2, reportSize);
+        var retries = Math.Max(0, retryCount);
+        for (var attempt = 0; attempt <= retries; attempt++)
+        {
+            var rented = ArrayPool<byte>.Shared.Rent(bufferLength);
+            try
+            {
+                Array.Clear(rented, 0, bufferLength);
+                rented[0] = reportId;
+
+                if (HidD_GetFeature(handle, rented, bufferLength))
+                {
+                    report = CopySegment(rented, bufferLength);
+                    return true;
+                }
+            }
+            catch
+            {
+                // Try the next report size or retry.
             }
             finally
             {

@@ -42,26 +42,33 @@ public partial class MainWindow : Window
     private static readonly byte[] BatteryGuideChimeWave = BatteryGuideChimeAudio.LoadWave();
     private const double UiScaleStepFactor = 0.08d;
     private const int UiScaleAnimationMilliseconds = 140;
+    private const int SettingsAccordionAnimationMilliseconds = 230;
     private const double ResizeGripBaseInset = 4d;
     private const double StatusPanelFallbackHeight = 108d;
     private const double ColorPresetMarqueeGap = 14d;
     private const double ColorPresetMarqueePixelsPerSecond = 22d;
     private const double ColorPresetMarqueeStartDelaySeconds = 0.8d;
     private const double ColorPresetMarqueeEndDelaySeconds = 0.9d;
+    private static readonly TimeSpan GuideSoundPreviewSafetyTimeout = TimeSpan.FromMinutes(10);
+    private const string GuideSoundPreviewPlayText = "▶";
+    private const string GuideSoundPreviewStopText = "■";
     private const string GlassWaveStoryboardKey = "GlassWaveStoryboard";
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.4";
+    private const string FallbackVersion = "1.0.5";
     private static readonly TimeSpan GuideButtonGlobalDebounce = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan SteamGuideButtonToastCooldown = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan SteamRawInputPreferredWindow = TimeSpan.FromSeconds(1.5);
     private static readonly TimeSpan SteamSecondaryFallbackDelay = TimeSpan.FromMilliseconds(380);
     private static readonly TimeSpan SteamSecondaryFallbackBurstWindow = TimeSpan.FromSeconds(6);
     private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
+    private const string Ds5DongleLatestReleaseApiUrl = "https://api.github.com/repos/awalol/DS5Dongle/releases/latest";
+    private const string Ds5DongleReleasePageUrl = "https://github.com/awalol/DS5Dongle/releases";
     private const string UpdateExpectedAssetName = "setup.exe";
     private const string UpdateExpectedChecksumAssetName = "setup.exe.sha256";
     private const long UpdateMaxInstallerBytes = 250L * 1024 * 1024;
+    private const long Ds5DongleMaxFirmwareBytes = 16L * 1024 * 1024;
     private const int UpdateMaxChecksumBytes = 16 * 1024;
     private static readonly string[] UpdateTrustedDownloadHosts =
     [
@@ -78,6 +85,12 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Bloss",
         "fonts");
+    private static readonly string CustomGuideSoundDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Bloss",
+        "guide-sounds");
+    private const string SettingsTitleBrushResourceKey = "SettingsTitleBrush";
+    private const string SettingsTextBrushResourceKey = "SettingsTextBrush";
     private static readonly System.Windows.Media.Color FixedSettingsTitleColor =
         System.Windows.Media.Color.FromRgb(0x1D, 0x3E, 0x5B);
     private static readonly System.Windows.Media.Color FixedSettingsTextColor =
@@ -93,8 +106,10 @@ public partial class MainWindow : Window
     private DeviceItemViewModel? _iconEditingItem;
     private bool _isCompactMode;
     private bool _initialBoundsApplied;
+    private bool _startHiddenInTrayOnLoad;
     private bool _isColorPresetSyncing;
     private bool _isLanguageSyncing;
+    private bool _isGuideSoundSyncing;
     private bool _isPaletteDragging;
     private WpfPopup? _draggingPopup;
     private FrameworkElement? _popupDragChrome;
@@ -107,33 +122,46 @@ public partial class MainWindow : Window
     private Storyboard? _glassWaveStoryboard;
     private Forms.ToolStripMenuItem? _trayOpenMenuItem;
     private Forms.ToolStripMenuItem? _trayRefreshMenuItem;
+    private Forms.ToolStripMenuItem? _trayResetPositionMenuItem;
+    private Forms.ToolStripMenuItem? _trayAutostartMenuItem;
+    private Forms.ToolStripMenuItem? _trayStartMinimizedToTrayMenuItem;
     private Forms.ToolStripMenuItem? _trayExitMenuItem;
     private readonly HttpClient _httpClient = new();
     private readonly GuideButtonMonitorService _guideButtonMonitor = new();
     private readonly SteamControllerRawInputMonitorService _steamRawInputMonitor = new();
     private readonly BatteryGuideChimePlayer _batteryGuideChimePlayer = new(BatteryGuideChimeWave);
+    private readonly System.Windows.Threading.DispatcherTimer _guideSoundPreviewResetTimer = new();
+    private readonly System.Windows.Threading.DispatcherTimer _settingsAutoCloseTimer = new();
     private readonly Dictionary<string, System.Windows.Threading.DispatcherTimer> _batteryGuideHideTimers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _lastGuideButtonToastByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _lastSteamRawGuideButtonByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PendingSteamSecondaryGuideFallback> _pendingSteamSecondaryGuideFallbackByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _steamSecondaryGuideFallbackBlockedUntilByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<FrameworkElement, int> _settingsAccordionAnimationTokens = new();
+    private readonly Dictionary<WpfControls.TextBlock, (double FontSize, FontWeight FontWeight)> _settingsTextBlockDefaults = new();
+    private readonly Dictionary<WpfControls.Control, (double FontSize, FontWeight FontWeight)> _settingsControlTextDefaults = new();
     private readonly object _guideButtonToastSync = new();
     private readonly HashSet<string> _lowBatteryToastKeys = new(StringComparer.OrdinalIgnoreCase);
     private BatteryToastWindow? _activeBatteryToastWindow;
+    private LabsWindow? _labsWindow;
     private HwndSource? _windowMessageSource;
+    private bool _isGuideSoundPreviewPlaying;
     private bool _isUpdating;
+    private bool _isPicoFirmwareUpdating;
 
-    private static readonly IReadOnlyDictionary<string, string> ColorElementLabels =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["PrimaryText"] = "전체 글자",
-            ["SecondaryText"] = "보조 글자",
-            ["BatteryText"] = "배터리 숫자",
-            ["CardTint"] = "기기 칸",
-            ["CardBorder"] = "기기 테두리",
-            ["Track"] = "막대 배경",
-            ["Panel"] = "하단 패널"
-        };
+    private static readonly HashSet<string> ColorElementKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PrimaryText",
+        "SecondaryText",
+        "BatteryText",
+        "WidgetBackground",
+        "GlassSurface",
+        "CardTint",
+        "CardBorder",
+        "Track",
+        "Panel",
+        "SettingsText"
+    };
 
     public MainWindow(MainViewModel viewModel)
     {
@@ -144,10 +172,14 @@ public partial class MainWindow : Window
         ColorPresetComboBox.ItemsSource = ColorPresetCatalog.Presets;
         LanguageComboBox.ItemsSource = _viewModel.LanguageOptions;
         LanguageComboBox.DisplayMemberPath = nameof(UiLanguageOption.Label);
+        GuideSoundComboBox.ItemsSource = BatteryGuideSoundCatalog.GetGuideOptions(_viewModel.CustomGuideSoundPath);
+        GuideSoundComboBox.DisplayMemberPath = nameof(BatteryGuideSoundOption.DisplayName);
         _appIcon = LoadAppIcon();
         _trayIcon = BuildTrayIcon();
         RefreshTrayMenuTexts();
         UpdateVersionMenuHeader();
+        SyncGuideSoundSelection();
+        UpdateGuideSoundControls();
         ResetUpdateProgressUi();
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         _viewModel.Devices.CollectionChanged += Devices_CollectionChanged;
@@ -155,6 +187,10 @@ public partial class MainWindow : Window
         _guideButtonMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
         _steamRawInputMonitor.GuideButtonPressed += GuideButtonMonitor_GuideButtonPressed;
         _steamRawInputMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
+        _batteryGuideChimePlayer.PlaybackEnded += BatteryGuideChimePlayer_PlaybackEnded;
+        _guideSoundPreviewResetTimer.Tick += GuideSoundPreviewResetTimer_Tick;
+        _settingsAutoCloseTimer.Interval = TimeSpan.FromMilliseconds(280);
+        _settingsAutoCloseTimer.Tick += SettingsAutoCloseTimer_Tick;
 
         LocationChanged += (_, _) =>
         {
@@ -177,6 +213,13 @@ public partial class MainWindow : Window
         SourceInitialized += MainWindow_SourceInitialized;
     }
 
+    public void PrepareStartHiddenInTray()
+    {
+        _startHiddenInTrayOnLoad = true;
+        Opacity = 0d;
+        ShowActivated = false;
+    }
+
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         ApplyWindowBounds();
@@ -187,9 +230,12 @@ public partial class MainWindow : Window
         ApplyVisualModeState();
         await _viewModel.InitializeAsync().ConfigureAwait(true);
         ApplyColorPreset(_viewModel.ColorPresetId);
+        ApplySettingsTextStyle();
         ApplyCustomFont();
         SyncColorPresetSelection();
         SyncLanguageSelection();
+        SyncGuideSoundSelection();
+        UpdateGuideSoundControls();
         ApplyUiScaleStep(_viewModel.UiScaleStep, animate: false);
         RefreshTrayMenuTexts();
         UpdateVersionMenuHeader();
@@ -198,6 +244,15 @@ public partial class MainWindow : Window
         ApplyVisualModeState();
         _guideButtonMonitor.Start();
         _steamRawInputMonitor.LogRawDeviceSummary();
+
+        if (_startHiddenInTrayOnLoad)
+        {
+            _startHiddenInTrayOnLoad = false;
+            Hide();
+            WindowState = WindowState.Normal;
+            Opacity = 1d;
+            ShowActivated = true;
+        }
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
@@ -226,10 +281,15 @@ public partial class MainWindow : Window
         _guideButtonMonitor.Dispose();
         _steamRawInputMonitor.GuideButtonPressed -= GuideButtonMonitor_GuideButtonPressed;
         _steamRawInputMonitor.Dispose();
+        _batteryGuideChimePlayer.PlaybackEnded -= BatteryGuideChimePlayer_PlaybackEnded;
         _windowMessageSource?.RemoveHook(MainWindow_WndProc);
         _windowMessageSource = null;
+        _guideSoundPreviewResetTimer.Stop();
+        _settingsAutoCloseTimer.Stop();
         StopBatteryGuideTimers();
         CloseActiveBatteryToast();
+        _labsWindow?.Close();
+        _labsWindow = null;
         _batteryGuideChimePlayer.Dispose();
         StopGlassWave();
 
@@ -427,6 +487,7 @@ public partial class MainWindow : Window
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
+        AnimateSettingsGearClick();
 
         if (IsSettingsPopupOpen())
         {
@@ -435,6 +496,24 @@ public partial class MainWindow : Window
         }
 
         OpenSettingsPopup();
+    }
+
+    private void EnvironmentSettingsGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        ToggleSettingsAccordion(EnvironmentAccordionBody, EnvironmentAccordionArrow);
+    }
+
+    private void CustomizeSettingsGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        ToggleSettingsAccordion(CustomizeAccordionBody, CustomizeAccordionArrow);
+    }
+
+    private void LabsSettingsGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        ToggleSettingsAccordion(LabsAccordionBody, LabsAccordionArrow);
     }
 
     private void StatusPanelToggleButton_Click(object sender, RoutedEventArgs e)
@@ -494,6 +573,16 @@ public partial class MainWindow : Window
         _viewModel.SetAutostart(false);
     }
 
+    private void StartMinimizedToTrayToggle_Checked(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SetStartMinimizedToTray(true);
+    }
+
+    private void StartMinimizedToTrayToggle_Unchecked(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SetStartMinimizedToTray(false);
+    }
+
     private void CloseToTrayToggle_Checked(object sender, RoutedEventArgs e)
     {
         _viewModel.SetCloseToTray(true);
@@ -514,6 +603,116 @@ public partial class MainWindow : Window
         _viewModel.SetGuidedProbeEnabled(false);
     }
 
+    private void GuideSoundToggle_Checked(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SetGuideSoundEnabled(true);
+        UpdateGuideSoundControls();
+    }
+
+    private void GuideSoundToggle_Unchecked(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SetGuideSoundEnabled(false);
+        StopGuideSoundPreview();
+    }
+
+    private void GuideSoundComboBox_SelectionChanged(object sender, WpfControls.SelectionChangedEventArgs e)
+    {
+        if (_isGuideSoundSyncing || GuideSoundComboBox.SelectedItem is not BatteryGuideSoundOption selected)
+        {
+            return;
+        }
+
+        _viewModel.SetGuideSoundId(selected.Id);
+        StopGuideSoundPreview();
+    }
+
+    private void LoadCustomGuideSoundButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = _viewModel.TextCustomGuideSoundSelectTitle,
+            Filter = "Audio files (*.wav;*.mp3;*.wma;*.m4a)|*.wav;*.mp3;*.wma;*.m4a|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var persistedPath = PersistCustomGuideSound(dialog.FileName);
+        if (string.IsNullOrWhiteSpace(persistedPath))
+        {
+            ShowTrayNotification(_viewModel.TextGuideSound, _viewModel.TextCustomGuideSoundInvalid, Forms.ToolTipIcon.Warning);
+            return;
+        }
+
+        _viewModel.SetCustomGuideSoundPath(persistedPath);
+        SyncGuideSoundSelection();
+        UpdateGuideSoundControls();
+    }
+
+    private void ResetCustomGuideSoundButton_Click(object sender, RoutedEventArgs e)
+    {
+        StopGuideSoundPreview();
+        _viewModel.ResetCustomGuideSound();
+        SyncGuideSoundSelection();
+        UpdateGuideSoundControls();
+    }
+
+    private void PreviewGuideSoundButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_viewModel.GuideSoundEnabled)
+        {
+            return;
+        }
+
+        if (_isGuideSoundPreviewPlaying)
+        {
+            StopGuideSoundPreview();
+            return;
+        }
+
+        try
+        {
+            _batteryGuideChimePlayer.PlayFromStart(BatteryGuideSoundCatalog.ResolveGuideSound(
+                _viewModel.GuideSoundId,
+                _viewModel.CustomGuideSoundPath));
+            SetGuideSoundPreviewPlaying(true);
+        }
+        catch
+        {
+            SetGuideSoundPreviewPlaying(false);
+            // Preview audio is optional.
+        }
+    }
+
+    private void GuideSoundPreviewResetTimer_Tick(object? sender, EventArgs e)
+    {
+        SetGuideSoundPreviewPlaying(false);
+    }
+
+    private void BatteryGuideChimePlayer_PlaybackEnded(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => BatteryGuideChimePlayer_PlaybackEnded(sender, e));
+            return;
+        }
+
+        if (_isGuideSoundPreviewPlaying)
+        {
+            SetGuideSoundPreviewPlaying(false);
+        }
+    }
+
+    private void VersionEasterEggButton_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        OpenLabsWindow();
+    }
+
     private void AggressivePolicyToggle_Checked(object sender, RoutedEventArgs e)
     {
         _viewModel.SetThirdPartyBatteryPolicy(ThirdPartyBatteryPolicy.Aggressive);
@@ -522,6 +721,142 @@ public partial class MainWindow : Window
     private void AggressivePolicyToggle_Unchecked(object sender, RoutedEventArgs e)
     {
         _viewModel.SetThirdPartyBatteryPolicy(ThirdPartyBatteryPolicy.Hybrid);
+    }
+
+    private async void PicoFirmwareUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isPicoFirmwareUpdating)
+        {
+            return;
+        }
+
+        _isPicoFirmwareUpdating = true;
+        if (PicoFirmwareUpdateButton is not null)
+        {
+            PicoFirmwareUpdateButton.IsEnabled = false;
+        }
+
+        try
+        {
+            SetPicoFirmwareUpdateStatus(ExtraText("PicoChecking"));
+            var firmware = await TryGetLatestDs5DongleFirmwareAsync().ConfigureAwait(true);
+            if (firmware is null)
+            {
+                SetPicoFirmwareUpdateStatus(ExtraText("PicoReleaseReadFailed"));
+                OpenExternalUrl(Ds5DongleReleasePageUrl);
+                return;
+            }
+
+            var bootDrive = FindPicoBootDrive();
+            if (bootDrive is not null)
+            {
+                var rememberedVersion = NormalizeReleaseVersion(_viewModel.LastDs5DongleFirmwareVersion);
+                if (!string.IsNullOrWhiteSpace(rememberedVersion) &&
+                    !IsDs5DongleFirmwareUpdateNeeded(rememberedVersion, firmware.Version))
+                {
+                    SetPicoFirmwareUpdateStatus(ExtraFormat(
+                        "PicoBootDriveAlreadyLatestRememberedFormat",
+                        rememberedVersion,
+                        firmware.Version));
+                    return;
+                }
+
+                var rememberedDisplay = string.IsNullOrWhiteSpace(rememberedVersion)
+                    ? ExtraText("PicoUnknownInstalledVersion")
+                    : rememberedVersion;
+                var confirmationResult = System.Windows.MessageBox.Show(
+                    this,
+                    ExtraFormat(
+                        "PicoBootDriveConfirmFlashFormat",
+                        bootDrive.VolumeLabel,
+                        rememberedDisplay,
+                        firmware.Version),
+                    AppDisplayName,
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Question);
+                if (confirmationResult != System.Windows.MessageBoxResult.Yes)
+                {
+                    SetPicoFirmwareUpdateStatus(ExtraText("PicoCancelled"));
+                    return;
+                }
+
+                SetPicoFirmwareUpdateStatus(ExtraFormat("PicoBootDriveReadyFormat", bootDrive.VolumeLabel, firmware.Version));
+                await FlashDs5DongleFirmwareAsync(firmware, bootDrive).ConfigureAwait(true);
+                return;
+            }
+
+            SetPicoFirmwareUpdateStatus(ExtraText("PicoCheckingInstalled"));
+            var installedFirmwareScan = await Task
+                .Run(() => Ds5DongleFirmwareVersionReader.ReadCurrentVersion(CancellationToken.None))
+                .ConfigureAwait(true);
+            var installedFirmware = installedFirmwareScan.Firmware;
+            if (installedFirmware is null)
+            {
+                var message = ExtraFormat("PicoInstalledReadMissingFormat", firmware.Version);
+                var hint = BuildPicoFirmwareReadMissingHint(installedFirmwareScan);
+                if (!string.IsNullOrWhiteSpace(hint))
+                {
+                    message = $"{message}{Environment.NewLine}{hint}";
+                }
+
+                SetPicoFirmwareUpdateStatus(message);
+                return;
+            }
+
+            var installedVersion = NormalizeReleaseVersion(installedFirmware.Version);
+            _viewModel.RememberDs5DongleFirmwareVersion(installedVersion);
+            if (!IsDs5DongleFirmwareUpdateNeeded(installedVersion, firmware.Version))
+            {
+                SetPicoFirmwareUpdateStatus(ExtraFormat("PicoAlreadyLatestFormat", installedVersion));
+                return;
+            }
+
+            var updateMessage = ExtraFormat("PicoUpdateAvailableFormat", installedVersion, firmware.Version);
+            SetPicoFirmwareUpdateStatus(updateMessage);
+            System.Windows.MessageBox.Show(
+                this,
+                ExtraFormat("PicoUpdateAvailableMessageFormat", installedVersion, firmware.Version),
+                AppDisplayName,
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            var message = string.IsNullOrWhiteSpace(ex.Message)
+                ? ExtraText("PicoErrorFallback")
+                : ex.Message;
+            SetPicoFirmwareUpdateStatus(message);
+            ShowTrayNotification(ExtraText("PicoToastTitle"), message, Forms.ToolTipIcon.Warning);
+        }
+        finally
+        {
+            _isPicoFirmwareUpdating = false;
+            if (PicoFirmwareUpdateButton is not null)
+            {
+                PicoFirmwareUpdateButton.IsEnabled = true;
+            }
+        }
+    }
+
+    private string BuildPicoFirmwareReadMissingHint(Ds5DongleFirmwareVersionScanResult scan)
+    {
+        var isKorean = string.Equals(_viewModel.Language, WidgetSettings.KoreanLanguage, StringComparison.OrdinalIgnoreCase);
+        return scan.Status switch
+        {
+            Ds5DongleFirmwareVersionReadStatus.OnlyBluetoothDualSenseEndpoints => isKorean
+                ? "상세: 현재 Windows에는 Bluetooth DualSense만 보이고, USB DS5Dongle 장치는 보이지 않습니다. DS5Dongle은 컨트롤러가 Pico2W에 연결된 뒤에야 USB 장치로 보일 수 있습니다."
+                : "Detail: Windows currently shows Bluetooth DualSense endpoints, but no USB DS5Dongle endpoint. DS5Dongle may appear as a USB device only after the controller connects through Pico2W.",
+            Ds5DongleFirmwareVersionReadStatus.NoUsbDs5DongleEndpoint => isKorean
+                ? "상세: 일반 USB DS5Dongle HID 장치를 찾지 못했습니다. Pico2W가 USB로 연결되어 있고, DualSense가 Pico2W를 통해 연결된 상태인지 확인해 주세요."
+                : "Detail: No normal USB DS5Dongle HID endpoint was found. Check that Pico2W is connected over USB and DualSense is connected through Pico2W.",
+            Ds5DongleFirmwareVersionReadStatus.UsbDs5DongleOpenFailed => isKorean
+                ? "상세: USB DS5Dongle 후보는 보였지만 앱이 읽기용으로 열지 못했습니다. 브라우저 설정 페이지나 다른 앱이 잡고 있으면 닫고 다시 시도해 주세요."
+                : "Detail: A USB DS5Dongle candidate was found, but the app could not open it. Close the browser config page or other apps and try again.",
+            Ds5DongleFirmwareVersionReadStatus.FirmwareVersionReportUnavailable => isKorean
+                ? "상세: USB DS5Dongle 후보는 열렸지만 펌웨어 버전 리포트 0xF8을 받지 못했습니다. v0.6.0-hotfix 이전 펌웨어일 수 있습니다."
+                : "Detail: A USB DS5Dongle candidate opened, but report 0xF8 did not return a firmware version. The firmware may be older than v0.6.0-hotfix.",
+            _ => string.Empty
+        };
     }
 
     private void ColorPresetComboBox_SelectionChanged(object sender, WpfControls.SelectionChangedEventArgs e)
@@ -648,7 +983,7 @@ public partial class MainWindow : Window
     private void ColorElementButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: string elementKey } ||
-            !ColorElementLabels.ContainsKey(elementKey))
+            !ColorElementKeys.Contains(elementKey))
         {
             return;
         }
@@ -700,7 +1035,7 @@ public partial class MainWindow : Window
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "사용자 폰트 선택",
+            Title = _viewModel.TextCustomFontSelectTitle,
             Filter = "Font files (*.ttf;*.otf)|*.ttf;*.otf|All files (*.*)|*.*",
             CheckFileExists = true,
             CheckPathExists = true,
@@ -717,7 +1052,7 @@ public partial class MainWindow : Window
         {
             System.Windows.MessageBox.Show(
                 this,
-                "폰트 파일을 불러오지 못했습니다.",
+                _viewModel.TextCustomFontLoadFailed,
                 AppDisplayName,
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Information);
@@ -762,6 +1097,54 @@ public partial class MainWindow : Window
 
         _viewModel.SetUiScaleStep(step);
         ApplyUiScaleStep(_viewModel.UiScaleStep);
+    }
+
+    private void SettingsTextFontSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!IsLoaded || SettingsTextFontSizeSlider is null || !SettingsTextFontSizeSlider.IsLoaded)
+        {
+            return;
+        }
+
+        var size = WidgetSettings.NormalizeSettingsTextFontSize(e.NewValue);
+        var previousSize = WidgetSettings.NormalizeSettingsTextFontSize(e.OldValue);
+        if (Math.Abs(size - previousSize) < 0.01d)
+        {
+            return;
+        }
+
+        if (!_viewModel.UseCustomSettingsTextStyle &&
+            Math.Abs(size - WidgetSettings.DefaultSettingsTextFontSize) < 0.01d)
+        {
+            return;
+        }
+
+        _viewModel.SetSettingsTextFontSize(size);
+        ApplySettingsTextStyle();
+    }
+
+    private void SettingsTextBoldToggle_Checked(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SetSettingsTextBold(true);
+        ApplySettingsTextStyle();
+    }
+
+    private void SettingsTextBoldToggle_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (!_viewModel.UseCustomSettingsTextStyle && !_viewModel.SettingsTextBold)
+        {
+            return;
+        }
+
+        _viewModel.SetSettingsTextBold(false);
+        ApplySettingsTextStyle();
+    }
+
+    private void ResetSettingsTextStyleButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.ClearSettingsTextStyle();
+        ApplyColorPreset(_viewModel.ColorPresetId);
+        ApplySettingsTextStyle();
     }
 
     private async void ManualRefreshButton_Click(object sender, RoutedEventArgs e)
@@ -1030,6 +1413,70 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task<Ds5DongleFirmwareInfo?> TryGetLatestDs5DongleFirmwareAsync()
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, Ds5DongleLatestReleaseApiUrl);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue(AppDisplayName, GetDisplayVersion()));
+
+            using var response = await _httpClient
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
+                .ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(true);
+            using var document = await JsonDocument.ParseAsync(stream).ConfigureAwait(true);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("tag_name", out var tagNameElement))
+            {
+                return null;
+            }
+
+            var latestVersion = NormalizeReleaseVersion(tagNameElement.GetString());
+            var releaseUrl = root.TryGetProperty("html_url", out var htmlUrlElement)
+                ? htmlUrlElement.GetString() ?? Ds5DongleReleasePageUrl
+                : Ds5DongleReleasePageUrl;
+
+            if (!root.TryGetProperty("assets", out var assetsElement) ||
+                assetsElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            foreach (var asset in assetsElement.EnumerateArray())
+            {
+                if (!asset.TryGetProperty("name", out var nameElement) ||
+                    !asset.TryGetProperty("browser_download_url", out var urlElement))
+                {
+                    continue;
+                }
+
+                var assetName = nameElement.GetString();
+                var downloadUrl = urlElement.GetString();
+                if (string.IsNullOrWhiteSpace(assetName) ||
+                    string.IsNullOrWhiteSpace(downloadUrl) ||
+                    !assetName.EndsWith(".uf2", StringComparison.OrdinalIgnoreCase) ||
+                    !IsTrustedUpdateDownloadUrl(downloadUrl))
+                {
+                    continue;
+                }
+
+                return new Ds5DongleFirmwareInfo(latestVersion, assetName, downloadUrl, releaseUrl);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
     private async Task DownloadUpdateAssetAsync(string downloadUrl, string destinationPath)
     {
         try
@@ -1088,6 +1535,73 @@ public partial class MainWindow : Window
             TryDeleteFile(destinationPath);
             throw;
         }
+    }
+
+    private async Task DownloadDs5DongleFirmwareAsync(string downloadUrl, string destinationPath)
+    {
+        try
+        {
+            if (!IsTrustedUpdateDownloadUrl(downloadUrl))
+            {
+                throw new InvalidOperationException(ExtraText("PicoDownloadUrlUntrusted"));
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue(AppDisplayName, GetDisplayVersion()));
+
+            using var response = await _httpClient
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
+                .ConfigureAwait(true);
+            response.EnsureSuccessStatusCode();
+
+            if (response.Content.Headers.ContentLength is > Ds5DongleMaxFirmwareBytes)
+            {
+                throw new InvalidOperationException(ExtraText("PicoFileTooLarge"));
+            }
+
+            await using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(true);
+            await using var target = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            var buffer = new byte[81920];
+            var downloadedBytes = 0L;
+            while (true)
+            {
+                var read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length)).ConfigureAwait(true);
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                downloadedBytes += read;
+                if (downloadedBytes > Ds5DongleMaxFirmwareBytes)
+                {
+                    throw new InvalidOperationException(ExtraText("PicoFileTooLarge"));
+                }
+
+                await target.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(true);
+            }
+        }
+        catch
+        {
+            TryDeleteFile(destinationPath);
+            throw;
+        }
+    }
+
+    private async Task FlashDs5DongleFirmwareAsync(Ds5DongleFirmwareInfo firmware, DriveInfo drive)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), "Bloss", "firmware", firmware.AssetName);
+        Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
+
+        SetPicoFirmwareUpdateStatus(ExtraFormat("PicoDownloadingFormat", firmware.Version));
+        await DownloadDs5DongleFirmwareAsync(firmware.DownloadUrl, tempPath).ConfigureAwait(true);
+
+        var destinationPath = Path.Combine(drive.RootDirectory.FullName, firmware.AssetName);
+        SetPicoFirmwareUpdateStatus(ExtraFormat("PicoCopyingFormat", drive.VolumeLabel));
+        File.Copy(tempPath, destinationPath, overwrite: true);
+
+        SetPicoFirmwareUpdateStatus(ExtraText("PicoCopied"));
+        _viewModel.RememberDs5DongleFirmwareVersion(firmware.Version);
+        ShowTrayNotification(ExtraText("PicoToastTitle"), ExtraText("PicoToastCopied"), Forms.ToolTipIcon.Info);
     }
 
     private async Task<string> DownloadUpdateChecksumAssetAsync(string downloadUrl)
@@ -1242,6 +1756,24 @@ public partial class MainWindow : Window
             StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsDs5DongleFirmwareUpdateNeeded(string currentVersionText, string latestVersionText)
+    {
+        if (TryParseComparableVersion(currentVersionText, out var currentVersion) &&
+            TryParseComparableVersion(latestVersionText, out var latestVersion))
+        {
+            var numericComparison = latestVersion.CompareTo(currentVersion);
+            if (numericComparison != 0)
+            {
+                return numericComparison > 0;
+            }
+        }
+
+        return !string.Equals(
+            NormalizeReleaseVersion(currentVersionText),
+            NormalizeReleaseVersion(latestVersionText),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool TryParseComparableVersion(string? rawVersion, out Version version)
     {
         version = new Version(0, 0, 0, 0);
@@ -1288,6 +1820,67 @@ public partial class MainWindow : Window
         }
 
         UpdateProgressTextBlock.Text = message;
+    }
+
+    private void SetPicoFirmwareUpdateStatus(string message)
+    {
+        if (PicoFirmwareUpdateStatusTextBlock is not null)
+        {
+            PicoFirmwareUpdateStatusTextBlock.Text = message;
+        }
+    }
+
+    private string ExtraText(string key)
+    {
+        return UiLanguageCatalog.GetExtraText(_viewModel.Language, key);
+    }
+
+    private string ExtraFormat(string key, params object[] args)
+    {
+        return string.Format(ExtraText(key), args);
+    }
+
+    private static DriveInfo? FindPicoBootDrive()
+    {
+        foreach (var drive in DriveInfo.GetDrives())
+        {
+            try
+            {
+                if (!drive.IsReady)
+                {
+                    continue;
+                }
+
+                var label = drive.VolumeLabel?.Trim() ?? string.Empty;
+                if (string.Equals(label, "RP2350", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(label, "RPI-RP2", StringComparison.OrdinalIgnoreCase))
+                {
+                    return drive;
+                }
+            }
+            catch
+            {
+                // Ignore drives that disappear while Windows is refreshing USB storage.
+            }
+        }
+
+        return null;
+    }
+
+    private static void OpenExternalUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Optional helper only.
+        }
     }
 
     private void ResetUpdateProgressUi()
@@ -1364,22 +1957,220 @@ public partial class MainWindow : Window
     private void OpenSettingsPopup()
     {
         FinishPopupDrag();
-        SettingsPopup.HorizontalOffset = 8d;
+        UpdateSettingsPopupLayout();
+        SettingsPopup.HorizontalOffset = 0d;
         SettingsPopup.VerticalOffset = 8d;
         SettingsPopup.IsOpen = true;
         UpdateVersionMenuHeader();
     }
 
+    private void UpdateSettingsPopupLayout()
+    {
+        // Fixed width: keep settings stable while the main widget is resized.
+    }
+
     private void CloseSettingsPopup()
     {
         FinishPopupDrag();
+        _settingsAutoCloseTimer.Stop();
         SettingsPopup.IsOpen = false;
+        CloseSettingsAccordions(animate: false);
         ColorCustomPopup.IsOpen = false;
     }
 
     private bool IsSettingsPopupOpen()
     {
         return SettingsPopup.IsOpen;
+    }
+
+    private void ToggleSettingsAccordion(FrameworkElement body, WpfControls.TextBlock arrow)
+    {
+        var shouldOpen = body.Visibility != Visibility.Visible;
+        CloseSettingsAccordions(body, animate: shouldOpen);
+        if (shouldOpen)
+        {
+            OpenSettingsAccordion(body, arrow);
+        }
+        else
+        {
+            CloseSettingsAccordion(body, arrow, animate: true);
+        }
+
+        QueueSettingsAutoCloseCheck();
+    }
+
+    private void CloseSettingsAccordions(FrameworkElement? exceptBody = null, bool animate = false)
+    {
+        CloseSettingsAccordion(EnvironmentAccordionBody, EnvironmentAccordionArrow, animate, exceptBody);
+        CloseSettingsAccordion(CustomizeAccordionBody, CustomizeAccordionArrow, animate, exceptBody);
+        CloseSettingsAccordion(LabsAccordionBody, LabsAccordionArrow, animate, exceptBody);
+    }
+
+    private void OpenSettingsAccordion(FrameworkElement body, WpfControls.TextBlock arrow)
+    {
+        var animationToken = NextSettingsAccordionAnimationToken(body);
+        body.BeginAnimation(HeightProperty, null);
+        body.BeginAnimation(OpacityProperty, null);
+        body.Visibility = Visibility.Visible;
+        body.Opacity = 0d;
+        body.Height = double.NaN;
+        body.Measure(new System.Windows.Size(Math.Max(SettingsPopupChrome.ActualWidth - 24d, 320d), double.PositiveInfinity));
+
+        var targetHeight = Math.Max(1d, body.DesiredSize.Height);
+        body.Height = 0d;
+        var heightAnimation = new DoubleAnimation(0d, targetHeight, TimeSpan.FromMilliseconds(SettingsAccordionAnimationMilliseconds))
+        {
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
+        };
+        heightAnimation.Completed += (_, _) =>
+        {
+            if (!IsCurrentSettingsAccordionAnimation(body, animationToken))
+            {
+                return;
+            }
+
+            body.BeginAnimation(HeightProperty, null);
+            body.Height = double.NaN;
+            body.Opacity = 1d;
+        };
+
+        body.BeginAnimation(HeightProperty, heightAnimation);
+        body.BeginAnimation(OpacityProperty, new DoubleAnimation(0d, 1d, TimeSpan.FromMilliseconds(170))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+        arrow.Text = "⌃";
+    }
+
+    private void CloseSettingsAccordion(
+        FrameworkElement body,
+        WpfControls.TextBlock arrow,
+        bool animate,
+        FrameworkElement? exceptBody = null)
+    {
+        if (ReferenceEquals(body, exceptBody))
+        {
+            return;
+        }
+
+        var animationToken = NextSettingsAccordionAnimationToken(body);
+        body.BeginAnimation(HeightProperty, null);
+        body.BeginAnimation(OpacityProperty, null);
+        arrow.Text = "⌄";
+
+        if (body.Visibility != Visibility.Visible || !animate)
+        {
+            body.Visibility = Visibility.Collapsed;
+            body.Height = double.NaN;
+            body.Opacity = 1d;
+            return;
+        }
+
+        body.Measure(new System.Windows.Size(Math.Max(SettingsPopupChrome.ActualWidth - 24d, 320d), double.PositiveInfinity));
+        var startHeight = Math.Max(body.ActualHeight, body.DesiredSize.Height);
+        if (startHeight <= 1d)
+        {
+            body.Visibility = Visibility.Collapsed;
+            body.Height = double.NaN;
+            body.Opacity = 1d;
+            return;
+        }
+
+        body.Height = startHeight;
+        var heightAnimation = new DoubleAnimation(startHeight, 0d, TimeSpan.FromMilliseconds(SettingsAccordionAnimationMilliseconds - 35))
+        {
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseInOut },
+            FillBehavior = FillBehavior.Stop
+        };
+        heightAnimation.Completed += (_, _) =>
+        {
+            if (!IsCurrentSettingsAccordionAnimation(body, animationToken))
+            {
+                return;
+            }
+
+            body.BeginAnimation(HeightProperty, null);
+            body.Visibility = Visibility.Collapsed;
+            body.Height = double.NaN;
+            body.Opacity = 1d;
+        };
+
+        body.BeginAnimation(HeightProperty, heightAnimation);
+        body.BeginAnimation(OpacityProperty, new DoubleAnimation(1d, 0d, TimeSpan.FromMilliseconds(150))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        });
+    }
+
+    private int NextSettingsAccordionAnimationToken(FrameworkElement body)
+    {
+        _settingsAccordionAnimationTokens.TryGetValue(body, out var token);
+        token++;
+        _settingsAccordionAnimationTokens[body] = token;
+        return token;
+    }
+
+    private bool IsCurrentSettingsAccordionAnimation(FrameworkElement body, int token)
+    {
+        return _settingsAccordionAnimationTokens.TryGetValue(body, out var currentToken) &&
+               currentToken == token;
+    }
+
+    private void SettingsPopupArea_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        _settingsAutoCloseTimer.Stop();
+    }
+
+    private void SettingsPopupArea_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        QueueSettingsAutoCloseCheck();
+    }
+
+    private void QueueSettingsAutoCloseCheck()
+    {
+        _settingsAutoCloseTimer.Stop();
+        _settingsAutoCloseTimer.Start();
+    }
+
+    private void SettingsAutoCloseTimer_Tick(object? sender, EventArgs e)
+    {
+        _settingsAutoCloseTimer.Stop();
+        if (IsMouseOverSettingsSurface() || IsAnySettingsDropDownOpen())
+        {
+            QueueSettingsAutoCloseCheck();
+            return;
+        }
+
+        CloseSettingsPopup();
+    }
+
+    private bool IsMouseOverSettingsSurface()
+    {
+        return SettingsPopupChrome.IsMouseOver ||
+               ColorPopupChrome.IsMouseOver;
+    }
+
+    private bool IsAnySettingsDropDownOpen()
+    {
+        return ColorPresetComboBox.IsDropDownOpen ||
+               GuideSoundComboBox.IsDropDownOpen ||
+               LanguageComboBox.IsDropDownOpen ||
+               ColorCustomPopup.IsOpen && ColorPopupChrome.IsMouseOver;
+    }
+
+    private void AnimateSettingsGearClick()
+    {
+        var currentAngle = SettingsGearRotateTransform.Angle;
+        var animation = new DoubleAnimation
+        {
+            From = currentAngle,
+            To = currentAngle + 180d,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        SettingsGearRotateTransform.BeginAnimation(RotateTransform.AngleProperty, animation);
     }
 
     private void ExitButton_Click(object sender, RoutedEventArgs e)
@@ -1595,6 +2386,12 @@ public partial class MainWindow : Window
                 SyncLanguageSelection();
                 RefreshTrayMenuTexts();
                 UpdateVersionMenuHeader();
+                UpdateGuideSoundControls();
+                UpdateColorEditorState();
+                if (!_isPicoFirmwareUpdating)
+                {
+                    SetPicoFirmwareUpdateStatus(_viewModel.TextPicoFirmwareReady);
+                }
             }
             else
             {
@@ -1603,7 +2400,49 @@ public partial class MainWindow : Window
                     SyncLanguageSelection();
                     RefreshTrayMenuTexts();
                     UpdateVersionMenuHeader();
+                    UpdateGuideSoundControls();
+                    UpdateColorEditorState();
+                    if (!_isPicoFirmwareUpdating)
+                    {
+                        SetPicoFirmwareUpdateStatus(_viewModel.TextPicoFirmwareReady);
+                    }
                 });
+            }
+
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.GuideSoundEnabled)
+            or nameof(MainViewModel.GuideSoundId)
+            or nameof(MainViewModel.CustomGuideSoundPath))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                SyncGuideSoundSelection();
+                UpdateGuideSoundControls();
+            }
+            else
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    SyncGuideSoundSelection();
+                    UpdateGuideSoundControls();
+                });
+            }
+
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.AutostartEnabled)
+            or nameof(MainViewModel.StartMinimizedToTrayEnabled))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                RefreshTrayMenuTexts();
+            }
+            else
+            {
+                Dispatcher.Invoke(RefreshTrayMenuTexts);
             }
 
             return;
@@ -1622,6 +2461,22 @@ public partial class MainWindow : Window
         if (e.PropertyName is nameof(MainViewModel.UiScaleStep))
         {
             ApplyUiScaleStep(_viewModel.UiScaleStep);
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.UseCustomSettingsTextStyle)
+            or nameof(MainViewModel.SettingsTextFontSize)
+            or nameof(MainViewModel.SettingsTextBold))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                ApplySettingsTextStyle();
+            }
+            else
+            {
+                Dispatcher.Invoke(ApplySettingsTextStyle);
+            }
+
             return;
         }
 
@@ -1887,6 +2742,70 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SyncGuideSoundSelection()
+    {
+        if (GuideSoundComboBox is null)
+        {
+            return;
+        }
+
+        var options = BatteryGuideSoundCatalog.GetGuideOptions(_viewModel.CustomGuideSoundPath);
+        var selected = BatteryGuideSoundCatalog.ResolveGuideSound(
+            _viewModel.GuideSoundId,
+            _viewModel.CustomGuideSoundPath);
+        _isGuideSoundSyncing = true;
+        try
+        {
+            GuideSoundComboBox.ItemsSource = options;
+            GuideSoundComboBox.SelectedItem = selected;
+        }
+        finally
+        {
+            _isGuideSoundSyncing = false;
+        }
+    }
+
+    private void UpdateGuideSoundControls()
+    {
+        if (GuideSoundComboBox is not null)
+        {
+            GuideSoundComboBox.IsEnabled = _viewModel.GuideSoundEnabled;
+            GuideSoundComboBox.Opacity = _viewModel.GuideSoundEnabled ? 1.0 : 0.52;
+        }
+
+        if (PreviewGuideSoundButton is not null)
+        {
+            PreviewGuideSoundButton.IsEnabled = _viewModel.GuideSoundEnabled;
+            PreviewGuideSoundButton.Opacity = _viewModel.GuideSoundEnabled ? 1.0 : 0.52;
+            PreviewGuideSoundButton.Content = _isGuideSoundPreviewPlaying
+                ? GuideSoundPreviewStopText
+                : GuideSoundPreviewPlayText;
+            PreviewGuideSoundButton.ToolTip = _isGuideSoundPreviewPlaying
+                ? _viewModel.TextGuideSoundPreviewStopTooltip
+                : _viewModel.TextGuideSoundPreviewTooltip;
+        }
+    }
+
+    private void SetGuideSoundPreviewPlaying(bool isPlaying)
+    {
+        _guideSoundPreviewResetTimer.Stop();
+        _isGuideSoundPreviewPlaying = isPlaying && _viewModel.GuideSoundEnabled;
+
+        if (_isGuideSoundPreviewPlaying)
+        {
+            _guideSoundPreviewResetTimer.Interval = GuideSoundPreviewSafetyTimeout;
+            _guideSoundPreviewResetTimer.Start();
+        }
+
+        UpdateGuideSoundControls();
+    }
+
+    private void StopGuideSoundPreview()
+    {
+        StopBatteryGuideChime();
+        SetGuideSoundPreviewPlaying(false);
+    }
+
     private void ApplyUiScaleStep(int step, bool animate = true)
     {
         var normalizedStep = WidgetSettings.NormalizeUiScaleStep(step);
@@ -2044,6 +2963,9 @@ public partial class MainWindow : Window
         }
         else
         {
+            SetResourceColor("GlassSurfaceBrush", WithAlpha(
+                EnhanceThemeColor(BlendColors(preset.ListTop, preset.CardTint, 0.22d), 1.12d, 1.08d, 1.04d),
+                232));
             ApplyGlassAtmosphere(preset);
         }
 
@@ -2064,8 +2986,18 @@ public partial class MainWindow : Window
 
     private void ApplyFixedSettingsTextResources()
     {
-        SetResourceColor("SettingsTitleBrush", FixedSettingsTitleColor);
-        SetResourceColor("SettingsTextBrush", FixedSettingsTextColor);
+        var titleColor = FixedSettingsTitleColor;
+        var textColor = FixedSettingsTextColor;
+        if (_viewModel.UseCustomSettingsTextStyle &&
+            _viewModel.CustomElementColors.TryGetValue("SettingsText", out var configuredColor) &&
+            TryParseWpfColor(configuredColor, out var parsedColor))
+        {
+            titleColor = WithAlpha(parsedColor, byte.MaxValue);
+            textColor = titleColor;
+        }
+
+        SetResourceColor(SettingsTitleBrushResourceKey, titleColor);
+        SetResourceColor(SettingsTextBrushResourceKey, textColor);
     }
 
     private void ApplyWhiteBlueGlassDefaults()
@@ -2085,6 +3017,8 @@ public partial class MainWindow : Window
             GsBottom.Color = System.Windows.Media.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF);
         }
 
+        SetResourceColor("WidgetBackgroundBrush", System.Windows.Media.Color.FromRgb(0xEC, 0xF5, 0xFF));
+        SetResourceColor("GlassSurfaceBrush", System.Windows.Media.Color.FromArgb(0xF2, 0xEA, 0xF6, 0xFF));
         ApplyGlassTexture(
             System.Windows.Media.Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF),
             System.Windows.Media.Color.FromArgb(0x08, 0xFF, 0xFF, 0xFF),
@@ -2095,6 +3029,8 @@ public partial class MainWindow : Window
 
     private void ApplyGlassAtmosphere(ColorPreset preset)
     {
+        SetResourceColor("WidgetBackgroundBrush", BlendColors(preset.FooterBottom, preset.ListBottom, 0.32d));
+
         if (GsTop is not null)
         {
             GsTop.Color = WithAlpha(BlendColors(preset.CardTint, System.Windows.Media.Colors.White, 0.12d), 42);
@@ -2174,6 +3110,7 @@ public partial class MainWindow : Window
         SetResourceColor("IconBorderBrush", WithAlpha(lineSurface, 170));
         SetResourceColor("ActionButtonBackBrush", WithAlpha(softSurface, 218));
         SetResourceColor("ActionButtonBorderBrush", WithAlpha(lineSurface, 160));
+        ApplyGlassSurfaceColor(softerSurface);
 
         if (ListTopStop is not null)
         {
@@ -2195,12 +3132,7 @@ public partial class MainWindow : Window
             FooterBottomStop.Color = WithAlpha(background, 186);
         }
 
-        ApplyGlassTexture(
-            WithAlpha(BlendColors(background, System.Windows.Media.Colors.White, 0.24d), 48),
-            WithAlpha(BlendColors(background, text, 0.06d), 20),
-            WithAlpha(BlendColors(background, text, 0.18d), 56),
-            WithAlpha(BlendColors(softSurface, System.Windows.Media.Colors.White, 0.18d), 34),
-            WithAlpha(BlendColors(background, text, 0.22d), 46));
+        ApplyWidgetBackgroundColor(background);
     }
 
     private void ApplyCustomElementColorResource(string elementKey, System.Windows.Media.Color color)
@@ -2216,6 +3148,12 @@ public partial class MainWindow : Window
                 break;
             case "BatteryText":
                 SetResourceColor("BatteryTextBrush", opaqueColor);
+                break;
+            case "WidgetBackground":
+                ApplyWidgetBackgroundColor(opaqueColor);
+                break;
+            case "GlassSurface":
+                ApplyGlassSurfaceColor(opaqueColor);
                 break;
             case "CardTint":
                 SetResourceColor("CardTintBrush", WithAlpha(opaqueColor, 238));
@@ -2242,6 +3180,61 @@ public partial class MainWindow : Window
                 }
 
                 break;
+            case "SettingsText":
+                ApplyFixedSettingsTextResources();
+                break;
+        }
+    }
+
+    private void ApplyWidgetBackgroundColor(System.Windows.Media.Color color)
+    {
+        var opaqueColor = WithAlpha(color, byte.MaxValue);
+        var brightColor = BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.28d);
+        var softColor = BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.14d);
+        var depthColor = BlendColors(opaqueColor, System.Windows.Media.Colors.Black, 0.12d);
+
+        SetResourceColor("WidgetBackgroundBrush", opaqueColor);
+
+        if (GsTop is not null)
+        {
+            GsTop.Color = WithAlpha(BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.42d), 50);
+        }
+
+        if (GsMid is not null)
+        {
+            GsMid.Color = WithAlpha(brightColor, 72);
+        }
+
+        if (GsBottom is not null)
+        {
+            GsBottom.Color = WithAlpha(opaqueColor, 122);
+        }
+
+        ApplyGlassTexture(
+            WithAlpha(BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.38d), 50),
+            WithAlpha(softColor, 24),
+            WithAlpha(BlendColors(opaqueColor, System.Windows.Media.Colors.Black, 0.04d), 62),
+            WithAlpha(brightColor, 36),
+            WithAlpha(depthColor, 52));
+    }
+
+    private void ApplyGlassSurfaceColor(System.Windows.Media.Color color)
+    {
+        var opaqueColor = WithAlpha(color, byte.MaxValue);
+        var surface = BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.18d);
+        var top = BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.26d);
+        var bottom = BlendColors(opaqueColor, System.Windows.Media.Colors.White, 0.10d);
+
+        SetResourceColor("GlassSurfaceBrush", WithAlpha(surface, 232));
+
+        if (ListTopStop is not null)
+        {
+            ListTopStop.Color = WithAlpha(top, 222);
+        }
+
+        if (ListBottomStop is not null)
+        {
+            ListBottomStop.Color = WithAlpha(bottom, 198);
         }
     }
 
@@ -2273,6 +3266,91 @@ public partial class MainWindow : Window
         {
             FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
         }
+    }
+
+    private void ApplySettingsTextStyle()
+    {
+        ApplyFixedSettingsTextResources();
+
+        if (SettingsPopupChrome is null)
+        {
+            return;
+        }
+
+        if (!_viewModel.UseCustomSettingsTextStyle)
+        {
+            RestoreDefaultSettingsTextStyles();
+            return;
+        }
+
+        var fontSize = WidgetSettings.NormalizeSettingsTextFontSize(_viewModel.SettingsTextFontSize);
+        var fontWeight = _viewModel.SettingsTextBold ? FontWeights.Bold : FontWeights.Normal;
+        ApplySettingsTextStyle(SettingsPopupChrome, fontSize, fontWeight);
+    }
+
+    private void RestoreDefaultSettingsTextStyles()
+    {
+        foreach (var pair in _settingsTextBlockDefaults.ToArray())
+        {
+            pair.Key.FontSize = pair.Value.FontSize;
+            pair.Key.FontWeight = pair.Value.FontWeight;
+        }
+
+        foreach (var pair in _settingsControlTextDefaults.ToArray())
+        {
+            pair.Key.FontSize = pair.Value.FontSize;
+            pair.Key.FontWeight = pair.Value.FontWeight;
+        }
+    }
+
+    private void ApplySettingsTextStyle(DependencyObject root, double fontSize, FontWeight fontWeight)
+    {
+        var childrenCount = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < childrenCount; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is WpfControls.TextBlock textBlock)
+            {
+                ApplySettingsTextBlockStyle(textBlock, fontSize, fontWeight);
+            }
+            else if (child is WpfControls.Control control)
+            {
+                ApplySettingsControlTextStyle(control, fontSize, fontWeight);
+            }
+
+            ApplySettingsTextStyle(child, fontSize, fontWeight);
+        }
+    }
+
+    private void ApplySettingsTextBlockStyle(WpfControls.TextBlock textBlock, double fontSize, FontWeight fontWeight)
+    {
+        if (IsSettingsGlyphText(textBlock))
+        {
+            return;
+        }
+
+        _settingsTextBlockDefaults.TryAdd(textBlock, (textBlock.FontSize, textBlock.FontWeight));
+        textBlock.FontSize = fontSize;
+        textBlock.FontWeight = fontWeight;
+    }
+
+    private void ApplySettingsControlTextStyle(WpfControls.Control control, double fontSize, FontWeight fontWeight)
+    {
+        if (control is WpfControls.Slider or WpfControls.ProgressBar or WpfThumb or WpfToggleButton)
+        {
+            return;
+        }
+
+        _settingsControlTextDefaults.TryAdd(control, (control.FontSize, control.FontWeight));
+        control.FontSize = fontSize;
+        control.FontWeight = fontWeight;
+    }
+
+    private static bool IsSettingsGlyphText(WpfControls.TextBlock textBlock)
+    {
+        var name = textBlock.Name ?? string.Empty;
+        return name.EndsWith("Arrow", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(textBlock.FontFamily?.Source, "Segoe MDL2 Assets", StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateSelectedColorFromPalette(System.Windows.Point point)
@@ -2307,26 +3385,48 @@ public partial class MainWindow : Window
         SetSwatch(PrimaryTextSwatch, "PrimaryTextBrush");
         SetSwatch(SecondaryTextSwatch, "SecondaryTextBrush");
         SetSwatch(BatteryTextSwatch, "BatteryTextBrush");
+        SetSwatch(WidgetBackgroundSwatch, "WidgetBackgroundBrush");
+        SetSwatch(GlassSurfaceSwatch, "GlassSurfaceBrush");
         SetSwatch(CardTintSwatch, "CardTintBrush");
         SetSwatch(CardBorderSwatch, "CardBorderBrush");
         SetSwatch(TrackSwatch, "TrackBrush");
         SetSwatch(PanelSwatch, "ActionButtonBackBrush");
+        SetSwatch(SettingsTextSwatch, SettingsTextBrushResourceKey);
         SetColorElementButtonState(PrimaryTextColorButton, "PrimaryText");
         SetColorElementButtonState(SecondaryTextColorButton, "SecondaryText");
         SetColorElementButtonState(BatteryTextColorButton, "BatteryText");
+        SetColorElementButtonState(WidgetBackgroundColorButton, "WidgetBackground");
+        SetColorElementButtonState(GlassSurfaceColorButton, "GlassSurface");
         SetColorElementButtonState(CardTintColorButton, "CardTint");
         SetColorElementButtonState(CardBorderColorButton, "CardBorder");
         SetColorElementButtonState(TrackColorButton, "Track");
         SetColorElementButtonState(PanelColorButton, "Panel");
+        SetColorElementButtonState(SettingsTextColorButton, "SettingsText");
 
-        SelectedColorNameText.Text = ColorElementLabels.TryGetValue(_selectedColorElementKey, out var label)
-            ? label
-            : "전체 글자";
+        SelectedColorNameText.Text = GetColorElementLabel(_selectedColorElementKey);
         if (TryGetElementCurrentColor(_selectedColorElementKey, out var selectedColor))
         {
             SelectedColorPreviewBorder.Background = new SolidColorBrush(selectedColor);
             SelectedColorHexText.Text = ToRgbHex(selectedColor);
         }
+    }
+
+    private string GetColorElementLabel(string elementKey)
+    {
+        return elementKey switch
+        {
+            "PrimaryText" => _viewModel.TextColorTargetPrimaryText,
+            "SecondaryText" => _viewModel.TextColorTargetSecondaryText,
+            "BatteryText" => _viewModel.TextColorTargetBatteryText,
+            "WidgetBackground" => _viewModel.TextColorTargetWidgetBackground,
+            "GlassSurface" => _viewModel.TextColorTargetGlassSurface,
+            "CardTint" => _viewModel.TextColorTargetCardTint,
+            "CardBorder" => _viewModel.TextColorTargetCardBorder,
+            "Track" => _viewModel.TextColorTargetTrack,
+            "Panel" => _viewModel.TextColorTargetPanel,
+            "SettingsText" => _viewModel.TextColorTargetSettingsText,
+            _ => _viewModel.TextColorTargetPrimaryText
+        };
     }
 
     private void SetColorElementButtonState(WpfControls.Button button, string elementKey)
@@ -2355,10 +3455,13 @@ public partial class MainWindow : Window
             "PrimaryText" => "PrimaryTextBrush",
             "SecondaryText" => "SecondaryTextBrush",
             "BatteryText" => "BatteryTextBrush",
+            "WidgetBackground" => "WidgetBackgroundBrush",
+            "GlassSurface" => "GlassSurfaceBrush",
             "CardTint" => "CardTintBrush",
             "CardBorder" => "CardBorderBrush",
             "Track" => "TrackBrush",
             "Panel" => "ActionButtonBackBrush",
+            "SettingsText" => SettingsTextBrushResourceKey,
             _ => "PrimaryTextBrush"
         };
 
@@ -2379,6 +3482,12 @@ public partial class MainWindow : Window
 
     private void SetResourceColor(string key, System.Windows.Media.Color color)
     {
+        if (Resources[key] is SolidColorBrush existingBrush && !existingBrush.IsFrozen)
+        {
+            existingBrush.Color = color;
+            return;
+        }
+
         Resources[key] = new SolidColorBrush(color);
     }
 
@@ -2558,6 +3667,7 @@ public partial class MainWindow : Window
     {
         UpdateGlassCardClip();
         UpdateDwmBlurBehindRegion();
+        UpdateSettingsPopupLayout();
     }
 
     private void UpdateGlassCardClip()
@@ -2590,6 +3700,19 @@ public partial class MainWindow : Window
         _trayRefreshMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayRefreshNow);
         _trayRefreshMenuItem.Click += (_, _) => Dispatcher.Invoke(() => _ = _viewModel.RefreshAsync());
         contextMenu.Items.Add(_trayRefreshMenuItem);
+
+        _trayResetPositionMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayResetPosition);
+        _trayResetPositionMenuItem.Click += (_, _) => Dispatcher.Invoke(ResetWidgetPositionToCurrentMonitor);
+        contextMenu.Items.Add(_trayResetPositionMenuItem);
+
+        contextMenu.Items.Add(new Forms.ToolStripSeparator());
+        _trayAutostartMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextAutostart);
+        _trayAutostartMenuItem.Click += (_, _) => Dispatcher.Invoke(ToggleAutostartFromTray);
+        contextMenu.Items.Add(_trayAutostartMenuItem);
+
+        _trayStartMinimizedToTrayMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextStartMinimizedToTray);
+        _trayStartMinimizedToTrayMenuItem.Click += (_, _) => Dispatcher.Invoke(ToggleStartMinimizedToTrayFromTray);
+        contextMenu.Items.Add(_trayStartMinimizedToTrayMenuItem);
 
         contextMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayExitMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayExit);
@@ -2643,17 +3766,101 @@ public partial class MainWindow : Window
         return (DrawingIcon)SystemIcons.Information.Clone();
     }
 
-    private void ShowWidgetFromTray()
+    public void ShowWidgetFromTray()
     {
-        if (IsVisible)
+        WindowState = WindowState.Normal;
+        Opacity = 1d;
+
+        if (!IsVisible)
         {
-            Activate();
+            Show();
+        }
+
+        EnsureWidgetVisibleOnConnectedMonitor();
+        Activate();
+        Topmost = true;
+        Topmost = false;
+        Focus();
+    }
+
+    private void ResetWidgetPositionToCurrentMonitor()
+    {
+        WindowState = WindowState.Normal;
+        Opacity = 1d;
+
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        var area = GetWorkingAreaFromCurrentCursor();
+        CenterWindowInArea(area);
+        SaveWindowBounds();
+        Activate();
+        Topmost = true;
+        Topmost = false;
+        Focus();
+    }
+
+    private void ToggleAutostartFromTray()
+    {
+        _viewModel.SetAutostart(!_viewModel.AutostartEnabled);
+        RefreshTrayMenuTexts();
+    }
+
+    private void ToggleStartMinimizedToTrayFromTray()
+    {
+        _viewModel.SetStartMinimizedToTray(!_viewModel.StartMinimizedToTrayEnabled);
+        RefreshTrayMenuTexts();
+    }
+
+    private void EnsureWidgetVisibleOnConnectedMonitor()
+    {
+        var workingAreas = GetWorkingAreas();
+        if (workingAreas.Count == 0)
+        {
             return;
         }
 
-        Show();
-        WindowState = WindowState.Normal;
-        Activate();
+        var currentBounds = new WindowBounds
+        {
+            Left = Left,
+            Top = Top,
+            Width = Width,
+            Height = Height
+        };
+
+        if (HasMeaningfulVisibleArea(currentBounds, workingAreas))
+        {
+            return;
+        }
+
+        CenterWindowInArea(GetWorkingAreaFromCurrentCursor());
+        SaveWindowBounds();
+    }
+
+    private void CenterWindowInArea(WindowBounds area)
+    {
+        var width = Math.Clamp(ActualWidth > 0d ? ActualWidth : Width, MinWidth, Math.Max(MinWidth, area.Width - StartupSafetyMargin * 2d));
+        var height = Math.Clamp(ActualHeight > 0d ? ActualHeight : Height, MinHeight, Math.Max(MinHeight, area.Height - StartupSafetyMargin * 2d));
+
+        Width = width;
+        Height = height;
+        Left = area.Left + Math.Max(StartupSafetyMargin, (area.Width - width) / 2d);
+        Top = area.Top + Math.Max(StartupSafetyMargin, (area.Height - height) / 2d);
+    }
+
+    private static WindowBounds GetWorkingAreaFromCurrentCursor()
+    {
+        var screen = Forms.Screen.FromPoint(Forms.Cursor.Position);
+        var workingArea = screen.WorkingArea;
+        return new WindowBounds
+        {
+            Left = workingArea.Left,
+            Top = workingArea.Top,
+            Width = workingArea.Width,
+            Height = workingArea.Height
+        };
     }
 
     private void ExitApplication()
@@ -2823,6 +4030,24 @@ public partial class MainWindow : Window
         }
 
         return width * height;
+    }
+
+    private static bool HasMeaningfulVisibleArea(WindowBounds source, IReadOnlyList<WindowBounds> workingAreas)
+    {
+        if (workingAreas.Count == 0)
+        {
+            return false;
+        }
+
+        var overlapArea = CalculateOverlapArea(source, SelectBestArea(source, workingAreas));
+        if (overlapArea <= 0d)
+        {
+            return false;
+        }
+
+        var windowArea = Math.Max(1d, source.Width * source.Height);
+        var requiredVisibleArea = Math.Min(windowArea * 0.25d, 120d * 120d);
+        return overlapArea >= requiredVisibleArea;
     }
 
     private static bool AreClose(WindowBounds left, WindowBounds right)
@@ -3001,6 +4226,23 @@ public partial class MainWindow : Window
         if (_trayRefreshMenuItem is not null)
         {
             _trayRefreshMenuItem.Text = _viewModel.TextTrayRefreshNow;
+        }
+
+        if (_trayResetPositionMenuItem is not null)
+        {
+            _trayResetPositionMenuItem.Text = _viewModel.TextTrayResetPosition;
+        }
+
+        if (_trayAutostartMenuItem is not null)
+        {
+            _trayAutostartMenuItem.Text = _viewModel.TextAutostart;
+            _trayAutostartMenuItem.Checked = _viewModel.AutostartEnabled;
+        }
+
+        if (_trayStartMinimizedToTrayMenuItem is not null)
+        {
+            _trayStartMinimizedToTrayMenuItem.Text = _viewModel.TextStartMinimizedToTray;
+            _trayStartMinimizedToTrayMenuItem.Checked = _viewModel.StartMinimizedToTrayEnabled;
         }
 
         if (_trayExitMenuItem is not null)
@@ -3431,9 +4673,16 @@ public partial class MainWindow : Window
 
     private void RestartBatteryGuideChime()
     {
+        if (!_viewModel.GuideSoundEnabled)
+        {
+            return;
+        }
+
         try
         {
-            _batteryGuideChimePlayer.PlayFromStart();
+            _batteryGuideChimePlayer.PlayFromStart(BatteryGuideSoundCatalog.ResolveGuideSound(
+                _viewModel.GuideSoundId,
+                _viewModel.CustomGuideSoundPath));
         }
         catch
         {
@@ -3451,6 +4700,30 @@ public partial class MainWindow : Window
         {
             // Ignore shutdown races.
         }
+    }
+
+    private void OpenLabsWindow()
+    {
+        if (_labsWindow is not null)
+        {
+            _labsWindow.Activate();
+            return;
+        }
+
+        var labsWindow = new LabsWindow
+        {
+            Owner = this
+        };
+        _labsWindow = labsWindow;
+        labsWindow.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_labsWindow, labsWindow))
+            {
+                _labsWindow = null;
+            }
+        };
+
+        labsWindow.Show();
     }
 
     private DeviceItemViewModel? FindGuideButtonDevice(GuideButtonPressedEventArgs e)
@@ -3692,6 +4965,7 @@ public partial class MainWindow : Window
             or "PrimaryTextColorButton"
             or "SecondaryTextColorButton"
             or "BatteryTextColorButton"
+            or "GlassSurfaceColorButton"
             or "CardTintColorButton"
             or "CardBorderColorButton"
             or "TrackColorButton"
@@ -3707,6 +4981,7 @@ public partial class MainWindow : Window
             or "PrimaryTextColorButton"
             or "SecondaryTextColorButton"
             or "BatteryTextColorButton"
+            or "GlassSurfaceColorButton"
             or "CardTintColorButton"
             or "CardBorderColorButton"
             or "TrackColorButton"
@@ -3877,6 +5152,56 @@ public partial class MainWindow : Window
         }
     }
 
+    private static string? PersistCustomGuideSound(string sourcePath)
+    {
+        var trimmedPath = sourcePath?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (!File.Exists(trimmedPath))
+            {
+                return null;
+            }
+
+            var extension = Path.GetExtension(trimmedPath).ToLowerInvariant();
+            if (extension is not ".wav" and not ".mp3" and not ".wma" and not ".m4a")
+            {
+                return null;
+            }
+
+            Directory.CreateDirectory(CustomGuideSoundDirectory);
+
+            var baseName = Path.GetFileNameWithoutExtension(trimmedPath);
+            foreach (var invalidChar in Path.GetInvalidFileNameChars())
+            {
+                baseName = baseName.Replace(invalidChar, '_');
+            }
+
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = "custom-guide-sound";
+            }
+
+            foreach (var existingFile in Directory.GetFiles(CustomGuideSoundDirectory, "custom-guide-sound_*.*"))
+            {
+                TryDeleteFile(existingFile);
+            }
+
+            var fileStamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+            var targetPath = Path.Combine(CustomGuideSoundDirectory, $"custom-guide-sound_{baseName}_{fileStamp}{extension}");
+            File.Copy(trimmedPath, targetPath, overwrite: false);
+            return targetPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private string? OpenIconImageAdjustDialog(string sourcePath)
     {
         try
@@ -3926,6 +5251,12 @@ public partial class MainWindow : Window
         string Version,
         string SetupDownloadUrl,
         string ChecksumDownloadUrl);
+
+    private sealed record Ds5DongleFirmwareInfo(
+        string Version,
+        string AssetName,
+        string DownloadUrl,
+        string ReleaseUrl);
 
     private sealed record PendingSteamSecondaryGuideFallback(
         GuideButtonPressedEventArgs EventArgs,
