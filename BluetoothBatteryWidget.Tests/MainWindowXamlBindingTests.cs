@@ -732,6 +732,23 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
+    public void Installer_DisablesRestartManagerPreCloseCheckForSilentUpdates()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "build",
+            "installer",
+            "BluetoothBatteryWidget.iss"));
+
+        Assert.Contains("CloseApplications=no", source);
+        Assert.Contains("RestartApplications=no", source);
+    }
+
+    [Fact]
     public void DualSenseGuideButtonToastCooldown_StaysResponsive()
     {
         Assert.True(MainWindow.GetGuideButtonToastCooldown(GuideButtonDeviceKind.DualSense) < TimeSpan.FromSeconds(1));
