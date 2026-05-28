@@ -746,6 +746,7 @@ public sealed class MainWindowXamlBindingTests
 
         Assert.Contains("CloseApplications=no", source);
         Assert.Contains("RestartApplications=no", source);
+        Assert.Contains("CloseApplicationsFilterExcludes=*.exe,*.dll,*.chm", source);
     }
 
     [Fact]
