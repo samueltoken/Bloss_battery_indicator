@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private const double UiScaleStepFactor = 0.08d;
     private const int UiScaleAnimationMilliseconds = 140;
     private const int SettingsAccordionAnimationMilliseconds = 230;
+    private const double SettingsAutoCloseProtectedScreenMargin = 10d;
     private const double ResizeGripBaseInset = 4d;
     private const double StatusPanelFallbackHeight = 108d;
     private const double ColorPresetMarqueeGap = 14d;
@@ -56,7 +57,7 @@ public partial class MainWindow : Window
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.5";
+    private const string FallbackVersion = "1.0.6";
     private static readonly TimeSpan GuideButtonGlobalDebounce = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan SteamGuideButtonToastCooldown = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan SteamRawInputPreferredWindow = TimeSpan.FromMilliseconds(300);
@@ -1296,7 +1297,7 @@ public partial class MainWindow : Window
             }
 
             SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateInstallStarting, 100, isIndeterminate: false);
-            StartInstallerUpdateAndRestart(setupPath);
+            StartInstallerUpdateAndRestart(setupPath, releaseInfo.Version);
             ExitApplication();
         }
         catch (Exception ex)
@@ -1903,11 +1904,16 @@ public partial class MainWindow : Window
         UpdateProgressTextBlock.Text = string.Empty;
     }
 
-    private void StartInstallerUpdateAndRestart(string setupPath)
+    private void StartInstallerUpdateAndRestart(string setupPath, string targetVersion)
     {
         if (!File.Exists(setupPath))
         {
             throw new FileNotFoundException("Downloaded setup file was not found.", setupPath);
+        }
+
+        if (string.IsNullOrWhiteSpace(targetVersion))
+        {
+            targetVersion = FallbackVersion;
         }
 
         var currentProcessPath = Process.GetCurrentProcess().MainModule?.FileName;
@@ -1921,21 +1927,97 @@ public partial class MainWindow : Window
             throw new FileNotFoundException(_viewModel.CurrentLanguageText.UpdateInstallLaunchFailed);
         }
 
+        var updateLogDirectory = Path.Combine(Path.GetTempPath(), "Bloss", "updates");
+        Directory.CreateDirectory(updateLogDirectory);
+
+        var installLogPath = Path.Combine(
+            updateLogDirectory,
+            $"install-{GetSafeUpdateLogFileNamePart(targetVersion)}-{DateTime.UtcNow:yyyyMMddHHmmss}.log");
+
         var scriptPath = Path.Combine(Path.GetTempPath(), $"bloss-updater-{Guid.NewGuid():N}.ps1");
         var escapedSetupPath = EscapePowerShellSingleQuotedString(setupPath);
         var escapedAppPath = EscapePowerShellSingleQuotedString(currentProcessPath);
+        var escapedTargetVersion = EscapePowerShellSingleQuotedString(targetVersion);
+        var escapedLogPath = EscapePowerShellSingleQuotedString(installLogPath);
         var currentPid = Environment.ProcessId;
 
         var scriptBuilder = new StringBuilder();
+        scriptBuilder.AppendLine("$ErrorActionPreference = 'Continue'");
         scriptBuilder.AppendLine($"$setupPath = '{escapedSetupPath}'");
         scriptBuilder.AppendLine($"$appPath = '{escapedAppPath}'");
+        scriptBuilder.AppendLine($"$targetVersion = '{escapedTargetVersion}'");
+        scriptBuilder.AppendLine($"$logPath = '{escapedLogPath}'");
         scriptBuilder.AppendLine($"$oldPid = {currentPid}");
+        scriptBuilder.AppendLine();
+        scriptBuilder.AppendLine("function Write-BlossUpdateLog {");
+        scriptBuilder.AppendLine("    param([string]$message)");
+        scriptBuilder.AppendLine("    try {");
+        scriptBuilder.AppendLine("        New-Item -ItemType Directory -Path (Split-Path -Parent $logPath) -Force | Out-Null");
+        scriptBuilder.AppendLine("        Add-Content -LiteralPath $logPath -Value $message -Encoding UTF8");
+        scriptBuilder.AppendLine("    } catch {");
+        scriptBuilder.AppendLine("    }");
+        scriptBuilder.AppendLine("}");
+        scriptBuilder.AppendLine();
+        scriptBuilder.AppendLine("function Test-BlossFileVersion {");
+        scriptBuilder.AppendLine("    param([string]$filePath, [string]$versionPrefix)");
+        scriptBuilder.AppendLine("    if (-not (Test-Path -LiteralPath $filePath)) { return $false }");
+        scriptBuilder.AppendLine("    try {");
+        scriptBuilder.AppendLine("        $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($filePath)");
+        scriptBuilder.AppendLine("        return (($info.ProductVersion -like ($versionPrefix + '*')) -or ($info.FileVersion -like ($versionPrefix + '*')))");
+        scriptBuilder.AppendLine("    } catch {");
+        scriptBuilder.AppendLine("        return $false");
+        scriptBuilder.AppendLine("    }");
+        scriptBuilder.AppendLine("}");
+        scriptBuilder.AppendLine();
+        scriptBuilder.AppendLine("function Test-BlossInstalledVersion {");
+        scriptBuilder.AppendLine("    param([string]$versionPrefix)");
+        scriptBuilder.AppendLine("    $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique");
+        scriptBuilder.AppendLine("    foreach ($root in $roots) {");
+        scriptBuilder.AppendLine("        $installDir = Join-Path $root 'Bloss'");
+        scriptBuilder.AppendLine("        $exePath = Join-Path $installDir 'Bloss.exe'");
+        scriptBuilder.AppendLine("        $dllPath = Join-Path $installDir 'Bloss.dll'");
+        scriptBuilder.AppendLine("        if ((Test-BlossFileVersion $exePath $versionPrefix) -and (Test-BlossFileVersion $dllPath $versionPrefix)) {");
+        scriptBuilder.AppendLine("            return $true");
+        scriptBuilder.AppendLine("        }");
+        scriptBuilder.AppendLine("    }");
+        scriptBuilder.AppendLine("    return $false");
+        scriptBuilder.AppendLine("}");
+        scriptBuilder.AppendLine();
+        scriptBuilder.AppendLine("Write-BlossUpdateLog ('update_start=' + (Get-Date).ToString('o'))");
+        scriptBuilder.AppendLine("Write-BlossUpdateLog ('target_version=' + $targetVersion)");
+        scriptBuilder.AppendLine("Write-BlossUpdateLog ('setup_path=' + $setupPath)");
         scriptBuilder.AppendLine();
         scriptBuilder.AppendLine("while (Get-Process -Id $oldPid -ErrorAction SilentlyContinue) {");
         scriptBuilder.AppendLine("    Start-Sleep -Milliseconds 600");
         scriptBuilder.AppendLine("}");
         scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("Start-Process -FilePath $setupPath -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -Wait");
+        scriptBuilder.AppendLine("$installArgs = @(");
+        scriptBuilder.AppendLine("    '/VERYSILENT',");
+        scriptBuilder.AppendLine("    '/SUPPRESSMSGBOXES',");
+        scriptBuilder.AppendLine("    '/NORESTART',");
+        scriptBuilder.AppendLine("    '/SP-',");
+        scriptBuilder.AppendLine("    ('/LOG=\"' + $logPath + '\"')");
+        scriptBuilder.AppendLine(")");
+        scriptBuilder.AppendLine();
+        scriptBuilder.AppendLine("$installExitCode = $null");
+        scriptBuilder.AppendLine("try {");
+        scriptBuilder.AppendLine("    $process = Start-Process -FilePath $setupPath -ArgumentList $installArgs -Verb RunAs -Wait -PassThru");
+        scriptBuilder.AppendLine("    if ($null -ne $process) { $installExitCode = $process.ExitCode }");
+        scriptBuilder.AppendLine("    Write-BlossUpdateLog ('installer_exit_code=' + $installExitCode)");
+        scriptBuilder.AppendLine("} catch {");
+        scriptBuilder.AppendLine("    Write-BlossUpdateLog ('installer_launch_error=' + $_.Exception.Message)");
+        scriptBuilder.AppendLine("}");
+        scriptBuilder.AppendLine();
+        scriptBuilder.AppendLine("$installed = $false");
+        scriptBuilder.AppendLine("$deadline = (Get-Date).AddSeconds(120)");
+        scriptBuilder.AppendLine("while ((Get-Date) -lt $deadline) {");
+        scriptBuilder.AppendLine("    if (Test-BlossInstalledVersion $targetVersion) {");
+        scriptBuilder.AppendLine("        $installed = $true");
+        scriptBuilder.AppendLine("        break");
+        scriptBuilder.AppendLine("    }");
+        scriptBuilder.AppendLine("    Start-Sleep -Milliseconds 500");
+        scriptBuilder.AppendLine("}");
+        scriptBuilder.AppendLine("Write-BlossUpdateLog ('installed_target_version=' + $installed)");
         scriptBuilder.AppendLine();
         scriptBuilder.AppendLine("if (Test-Path -LiteralPath $appPath) {");
         scriptBuilder.AppendLine("    Start-Process -FilePath $appPath");
@@ -1959,6 +2041,19 @@ public partial class MainWindow : Window
     private static string EscapePowerShellSingleQuotedString(string path)
     {
         return path.Replace("'", "''");
+    }
+
+    private static string GetSafeUpdateLogFileNamePart(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            builder.Append(char.IsLetterOrDigit(character) || character is '.' or '-' or '_'
+                ? character
+                : '_');
+        }
+
+        return builder.Length > 0 ? builder.ToString() : FallbackVersion;
     }
 
     private void OpenSettingsPopup()
@@ -2155,7 +2250,12 @@ public partial class MainWindow : Window
     private bool IsMouseOverSettingsSurface()
     {
         return SettingsPopupChrome.IsMouseOver ||
-               ColorPopupChrome.IsMouseOver;
+               ColorPopupChrome.IsMouseOver ||
+               SettingsButton.IsMouseOver ||
+               IsCursorWithinElementScreenBounds(SettingsPopupChrome, SettingsAutoCloseProtectedScreenMargin) ||
+               IsCursorWithinElementScreenBounds(ColorPopupChrome, SettingsAutoCloseProtectedScreenMargin) ||
+               IsCursorWithinElementScreenBounds(SettingsButton, SettingsAutoCloseProtectedScreenMargin) ||
+               IsCursorWithinElementScreenBounds(ColorCustomizeButton, SettingsAutoCloseProtectedScreenMargin);
     }
 
     private bool IsAnySettingsDropDownOpen()
@@ -2163,7 +2263,38 @@ public partial class MainWindow : Window
         return ColorPresetComboBox.IsDropDownOpen ||
                GuideSoundComboBox.IsDropDownOpen ||
                LanguageComboBox.IsDropDownOpen ||
-               ColorCustomPopup.IsOpen && ColorPopupChrome.IsMouseOver;
+               ColorCustomPopup.IsOpen && IsCursorWithinElementScreenBounds(ColorPopupChrome, SettingsAutoCloseProtectedScreenMargin);
+    }
+
+    private static bool IsCursorWithinElementScreenBounds(FrameworkElement? element, double margin)
+    {
+        if (element is null ||
+            !element.IsVisible ||
+            element.ActualWidth <= 0d ||
+            element.ActualHeight <= 0d)
+        {
+            return false;
+        }
+
+        try
+        {
+            var cursorPosition = Forms.Cursor.Position;
+            var topLeft = element.PointToScreen(new System.Windows.Point(0d, 0d));
+            var bottomRight = element.PointToScreen(new System.Windows.Point(element.ActualWidth, element.ActualHeight));
+            var left = Math.Min(topLeft.X, bottomRight.X) - margin;
+            var top = Math.Min(topLeft.Y, bottomRight.Y) - margin;
+            var right = Math.Max(topLeft.X, bottomRight.X) + margin;
+            var bottom = Math.Max(topLeft.Y, bottomRight.Y) + margin;
+
+            return cursorPosition.X >= left &&
+                   cursorPosition.X <= right &&
+                   cursorPosition.Y >= top &&
+                   cursorPosition.Y <= bottom;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private void AnimateSettingsGearClick()
@@ -4964,11 +5095,10 @@ public partial class MainWindow : Window
         {
             GuideButtonDeviceKind.DualSense => _viewModel.Devices.FirstOrDefault(device =>
                 device.DisplayName.Contains("DualSense", StringComparison.OrdinalIgnoreCase) ||
+                device.BaseDisplayName.Contains("DualSense", StringComparison.OrdinalIgnoreCase) ||
                 (device.ModelKey?.Contains("VID_054C", StringComparison.OrdinalIgnoreCase) ?? false)),
             GuideButtonDeviceKind.SteamController => _viewModel.Devices.FirstOrDefault(device =>
-                device.DisplayName.Contains("Steam Controller", StringComparison.OrdinalIgnoreCase) ||
-                device.DisplayName.Contains("Steam Ctrl", StringComparison.OrdinalIgnoreCase) ||
-                (device.ModelKey?.Contains("VID_28DE", StringComparison.OrdinalIgnoreCase) ?? false)),
+                IsSteamControllerDevice(device)),
             _ => null
         };
     }
@@ -4998,6 +5128,8 @@ public partial class MainWindow : Window
                device.DeviceId.StartsWith("steam-triton:", StringComparison.OrdinalIgnoreCase) ||
                device.DisplayName.Contains("Steam Controller", StringComparison.OrdinalIgnoreCase) ||
                device.DisplayName.Contains("Steam Ctrl", StringComparison.OrdinalIgnoreCase) ||
+               device.BaseDisplayName.Contains("Steam Controller", StringComparison.OrdinalIgnoreCase) ||
+               device.BaseDisplayName.Contains("Steam Ctrl", StringComparison.OrdinalIgnoreCase) ||
                (device.ModelKey?.Contains("VID_28DE", StringComparison.OrdinalIgnoreCase) ?? false);
     }
 

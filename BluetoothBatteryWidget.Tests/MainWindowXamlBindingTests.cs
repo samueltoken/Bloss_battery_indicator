@@ -138,6 +138,28 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
+    public void SettingsPopupAutoClose_ProtectsCursorInsidePopupSurfacesByScreenBounds()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+
+        Assert.Contains("SettingsAutoCloseProtectedScreenMargin", source);
+        Assert.Contains("Forms.Cursor.Position", source);
+        Assert.Contains("PointToScreen", source);
+        Assert.Contains("IsCursorWithinElementScreenBounds(SettingsPopupChrome", source);
+        Assert.Contains("IsCursorWithinElementScreenBounds(ColorPopupChrome", source);
+        Assert.Contains("IsCursorWithinElementScreenBounds(SettingsButton", source);
+        Assert.Contains("IsCursorWithinElementScreenBounds(ColorCustomizeButton", source);
+        Assert.Contains("ColorCustomPopup.IsOpen && IsCursorWithinElementScreenBounds(ColorPopupChrome", source);
+    }
+
+    [Fact]
     public void TrayMenu_ProvidesPositionResetAndStartupTrayArgument()
     {
         var mainWindowSource = File.ReadAllText(Path.Combine(
@@ -571,6 +593,25 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
+    public void GuideButtonKnownDevices_UseBaseDisplayNameAfterUserRename()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+
+        Assert.Contains("device.BaseDisplayName.Contains(\"Steam Controller\"", source);
+        Assert.Contains("device.BaseDisplayName.Contains(\"Steam Ctrl\"", source);
+        Assert.Contains("device.BaseDisplayName.Contains(\"DualSense\"", source);
+        Assert.Contains("GuideButtonDeviceKind.SteamController => _viewModel.Devices.FirstOrDefault(device =>", source);
+        Assert.Contains("IsSteamControllerDevice(device)", source);
+    }
+
+    [Fact]
     public void SteamControllerGuideButtonToastCooldown_KeepsRepeatedTapsResponsive()
     {
         Assert.Equal(TimeSpan.FromMilliseconds(350), MainWindow.GetGuideButtonToastCooldown(GuideButtonDeviceKind.SteamController));
@@ -663,6 +704,31 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("IsSteamControllerStatusReport(report)", source);
         Assert.DoesNotContain("raw_hid_battery_release_hint", source);
         Assert.DoesNotContain("_rawHidGuideButtonStateTracker.ClearStalePressedSession(address, now);", source);
+    }
+
+    [Fact]
+    public void UpdateInstallerScript_RunsElevatedWaitsLogsAndChecksInstalledVersion()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+
+        Assert.Contains("StartInstallerUpdateAndRestart(setupPath, releaseInfo.Version)", source);
+        Assert.Contains("Start-Process -FilePath $setupPath -ArgumentList $installArgs -Verb RunAs -Wait -PassThru", source);
+        Assert.Contains("('/LOG=\\\"' + $logPath + '\\\"')", source);
+        Assert.DoesNotContain("'/CLOSEAPPLICATIONS'", source);
+        Assert.DoesNotContain("'/NORESTARTAPPLICATIONS'", source);
+        Assert.Contains("installer_exit_code=", source);
+        Assert.Contains("installer_launch_error=", source);
+        Assert.Contains("Test-BlossInstalledVersion", source);
+        Assert.Contains("ProductVersion -like ($versionPrefix + '*')", source);
+        Assert.Contains("Bloss.dll", source);
+        Assert.Contains("installed_target_version=", source);
     }
 
     [Fact]
