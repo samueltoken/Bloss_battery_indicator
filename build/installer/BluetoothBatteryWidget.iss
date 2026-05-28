@@ -25,6 +25,8 @@ WizardStyle=modern
 WizardImageBackColor=$000000C8
 WizardSmallImageBackColor=$000000C8
 ArchitecturesInstallIn64BitMode=x64compatible
+CloseApplications=no
+RestartApplications=no
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
