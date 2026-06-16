@@ -37,10 +37,7 @@ public sealed class HidFeatureBatteryProvider
             }
 
             var byAddress = new Dictionary<string, (PnpBatteryReading Reading, int Score)>(StringComparer.OrdinalIgnoreCase);
-            var endpoints = HidGamepadAccess.EnumerateProbeEndpoints(
-                addressFilter: null,
-                HidEndpointDiscoveryStage.Strict,
-                cancellationToken);
+            var endpoints = EnumerateRuntimeProbeEndpoints(cancellationToken);
 
             try
             {
@@ -110,7 +107,11 @@ public sealed class HidFeatureBatteryProvider
                         continue;
                     }
 
-                    var confidence = winner.Score >= 70
+                    var isCoarseXboxBucket = string.Equals(
+                        winner.Decoder,
+                        GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags,
+                        StringComparison.Ordinal);
+                    var confidence = !isCoarseXboxBucket && winner.Score >= 70
                         ? BatteryConfidence.Confirmed
                         : BatteryConfidence.Estimated;
                     var modelKey = BatteryModelKeyResolver.ResolveNormalizedModelKey(
@@ -125,13 +126,15 @@ public sealed class HidFeatureBatteryProvider
                         InstanceId: endpoint.InstanceId,
                         Address: endpointAddress,
                         DisplayName: connected.DisplayName,
-                        BatteryPercent: winner.BatteryPercent,
+                        BatteryPercent: isCoarseXboxBucket ? null : winner.BatteryPercent,
                         BatteryConfidence: confidence,
                         SourceKind: BatterySourceKind.HidFeature,
                         RawMetric: rawMetric,
                         ModelKey: modelKey,
                         SuggestCalibration: false,
-                        ObservedAt: DateTimeOffset.Now);
+                        ObservedAt: DateTimeOffset.Now,
+                        IsBatterySuspect: isCoarseXboxBucket,
+                        ReasonCode: isCoarseXboxBucket ? "xbox_flags_coarse_bucket" : string.Empty);
 
                     if (!byAddress.TryGetValue(endpointAddress, out var existing) || winner.Score > existing.Score)
                     {
@@ -146,6 +149,22 @@ public sealed class HidFeatureBatteryProvider
 
             return byAddress.Values.Select(item => item.Reading).ToList();
         }, cancellationToken);
+    }
+
+    private static IReadOnlyList<HidGamepadEndpoint> EnumerateRuntimeProbeEndpoints(CancellationToken cancellationToken)
+    {
+        var strictEndpoints = HidGamepadAccess.EnumerateProbeEndpoints(
+            addressFilter: null,
+            HidEndpointDiscoveryStage.Strict,
+            cancellationToken);
+        var relaxedEndpoints = HidGamepadAccess.EnumerateProbeEndpoints(
+            addressFilter: null,
+            HidEndpointDiscoveryStage.Relaxed,
+            cancellationToken);
+
+        return HidGamepadAccess.SelectRuntimeBluetoothEndpoints(
+            strictEndpoints.Concat(relaxedEndpoints),
+            requireVidPid: false);
     }
 
     private static Dictionary<byte, byte[]> ReadFeatureReports(

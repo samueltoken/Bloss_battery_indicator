@@ -8,5 +8,7 @@ public sealed record PendingGamepadCandidate(
     DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt,
     string EvidenceType = "unknown",
-    string LastValidationStats = ""
+    string LastValidationStats = "",
+    int? MinPercent = null,
+    int? MaxPercent = null
 );

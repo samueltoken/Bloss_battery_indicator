@@ -28,6 +28,42 @@ public sealed class PendingGamepadCandidateStoreTests
     }
 
     [Fact]
+    public void RegisterVote_TracksPercentRangeForCandidateMovement()
+    {
+        var path = CreateTempPath();
+        try
+        {
+            var store = new PendingGamepadCandidateStore(path);
+            var now = new DateTimeOffset(2026, 5, 28, 14, 0, 0, TimeSpan.FromHours(9));
+            var candidateKey = "IDK_ID=VID_045E|TR=VID_045E|FP=FP_TEST|RID_04|OFF_13|DEC_PERCENT100";
+
+            store.RegisterVote(
+                "VID_045E|PID_0B13",
+                candidateKey,
+                89,
+                now,
+                evidenceType: "generic",
+                candidatePercent: 9);
+            store.RegisterVote(
+                "VID_045E|PID_0B13",
+                candidateKey,
+                89,
+                now.AddMinutes(30),
+                evidenceType: "generic",
+                candidatePercent: 12);
+
+            Assert.True(store.TryGetVote("VID_045E|PID_0B13", candidateKey, out var vote));
+            Assert.Equal(2, vote.VoteCount);
+            Assert.Equal(9, vote.MinPercent);
+            Assert.Equal(12, vote.MaxPercent);
+        }
+        finally
+        {
+            SafeDelete(path);
+        }
+    }
+
+    [Fact]
     public void Cooldown_CanBeSetAndExpires()
     {
         var path = CreateTempPath();

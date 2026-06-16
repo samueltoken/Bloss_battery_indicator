@@ -64,6 +64,11 @@ public sealed class AutostartService
 
     private static string? ResolveLaunchCommand(bool startMinimizedToTray)
     {
+        if (IsPortableTestExecutablePath(Environment.ProcessPath))
+        {
+            return null;
+        }
+
         var startupArgument = startMinimizedToTray ? " --start-in-tray" : string.Empty;
         var blossExePath = Path.Combine(AppContext.BaseDirectory, "Bloss.exe");
         if (File.Exists(blossExePath))
@@ -99,5 +104,18 @@ public sealed class AutostartService
         }
 
         return $"\"{processPath}\"{startupArgument}";
+    }
+
+    internal static bool IsPortableTestExecutablePath(string? processPath)
+    {
+        if (string.IsNullOrWhiteSpace(processPath))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            Path.GetFileName(processPath),
+            "test.exe",
+            StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -99,6 +99,22 @@ public sealed class MainViewModelProbeStateTests
         Assert.Equal(first, second);
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void ShouldMarkProbeAsUserActivity_OnlyManualProbeCountsAsLocalActivity(bool markUserActivity, bool expected)
+    {
+        Assert.Equal(expected, MainViewModel.ShouldMarkProbeAsUserActivity(markUserActivity));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void ShouldStartBackgroundProbe_StopsWhenPowerIdleGuardIsActive(bool shouldPauseBackgroundPolling, bool expected)
+    {
+        Assert.Equal(expected, MainViewModel.ShouldStartBackgroundProbe(shouldPauseBackgroundPolling));
+    }
+
     [Fact]
     public void ShouldKeepMissingDevice_ZeroGrace_RemovesImmediately()
     {

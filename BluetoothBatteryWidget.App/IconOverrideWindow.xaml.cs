@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
+using BluetoothBatteryWidget.App.Services;
 using BluetoothBatteryWidget.App.ViewModels;
 using BluetoothBatteryWidget.Core.Models;
 
@@ -8,14 +9,21 @@ namespace BluetoothBatteryWidget.App;
 
 public partial class IconOverrideWindow : Window
 {
+    private string _language;
+    private bool _isClosingWithPopOut;
+
     public IconOverrideWindow(
         IReadOnlyCollection<DeviceBatterySnapshot> snapshots,
         IReadOnlyDictionary<string, IconKey> existingOverrides,
-        IReadOnlyDictionary<string, string> existingImageOverrides)
+        IReadOnlyDictionary<string, string> existingImageOverrides,
+        string? language = null)
     {
+        _language = WidgetSettings.NormalizeLanguage(language);
         InitializeComponent();
+        ApplyLocalizedText(_language);
+        WindowPopInAnimator.AttachCentered(this);
 
-        IconChoices = BuildIconChoices();
+        IconChoices = BuildIconChoices(_language);
         IconItems = new ObservableCollection<IconOverrideItem>(
             snapshots
                 .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
@@ -42,15 +50,54 @@ public partial class IconOverrideWindow : Window
                 }));
 
         DataContext = this;
+        Closed += (_, _) =>
+        {
+            if (!WasAccepted)
+            {
+                CleanupAllTemporaryAdjustedImages();
+            }
+        };
     }
 
     public ObservableCollection<IconOverrideItem> IconItems { get; }
 
     public IReadOnlyList<IconChoiceItem> IconChoices { get; }
 
+    public string TextIconOverrideChooseImage => UiLanguageCatalog.GetExtraText(_language, "IconOverrideChooseImage");
+
+    public string TextIconOverrideClearImage => UiLanguageCatalog.GetExtraText(_language, "IconOverrideClearImage");
+
     public Dictionary<string, IconKey> SelectedOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public Dictionary<string, string> SelectedImageOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool WasAccepted { get; private set; }
+
+    internal void ApplyLocalizedText(string? language)
+    {
+        _language = WidgetSettings.NormalizeLanguage(language);
+        Title = UiLanguageCatalog.GetExtraText(_language, "IconOverrideWindowTitle");
+        HeadingTextBlock.Text = UiLanguageCatalog.GetExtraText(_language, "IconOverrideHeading");
+        DeviceColumn.Header = UiLanguageCatalog.GetExtraText(_language, "IconOverrideDeviceColumn");
+        AddressColumn.Header = UiLanguageCatalog.GetExtraText(_language, "IconOverrideAddressColumn");
+        IconColumn.Header = UiLanguageCatalog.GetExtraText(_language, "IconOverrideIconColumn");
+        CustomImageColumn.Header = UiLanguageCatalog.GetExtraText(_language, "IconOverrideCustomImageColumn");
+        CancelButton.Content = UiLanguageCatalog.GetExtraText(_language, "IconOverrideCancel");
+        SaveButton.Content = UiLanguageCatalog.GetExtraText(_language, "IconOverrideSave");
+    }
+
+    internal void CloseWithPopOutAsCancel()
+    {
+        if (_isClosingWithPopOut)
+        {
+            return;
+        }
+
+        _isClosingWithPopOut = true;
+        WasAccepted = false;
+        CleanupAllTemporaryAdjustedImages();
+        WindowPopInAnimator.BeginCloseCentered(this, Close);
+    }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
@@ -69,15 +116,13 @@ public partial class IconOverrideWindow : Window
             }
         }
 
-        DialogResult = true;
-        Close();
+        CloseWithResult(accepted: true);
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
         CleanupAllTemporaryAdjustedImages();
-        DialogResult = false;
-        Close();
+        CloseWithResult(accepted: false);
     }
 
     private void PickImageButton_Click(object sender, RoutedEventArgs e)
@@ -89,8 +134,8 @@ public partial class IconOverrideWindow : Window
 
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "아이콘 이미지 선택",
-            Filter = "이미지 파일 (*.png;*.jpg;*.jpeg;*.bmp;*.webp)|*.png;*.jpg;*.jpeg;*.bmp;*.webp|모든 파일 (*.*)|*.*",
+            Title = UiLanguageCatalog.GetExtraText(_language, "IconOverrideImageSelectTitle"),
+            Filter = UiLanguageCatalog.GetExtraText(_language, "IconOverrideImageFilter"),
             CheckFileExists = true,
             CheckPathExists = true,
             Multiselect = false
@@ -101,7 +146,7 @@ public partial class IconOverrideWindow : Window
             return;
         }
 
-        var adjustWindow = new IconImageAdjustWindow(dialog.FileName)
+        var adjustWindow = new IconImageAdjustWindow(dialog.FileName, _language)
         {
             Owner = this
         };
@@ -151,21 +196,34 @@ public partial class IconOverrideWindow : Window
         }
     }
 
-    private static IReadOnlyList<IconChoiceItem> BuildIconChoices()
+    private static IReadOnlyList<IconChoiceItem> BuildIconChoices(string? language)
     {
         return new[]
         {
-            new IconChoiceItem(IconKey.Unknown, "자동"),
-            new IconChoiceItem(IconKey.Mouse, "마우스"),
-            new IconChoiceItem(IconKey.Keyboard, "키보드"),
-            new IconChoiceItem(IconKey.Headset, "헤드셋"),
-            new IconChoiceItem(IconKey.Earbuds, "이어버드"),
-            new IconChoiceItem(IconKey.Speaker, "스피커"),
-            new IconChoiceItem(IconKey.Gamepad, "게임패드"),
-            new IconChoiceItem(IconKey.Phone, "휴대폰"),
-            new IconChoiceItem(IconKey.Tablet, "태블릿"),
-            new IconChoiceItem(IconKey.Laptop, "노트북")
+            new IconChoiceItem(IconKey.Unknown, UiLanguageCatalog.GetExtraText(language, "IconChoiceAuto")),
+            new IconChoiceItem(IconKey.Mouse, UiLanguageCatalog.GetExtraText(language, "IconChoiceMouse")),
+            new IconChoiceItem(IconKey.Keyboard, UiLanguageCatalog.GetExtraText(language, "IconChoiceKeyboard")),
+            new IconChoiceItem(IconKey.Headset, UiLanguageCatalog.GetExtraText(language, "IconChoiceHeadset")),
+            new IconChoiceItem(IconKey.Earbuds, UiLanguageCatalog.GetExtraText(language, "IconChoiceEarbuds")),
+            new IconChoiceItem(IconKey.Speaker, UiLanguageCatalog.GetExtraText(language, "IconChoiceSpeaker")),
+            new IconChoiceItem(IconKey.Gamepad, UiLanguageCatalog.GetExtraText(language, "IconChoiceGamepad")),
+            new IconChoiceItem(IconKey.Phone, UiLanguageCatalog.GetExtraText(language, "IconChoicePhone")),
+            new IconChoiceItem(IconKey.Tablet, UiLanguageCatalog.GetExtraText(language, "IconChoiceTablet")),
+            new IconChoiceItem(IconKey.Laptop, UiLanguageCatalog.GetExtraText(language, "IconChoiceLaptop"))
         };
+    }
+
+    private void CloseWithResult(bool accepted)
+    {
+        WasAccepted = accepted;
+        try
+        {
+            DialogResult = accepted;
+        }
+        catch (InvalidOperationException)
+        {
+            Close();
+        }
     }
 }
 

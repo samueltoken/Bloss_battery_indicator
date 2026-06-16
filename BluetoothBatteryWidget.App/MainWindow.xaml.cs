@@ -7,8 +7,6 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -39,11 +37,14 @@ public partial class MainWindow : Window
     private const double StartupDefaultHeight = 420d;
     private const double StartupMaxAbsoluteWidth = 680d;
     private const double StartupMaxAbsoluteHeight = 760d;
+    private const double BatteryGuideTriggerCaptureDesignWidth = 1448d;
+    private const double BatteryGuideTriggerCaptureDesignHeight = 1086d;
+    private const double BatteryGuideTriggerCaptureMaxWorkAreaRatio = 0.78d;
+    private const double BatteryGuideTriggerCaptureMaxScale = 0.88d;
     private static readonly byte[] BatteryGuideChimeWave = BatteryGuideChimeAudio.LoadWave();
     private const double UiScaleStepFactor = 0.08d;
     private const int UiScaleAnimationMilliseconds = 140;
     private const int SettingsAccordionAnimationMilliseconds = 230;
-    private const double SettingsAutoCloseProtectedScreenMargin = 10d;
     private const double ResizeGripBaseInset = 4d;
     private const double StatusPanelFallbackHeight = 108d;
     private const double ColorPresetMarqueeGap = 14d;
@@ -57,9 +58,14 @@ public partial class MainWindow : Window
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.6";
+    private const string FallbackVersion = "1.0.7";
     private static readonly TimeSpan GuideButtonGlobalDebounce = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan SteamGuideButtonToastCooldown = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan CustomBatteryGuideTriggerToastCooldown = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan SteamCustomBatteryGuideTriggerToastCooldown = TimeSpan.FromMilliseconds(3000);
+    private static readonly TimeSpan SteamGuideToastConnectionSuppressDuration = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan SteamGuideToastRefreshSuppressDuration = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan AutomaticBatteryToastStartupSuppressDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan SteamRawInputPreferredWindow = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan SteamSecondaryFallbackDelay = TimeSpan.FromMilliseconds(120);
     private static readonly TimeSpan SteamSecondaryFallbackRawHidRecheckDelay = TimeSpan.FromMilliseconds(120);
@@ -70,21 +76,9 @@ public partial class MainWindow : Window
     private static readonly TimeSpan SteamSecondaryFallbackRawHidStaleStateAge = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan SteamSecondaryFallbackRawHidPreExistingHoldAge = TimeSpan.FromMilliseconds(2500);
     private static readonly TimeSpan SteamSecondaryFallbackBurstWindow = TimeSpan.FromMilliseconds(450);
-    private const string UpdateLatestReleaseApiUrl = "https://api.github.com/repos/samueltoken/Bloss_battery_indicator/releases/latest";
     private const string Ds5DongleLatestReleaseApiUrl = "https://api.github.com/repos/awalol/DS5Dongle/releases/latest";
     private const string Ds5DongleReleasePageUrl = "https://github.com/awalol/DS5Dongle/releases";
-    private const string UpdateExpectedAssetName = "setup.exe";
-    private const string UpdateExpectedChecksumAssetName = "setup.exe.sha256";
-    private const long UpdateMaxInstallerBytes = 250L * 1024 * 1024;
     private const long Ds5DongleMaxFirmwareBytes = 16L * 1024 * 1024;
-    private const int UpdateMaxChecksumBytes = 16 * 1024;
-    private static readonly string[] UpdateTrustedDownloadHosts =
-    [
-        "github.com",
-        "objects.githubusercontent.com",
-        "github-releases.githubusercontent.com",
-        "release-assets.githubusercontent.com"
-    ];
     private static readonly string CustomIconDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Bloss",
@@ -115,9 +109,12 @@ public partial class MainWindow : Window
     private bool _isCompactMode;
     private bool _initialBoundsApplied;
     private bool _startHiddenInTrayOnLoad;
+    private bool _releaseNotesChecked;
     private bool _isColorPresetSyncing;
     private bool _isLanguageSyncing;
     private bool _isGuideSoundSyncing;
+    private bool _isPowerIdlePauseSyncing;
+    private bool _isWindowsDisplayOffSyncing;
     private bool _isPaletteDragging;
     private WpfPopup? _draggingPopup;
     private FrameworkElement? _popupDragChrome;
@@ -135,16 +132,24 @@ public partial class MainWindow : Window
     private Forms.ToolStripMenuItem? _trayStartMinimizedToTrayMenuItem;
     private Forms.ToolStripMenuItem? _trayExitMenuItem;
     private readonly HttpClient _httpClient = new();
+    private readonly UpdateService _updateService;
+    private readonly DateTimeOffset _automaticBatteryToastStartupSuppressUntilUtc =
+        DateTimeOffset.UtcNow.Add(AutomaticBatteryToastStartupSuppressDuration);
     private readonly GuideButtonMonitorService _guideButtonMonitor = new();
     private readonly SteamControllerRawInputMonitorService _steamRawInputMonitor = new();
     private readonly BatteryGuideChimePlayer _batteryGuideChimePlayer = new(BatteryGuideChimeWave);
     private readonly System.Windows.Threading.DispatcherTimer _guideSoundPreviewResetTimer = new();
     private readonly System.Windows.Threading.DispatcherTimer _settingsAutoCloseTimer = new();
+    private readonly System.Windows.Threading.DispatcherTimer _powerIdleMonitorTimer = new();
     private readonly Dictionary<string, System.Windows.Threading.DispatcherTimer> _batteryGuideHideTimers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _lastGuideButtonToastByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _lastSteamRawGuideButtonByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _lastCustomBatteryGuideTriggerToastByBinding = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, byte[]> _lastBatteryGuideTriggerReportByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _customBatteryGuideTriggerPressedReportKeysByBinding = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PendingSteamSecondaryGuideFallback> _pendingSteamSecondaryGuideFallbackByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _steamSecondaryGuideFallbackBlockedUntilByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _steamGuideConnectionStableByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<FrameworkElement, int> _settingsAccordionAnimationTokens = new();
     private readonly Dictionary<WpfControls.TextBlock, (double FontSize, FontWeight FontWeight)> _settingsTextBlockDefaults = new();
     private readonly Dictionary<WpfControls.Control, (double FontSize, FontWeight FontWeight)> _settingsControlTextDefaults = new();
@@ -156,6 +161,16 @@ public partial class MainWindow : Window
     private bool _isGuideSoundPreviewPlaying;
     private bool _isUpdating;
     private bool _isPicoFirmwareUpdating;
+    private bool _guideMonitorsPausedForPowerIdle;
+    private bool _isBatteryGuideTriggerCaptureActive;
+    private bool _batteryGuideTriggerSelectMouseToggleRequested;
+    private DateTimeOffset _steamGuideToastsSuppressedUntilUtc =
+        DateTimeOffset.UtcNow.Add(SteamGuideToastConnectionSuppressDuration);
+    private BatteryAlertThresholdsWindow? _batteryAlertThresholdsWindow;
+    private BatteryGuideTriggerCaptureWindow? _batteryGuideTriggerCaptureWindow;
+    private IconOverrideWindow? _iconOverrideWindow;
+    private BatteryGuideTrigger? _pendingBatteryGuideTriggerCapture;
+    private string? _batteryGuideTriggerCaptureKey;
 
     private static readonly HashSet<string> ColorElementKeys = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -175,12 +190,17 @@ public partial class MainWindow : Window
     {
         _viewModel = viewModel;
         DataContext = _viewModel;
+        _updateService = new UpdateService(_httpClient, AppDisplayName, GetDisplayVersion);
 
         InitializeComponent();
         ColorPresetComboBox.ItemsSource = ColorPresetCatalog.Presets;
         LanguageComboBox.ItemsSource = _viewModel.LanguageOptions;
         LanguageComboBox.DisplayMemberPath = nameof(UiLanguageOption.Label);
-        GuideSoundComboBox.ItemsSource = BatteryGuideSoundCatalog.GetGuideOptions(_viewModel.CustomGuideSoundPath);
+        PowerIdlePauseComboBox.ItemsSource = _viewModel.PowerIdlePauseOptions;
+        PowerIdlePauseComboBox.DisplayMemberPath = nameof(PowerIdlePauseOption.Label);
+        WindowsDisplayOffComboBox.ItemsSource = _viewModel.WindowsDisplayOffOptions;
+        WindowsDisplayOffComboBox.DisplayMemberPath = nameof(WindowsDisplayOffOption.Label);
+        GuideSoundComboBox.ItemsSource = BatteryGuideSoundCatalog.GetGuideOptions(_viewModel.CustomGuideSoundPath, _viewModel.Language);
         GuideSoundComboBox.DisplayMemberPath = nameof(BatteryGuideSoundOption.DisplayName);
         _appIcon = LoadAppIcon();
         _trayIcon = BuildTrayIcon();
@@ -192,13 +212,17 @@ public partial class MainWindow : Window
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         _viewModel.Devices.CollectionChanged += Devices_CollectionChanged;
         _guideButtonMonitor.GuideButtonPressed += GuideButtonMonitor_GuideButtonPressed;
+        _guideButtonMonitor.InputReportReceived += GuideButtonMonitor_InputReportReceived;
         _guideButtonMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
         _steamRawInputMonitor.GuideButtonPressed += GuideButtonMonitor_GuideButtonPressed;
+        _steamRawInputMonitor.InputReportReceived += GuideButtonMonitor_InputReportReceived;
         _steamRawInputMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
         _batteryGuideChimePlayer.PlaybackEnded += BatteryGuideChimePlayer_PlaybackEnded;
         _guideSoundPreviewResetTimer.Tick += GuideSoundPreviewResetTimer_Tick;
         _settingsAutoCloseTimer.Interval = TimeSpan.FromMilliseconds(280);
         _settingsAutoCloseTimer.Tick += SettingsAutoCloseTimer_Tick;
+        _powerIdleMonitorTimer.Interval = TimeSpan.FromSeconds(15);
+        _powerIdleMonitorTimer.Tick += PowerIdleMonitorTimer_Tick;
 
         LocationChanged += (_, _) =>
         {
@@ -242,6 +266,8 @@ public partial class MainWindow : Window
         ApplyCustomFont();
         SyncColorPresetSelection();
         SyncLanguageSelection();
+        SyncPowerIdlePauseSelection();
+        SyncWindowsDisplayOffSelection();
         SyncGuideSoundSelection();
         UpdateGuideSoundControls();
         ApplyUiScaleStep(_viewModel.UiScaleStep, animate: false);
@@ -252,6 +278,8 @@ public partial class MainWindow : Window
         ApplyVisualModeState();
         _guideButtonMonitor.Start();
         _steamRawInputMonitor.LogRawDeviceSummary();
+        UpdatePowerIdleGuideMonitoring();
+        _powerIdleMonitorTimer.Start();
 
         if (_startHiddenInTrayOnLoad)
         {
@@ -261,6 +289,58 @@ public partial class MainWindow : Window
             Opacity = 1d;
             ShowActivated = true;
         }
+
+        _ = Dispatcher.BeginInvoke(
+            new Action(ShowReleaseNotesIfNeeded),
+            System.Windows.Threading.DispatcherPriority.ContextIdle);
+    }
+
+    private void ShowReleaseNotesIfNeeded()
+    {
+        if (_releaseNotesChecked)
+        {
+            return;
+        }
+
+        _releaseNotesChecked = true;
+        var version = GetDisplayVersion();
+        var forceEveryRun = IsPortableTestExecutablePath(Environment.ProcessPath);
+        if (!ShouldShowReleaseNotes(_viewModel.LastSeenReleaseNotesVersion, version, forceEveryRun))
+        {
+            return;
+        }
+
+        var releaseNotesWindow = new ReleaseNotesWindow(version, _viewModel.Language);
+        releaseNotesWindow.ShowDialog();
+        if (!forceEveryRun)
+        {
+            _viewModel.MarkReleaseNotesSeen(version);
+        }
+    }
+
+    internal static bool ShouldShowReleaseNotes(string? lastSeenVersion, string? currentVersion, bool forceEveryRun)
+    {
+        if (forceEveryRun)
+        {
+            return true;
+        }
+
+        var normalizedCurrent = WidgetSettings.NormalizeReleaseNotesVersion(currentVersion);
+        if (string.IsNullOrWhiteSpace(normalizedCurrent))
+        {
+            return false;
+        }
+
+        var normalizedSeen = WidgetSettings.NormalizeReleaseNotesVersion(lastSeenVersion);
+        return !string.Equals(normalizedSeen, normalizedCurrent, StringComparison.Ordinal);
+    }
+
+    internal static bool IsPortableTestExecutablePath(string? processPath)
+    {
+        return string.Equals(
+            Path.GetFileName(processPath),
+            "test.exe",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
@@ -286,16 +366,24 @@ public partial class MainWindow : Window
         }
 
         _guideButtonMonitor.GuideButtonPressed -= GuideButtonMonitor_GuideButtonPressed;
+        _guideButtonMonitor.InputReportReceived -= GuideButtonMonitor_InputReportReceived;
         _guideButtonMonitor.Dispose();
         _steamRawInputMonitor.GuideButtonPressed -= GuideButtonMonitor_GuideButtonPressed;
+        _steamRawInputMonitor.InputReportReceived -= GuideButtonMonitor_InputReportReceived;
         _steamRawInputMonitor.Dispose();
         _batteryGuideChimePlayer.PlaybackEnded -= BatteryGuideChimePlayer_PlaybackEnded;
         _windowMessageSource?.RemoveHook(MainWindow_WndProc);
         _windowMessageSource = null;
         _guideSoundPreviewResetTimer.Stop();
         _settingsAutoCloseTimer.Stop();
+        _powerIdleMonitorTimer.Stop();
         StopBatteryGuideTimers();
         CloseActiveBatteryToast();
+        _batteryAlertThresholdsWindow?.Close();
+        _batteryAlertThresholdsWindow = null;
+        CloseBatteryGuideTriggerCaptureWindow();
+        _iconOverrideWindow?.Close();
+        _iconOverrideWindow = null;
         _labsWindow?.Close();
         _labsWindow = null;
         _batteryGuideChimePlayer.Dispose();
@@ -634,12 +722,339 @@ public partial class MainWindow : Window
         StopGuideSoundPreview();
     }
 
+    private void PowerIdlePauseComboBox_SelectionChanged(object sender, WpfControls.SelectionChangedEventArgs e)
+    {
+        if (_isPowerIdlePauseSyncing || PowerIdlePauseComboBox.SelectedItem is not PowerIdlePauseOption selected)
+        {
+            return;
+        }
+
+        _viewModel.SetPowerIdlePauseMinutes(selected.Minutes);
+        UpdatePowerIdleGuideMonitoring();
+    }
+
+    private void WindowsDisplayOffComboBox_SelectionChanged(object sender, WpfControls.SelectionChangedEventArgs e)
+    {
+        if (_isWindowsDisplayOffSyncing || WindowsDisplayOffComboBox.SelectedItem is not WindowsDisplayOffOption selected)
+        {
+            return;
+        }
+
+        if (_viewModel.SetWindowsDisplayOffMinutes(selected.Minutes))
+        {
+            RefreshWindowsDisplayOffOptions();
+            UpdatePowerIdleGuideMonitoring();
+        }
+        else
+        {
+            SyncWindowsDisplayOffSelection();
+        }
+    }
+
+    private void BatteryAlertThresholdsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_batteryAlertThresholdsWindow is not null)
+        {
+            _batteryAlertThresholdsWindow.CloseWithPopOut();
+            return;
+        }
+
+        var dialog = new BatteryAlertThresholdsWindow(_viewModel.BatteryAlertThresholds, _viewModel.Language)
+        {
+            Owner = this,
+            PopInOriginScreenPoint = TryGetElementCenterScreenPoint(BatteryAlertThresholdsButton)
+        };
+        dialog.Closed += BatteryAlertThresholdsWindow_Closed;
+        _batteryAlertThresholdsWindow = dialog;
+        PositionBatteryAlertThresholdsWindow(dialog);
+        dialog.Show();
+        dialog.Activate();
+    }
+
+    private void BatteryAlertThresholdsWindow_Closed(object? sender, EventArgs e)
+    {
+        if (sender is not BatteryAlertThresholdsWindow dialog)
+        {
+            return;
+        }
+
+        dialog.Closed -= BatteryAlertThresholdsWindow_Closed;
+        if (ReferenceEquals(_batteryAlertThresholdsWindow, dialog))
+        {
+            _batteryAlertThresholdsWindow = null;
+        }
+
+        if (!dialog.WasAccepted)
+        {
+            return;
+        }
+
+        var before = _viewModel.BatteryAlertThresholds;
+        _viewModel.SetBatteryAlertThresholds(dialog.SelectedThresholds);
+        if (!string.Equals(before, _viewModel.BatteryAlertThresholds, StringComparison.Ordinal))
+        {
+            PrimeBatteryAlertToastKeysForCurrentLevels();
+        }
+    }
+
+    private void PositionBatteryAlertThresholdsWindow(Window dialog)
+    {
+        var area = GetWorkingAreaForOwnerWindow();
+        var width = Math.Min(
+            ResolveDialogLength(dialog.Width, 500d),
+            Math.Max(320d, area.Width - (StartupSafetyMargin * 2d)));
+        var height = Math.Min(
+            ResolveDialogLength(dialog.Height, 430d),
+            Math.Max(260d, area.Height - (StartupSafetyMargin * 2d)));
+
+        dialog.Width = Math.Floor(width);
+        dialog.Height = Math.Floor(height);
+        dialog.Left = area.Left + Math.Max(StartupSafetyMargin, (area.Width - dialog.Width) / 2d);
+        dialog.Top = area.Top + Math.Max(StartupSafetyMargin, (area.Height - dialog.Height) / 2d);
+    }
+
+    private static double ResolveDialogLength(double value, double fallback)
+    {
+        return double.IsNaN(value) || double.IsInfinity(value) || value <= 0d
+            ? fallback
+            : value;
+    }
+
+    private void BatteryGuideTriggerSelectButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_batteryGuideTriggerCaptureWindow is not null)
+        {
+            if (!_batteryGuideTriggerSelectMouseToggleRequested)
+            {
+                _batteryGuideTriggerCaptureWindow.Activate();
+                _batteryGuideTriggerCaptureWindow.Focus();
+                return;
+            }
+
+            _batteryGuideTriggerSelectMouseToggleRequested = false;
+            CancelBatteryGuideTriggerCapture(closeWindow: true, animateClose: true);
+            return;
+        }
+
+        _batteryGuideTriggerSelectMouseToggleRequested = false;
+        BeginBatteryGuideTriggerCapture();
+    }
+
+    private void BatteryGuideTriggerSelectButton_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _batteryGuideTriggerSelectMouseToggleRequested = true;
+    }
+
+    private void BatteryGuideTriggerResetButton_Click(object sender, RoutedEventArgs e)
+    {
+        SpinBatteryGuideTriggerResetIcon();
+        CancelBatteryGuideTriggerCapture(closeWindow: true);
+        _viewModel.ResetBatteryGuideTrigger();
+    }
+
+    private void SpinBatteryGuideTriggerResetIcon()
+    {
+        BatteryGuideTriggerResetRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+        BatteryGuideTriggerResetRotate.Angle = 0;
+
+        var animation = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(680));
+        BatteryGuideTriggerResetRotate.BeginAnimation(RotateTransform.AngleProperty, animation);
+    }
+
+    private void BeginBatteryGuideTriggerCapture()
+    {
+        _isBatteryGuideTriggerCaptureActive = true;
+        _pendingBatteryGuideTriggerCapture = null;
+        _batteryGuideTriggerCaptureKey = null;
+        _lastBatteryGuideTriggerReportByDevice.Clear();
+        ClearCustomBatteryGuideTriggerPressState();
+        ShowBatteryGuideTriggerCaptureWindow();
+    }
+
+    private void CancelBatteryGuideTriggerCapture(bool closeWindow, bool animateClose = false)
+    {
+        _isBatteryGuideTriggerCaptureActive = false;
+        _pendingBatteryGuideTriggerCapture = null;
+        _batteryGuideTriggerCaptureKey = null;
+        _lastBatteryGuideTriggerReportByDevice.Clear();
+        ClearCustomBatteryGuideTriggerPressState();
+        if (closeWindow)
+        {
+            CloseBatteryGuideTriggerCaptureWindow(animateClose);
+        }
+    }
+
+    private void ShowBatteryGuideTriggerCaptureWindow()
+    {
+        if (_batteryGuideTriggerCaptureWindow is not null)
+        {
+            _batteryGuideTriggerCaptureWindow.SetProfiles(
+                _viewModel.BatteryGuideTriggerProfiles,
+                _viewModel.BatteryGuideTrigger);
+            _batteryGuideTriggerCaptureWindow.SetCandidate(_pendingBatteryGuideTriggerCapture);
+            _batteryGuideTriggerCaptureWindow.Activate();
+            return;
+        }
+
+        var captureWindow = new BatteryGuideTriggerCaptureWindow(_viewModel.Language)
+        {
+            Owner = this,
+            PopInOriginScreenPoint = TryGetElementCenterScreenPoint(BatteryGuideTriggerSelectButton)
+        };
+        captureWindow.SaveRequested += BatteryGuideTriggerCaptureWindow_SaveRequested;
+        captureWindow.RetryRequested += BatteryGuideTriggerCaptureWindow_RetryRequested;
+        captureWindow.CancelRequested += BatteryGuideTriggerCaptureWindow_CancelRequested;
+        captureWindow.Closed += BatteryGuideTriggerCaptureWindow_Closed;
+        _batteryGuideTriggerCaptureWindow = captureWindow;
+        PositionBatteryGuideTriggerCaptureWindow(captureWindow);
+        captureWindow.SetProfiles(
+            _viewModel.BatteryGuideTriggerProfiles,
+            _viewModel.BatteryGuideTrigger);
+        captureWindow.SetCandidate(_pendingBatteryGuideTriggerCapture);
+        captureWindow.Show();
+        captureWindow.Activate();
+    }
+
+    private void PositionBatteryGuideTriggerCaptureWindow(Window captureWindow)
+    {
+        var area = GetWorkingAreaForOwnerWindow();
+        var maxWidth = Math.Max(320d, (area.Width * BatteryGuideTriggerCaptureMaxWorkAreaRatio) - (StartupSafetyMargin * 2d));
+        var maxHeight = Math.Max(260d, (area.Height * BatteryGuideTriggerCaptureMaxWorkAreaRatio) - (StartupSafetyMargin * 2d));
+        var scale = Math.Min(
+            BatteryGuideTriggerCaptureMaxScale,
+            Math.Min(
+                maxWidth / BatteryGuideTriggerCaptureDesignWidth,
+                maxHeight / BatteryGuideTriggerCaptureDesignHeight));
+        captureWindow.Width = Math.Floor(BatteryGuideTriggerCaptureDesignWidth * scale);
+        captureWindow.Height = Math.Floor(BatteryGuideTriggerCaptureDesignHeight * scale);
+        captureWindow.Left = area.Left + Math.Max(StartupSafetyMargin, (area.Width - captureWindow.Width) / 2d);
+        captureWindow.Top = area.Top + Math.Max(StartupSafetyMargin, (area.Height - captureWindow.Height) / 2d);
+    }
+
+    private WindowBounds GetWorkingAreaForOwnerWindow()
+    {
+        var width = ActualWidth > 0d ? ActualWidth : Width;
+        var height = ActualHeight > 0d ? ActualHeight : Height;
+        if (double.IsNaN(Left) ||
+            double.IsNaN(Top) ||
+            double.IsNaN(width) ||
+            double.IsNaN(height) ||
+            double.IsInfinity(Left) ||
+            double.IsInfinity(Top) ||
+            double.IsInfinity(width) ||
+            double.IsInfinity(height) ||
+            width <= 0d ||
+            height <= 0d)
+        {
+            return GetWorkingAreaFromCurrentCursor();
+        }
+
+        var center = new System.Drawing.Point(
+            (int)Math.Round(Left + (width / 2d)),
+            (int)Math.Round(Top + (height / 2d)));
+        return GetWorkingAreaFromScreen(Forms.Screen.FromPoint(center), this);
+    }
+
+    private static System.Windows.Point? TryGetElementCenterScreenPoint(FrameworkElement element)
+    {
+        if (!element.IsLoaded || element.ActualWidth <= 0d || element.ActualHeight <= 0d)
+        {
+            return null;
+        }
+
+        try
+        {
+            var devicePoint = element.PointToScreen(new System.Windows.Point(
+                element.ActualWidth / 2d,
+                element.ActualHeight / 2d));
+            var transform = PresentationSource.FromVisual(element)?.CompositionTarget?.TransformFromDevice;
+            return transform?.Transform(devicePoint) ?? devicePoint;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private void BatteryGuideTriggerCaptureWindow_SaveRequested(object? sender, EventArgs e)
+    {
+        if (_pendingBatteryGuideTriggerCapture is null)
+        {
+            return;
+        }
+
+        _viewModel.SetBatteryGuideTriggerProfile(
+            _pendingBatteryGuideTriggerCapture.DeviceKind,
+            _pendingBatteryGuideTriggerCapture.ToPersistedString());
+        ShowTrayNotification(
+            _viewModel.TextBatteryGuideTrigger,
+            ExtraText("BatteryGuideTriggerSavedToast"),
+            Forms.ToolTipIcon.Info);
+        CancelBatteryGuideTriggerCapture(closeWindow: true);
+    }
+
+    private void BatteryGuideTriggerCaptureWindow_RetryRequested(object? sender, EventArgs e)
+    {
+        _isBatteryGuideTriggerCaptureActive = true;
+        _pendingBatteryGuideTriggerCapture = null;
+        _batteryGuideTriggerCaptureKey = null;
+        _lastBatteryGuideTriggerReportByDevice.Clear();
+        ClearCustomBatteryGuideTriggerPressState();
+        _batteryGuideTriggerCaptureWindow?.SetCandidate(null);
+    }
+
+    private void BatteryGuideTriggerCaptureWindow_CancelRequested(object? sender, EventArgs e)
+    {
+        CancelBatteryGuideTriggerCapture(closeWindow: true);
+    }
+
+    private void BatteryGuideTriggerCaptureWindow_Closed(object? sender, EventArgs e)
+    {
+        if (sender is BatteryGuideTriggerCaptureWindow captureWindow)
+        {
+            captureWindow.SaveRequested -= BatteryGuideTriggerCaptureWindow_SaveRequested;
+            captureWindow.RetryRequested -= BatteryGuideTriggerCaptureWindow_RetryRequested;
+            captureWindow.CancelRequested -= BatteryGuideTriggerCaptureWindow_CancelRequested;
+            captureWindow.Closed -= BatteryGuideTriggerCaptureWindow_Closed;
+        }
+
+        if (ReferenceEquals(_batteryGuideTriggerCaptureWindow, sender))
+        {
+            _batteryGuideTriggerCaptureWindow = null;
+        }
+
+        _isBatteryGuideTriggerCaptureActive = false;
+        _pendingBatteryGuideTriggerCapture = null;
+        _batteryGuideTriggerCaptureKey = null;
+        _lastBatteryGuideTriggerReportByDevice.Clear();
+        ClearCustomBatteryGuideTriggerPressState();
+    }
+
+    private void CloseBatteryGuideTriggerCaptureWindow(bool animateClose = false)
+    {
+        try
+        {
+            if (animateClose)
+            {
+                _batteryGuideTriggerCaptureWindow?.CloseWithPopOut();
+            }
+            else
+            {
+                _batteryGuideTriggerCaptureWindow?.CloseFromOwner();
+            }
+        }
+        catch
+        {
+            // Capture UI is optional; the widget must keep running.
+        }
+    }
+
     private void LoadCustomGuideSoundButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = _viewModel.TextCustomGuideSoundSelectTitle,
-            Filter = "Audio files (*.wav;*.mp3;*.wma;*.m4a)|*.wav;*.mp3;*.wma;*.m4a|All files (*.*)|*.*",
+            Filter = ExtraText("CustomGuideSoundFilter"),
             CheckFileExists = true,
             Multiselect = false
         };
@@ -758,7 +1173,7 @@ public partial class MainWindow : Window
             var bootDrive = FindPicoBootDrive();
             if (bootDrive is not null)
             {
-                var rememberedVersion = NormalizeReleaseVersion(_viewModel.LastDs5DongleFirmwareVersion);
+                var rememberedVersion = UpdateService.NormalizeReleaseVersion(_viewModel.LastDs5DongleFirmwareVersion);
                 if (!string.IsNullOrWhiteSpace(rememberedVersion) &&
                     !IsDs5DongleFirmwareUpdateNeeded(rememberedVersion, firmware.Version))
                 {
@@ -811,7 +1226,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var installedVersion = NormalizeReleaseVersion(installedFirmware.Version);
+            var installedVersion = UpdateService.NormalizeReleaseVersion(installedFirmware.Version);
             _viewModel.RememberDs5DongleFirmwareVersion(installedVersion);
             if (!IsDs5DongleFirmwareUpdateNeeded(installedVersion, firmware.Version))
             {
@@ -848,21 +1263,12 @@ public partial class MainWindow : Window
 
     private string BuildPicoFirmwareReadMissingHint(Ds5DongleFirmwareVersionScanResult scan)
     {
-        var isKorean = string.Equals(_viewModel.Language, WidgetSettings.KoreanLanguage, StringComparison.OrdinalIgnoreCase);
         return scan.Status switch
         {
-            Ds5DongleFirmwareVersionReadStatus.OnlyBluetoothDualSenseEndpoints => isKorean
-                ? "상세: 현재 Windows에는 Bluetooth DualSense만 보이고, USB DS5Dongle 장치는 보이지 않습니다. DS5Dongle은 컨트롤러가 Pico2W에 연결된 뒤에야 USB 장치로 보일 수 있습니다."
-                : "Detail: Windows currently shows Bluetooth DualSense endpoints, but no USB DS5Dongle endpoint. DS5Dongle may appear as a USB device only after the controller connects through Pico2W.",
-            Ds5DongleFirmwareVersionReadStatus.NoUsbDs5DongleEndpoint => isKorean
-                ? "상세: 일반 USB DS5Dongle HID 장치를 찾지 못했습니다. Pico2W가 USB로 연결되어 있고, DualSense가 Pico2W를 통해 연결된 상태인지 확인해 주세요."
-                : "Detail: No normal USB DS5Dongle HID endpoint was found. Check that Pico2W is connected over USB and DualSense is connected through Pico2W.",
-            Ds5DongleFirmwareVersionReadStatus.UsbDs5DongleOpenFailed => isKorean
-                ? "상세: USB DS5Dongle 후보는 보였지만 앱이 읽기용으로 열지 못했습니다. 브라우저 설정 페이지나 다른 앱이 잡고 있으면 닫고 다시 시도해 주세요."
-                : "Detail: A USB DS5Dongle candidate was found, but the app could not open it. Close the browser config page or other apps and try again.",
-            Ds5DongleFirmwareVersionReadStatus.FirmwareVersionReportUnavailable => isKorean
-                ? "상세: USB DS5Dongle 후보는 열렸지만 펌웨어 버전 리포트 0xF8을 받지 못했습니다. v0.6.0-hotfix 이전 펌웨어일 수 있습니다."
-                : "Detail: A USB DS5Dongle candidate opened, but report 0xF8 did not return a firmware version. The firmware may be older than v0.6.0-hotfix.",
+            Ds5DongleFirmwareVersionReadStatus.OnlyBluetoothDualSenseEndpoints => ExtraText("PicoReadHintBluetoothOnly"),
+            Ds5DongleFirmwareVersionReadStatus.NoUsbDs5DongleEndpoint => ExtraText("PicoReadHintNoUsbDs5Dongle"),
+            Ds5DongleFirmwareVersionReadStatus.UsbDs5DongleOpenFailed => ExtraText("PicoReadHintUsbOpenFailed"),
+            Ds5DongleFirmwareVersionReadStatus.FirmwareVersionReportUnavailable => ExtraText("PicoReadHintReportUnavailable"),
             _ => string.Empty
         };
     }
@@ -890,14 +1296,20 @@ public partial class MainWindow : Window
         ApplySelectedColorPreset(selected);
     }
 
-    private void ColorPresetComboBox_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    private void ComboBoxMarquee_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        QueueColorPresetMarqueeUpdate(FindColorPresetMarqueeText(ColorPresetComboBox));
+        if (sender is DependencyObject source)
+        {
+            QueueColorPresetMarqueeUpdate(FindColorPresetMarqueeText(source));
+        }
     }
 
-    private void ColorPresetComboBox_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    private void ComboBoxMarquee_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        QueueColorPresetMarqueeReset(FindColorPresetMarqueeText(ColorPresetComboBox));
+        if (sender is DependencyObject source)
+        {
+            QueueColorPresetMarqueeReset(FindColorPresetMarqueeText(source));
+        }
     }
 
     private void ColorPresetComboBoxItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1000,6 +1412,18 @@ public partial class MainWindow : Window
         UpdateColorEditorState();
     }
 
+    private void ColorQuickSwatchButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string hex } ||
+            System.Windows.Media.ColorConverter.ConvertFromString(hex) is not System.Windows.Media.Color color)
+        {
+            return;
+        }
+
+        ApplySelectedQuickColor(color);
+        e.Handled = true;
+    }
+
     private void PaletteSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _isPaletteDragging = true;
@@ -1044,7 +1468,7 @@ public partial class MainWindow : Window
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = _viewModel.TextCustomFontSelectTitle,
-            Filter = "Font files (*.ttf;*.otf)|*.ttf;*.otf|All files (*.*)|*.*",
+            Filter = ExtraText("CustomFontFilter"),
             CheckFileExists = true,
             CheckPathExists = true,
             Multiselect = false
@@ -1157,20 +1581,51 @@ public partial class MainWindow : Window
 
     private async void ManualRefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        await _viewModel.RefreshAsync().ConfigureAwait(true);
+        await RefreshFromUserCommandAsync().ConfigureAwait(true);
     }
 
-    private async void IconOverridesButton_Click(object sender, RoutedEventArgs e)
+    private async Task RefreshFromUserCommandAsync()
     {
+        SuppressSteamGuideToasts(SteamGuideToastRefreshSuppressDuration, "manual_refresh_started");
+        await _viewModel.RefreshAsync().ConfigureAwait(true);
+        SuppressSteamGuideToasts(SteamGuideToastRefreshSuppressDuration, "manual_refresh_completed");
+    }
+
+    private void IconOverridesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_iconOverrideWindow is not null)
+        {
+            _iconOverrideWindow.CloseWithPopOutAsCancel();
+            return;
+        }
+
         var snapshots = _viewModel.GetDeviceSnapshots();
         var existingOverrides = IconOverrideParser.Parse(_viewModel.Settings.IconOverrides);
         var existingImageOverrides = IconImageOverrideParser.Parse(_viewModel.Settings.IconImageOverrides);
-        var dialog = new IconOverrideWindow(snapshots, existingOverrides, existingImageOverrides)
+        var dialog = new IconOverrideWindow(snapshots, existingOverrides, existingImageOverrides, _viewModel.Language)
         {
             Owner = this
         };
+        dialog.Closed += IconOverrideWindow_Closed;
+        _iconOverrideWindow = dialog;
+        dialog.Show();
+        dialog.Activate();
+    }
 
-        if (dialog.ShowDialog() != true)
+    private async void IconOverrideWindow_Closed(object? sender, EventArgs e)
+    {
+        if (sender is not IconOverrideWindow dialog)
+        {
+            return;
+        }
+
+        dialog.Closed -= IconOverrideWindow_Closed;
+        if (ReferenceEquals(_iconOverrideWindow, dialog))
+        {
+            _iconOverrideWindow = null;
+        }
+
+        if (!dialog.WasAccepted)
         {
             return;
         }
@@ -1236,6 +1691,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private UpdateServiceText BuildUpdateServiceText()
+    {
+        return new UpdateServiceText(
+            _viewModel.CurrentLanguageText.UpdateAssetMissing,
+            _viewModel.CurrentLanguageText.UpdateReleaseReadFailed,
+            _viewModel.CurrentLanguageText.UpdateChecksumMissing,
+            _viewModel.CurrentLanguageText.UpdateSourceNotTrusted,
+            _viewModel.CurrentLanguageText.UpdateDownloading,
+            _viewModel.CurrentLanguageText.UpdateDownloadingFormat,
+            _viewModel.CurrentLanguageText.UpdateVerifying,
+            _viewModel.CurrentLanguageText.UpdateVerificationFailed);
+    }
+
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isUpdating)
@@ -1253,7 +1721,10 @@ public partial class MainWindow : Window
         {
             SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateChecking, 0, isIndeterminate: true);
 
-            var (releaseInfo, errorMessage) = await TryGetLatestReleaseAssetAsync().ConfigureAwait(true);
+            var updateText = BuildUpdateServiceText();
+            var (releaseInfo, errorMessage) = await _updateService
+                .TryGetLatestReleaseAssetAsync(updateText)
+                .ConfigureAwait(true);
             if (releaseInfo is null)
             {
                 var message = string.IsNullOrWhiteSpace(errorMessage)
@@ -1265,7 +1736,7 @@ public partial class MainWindow : Window
             }
 
             var currentVersion = GetDisplayVersion();
-            if (!IsRemoteVersionNewer(currentVersion, releaseInfo.Version))
+            if (!UpdateService.IsRemoteVersionNewer(currentVersion, releaseInfo.Version))
             {
                 SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateNoUpdate, 100, isIndeterminate: false);
                 await Task.Delay(1400).ConfigureAwait(true);
@@ -1273,31 +1744,19 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var tempRoot = Path.Combine(Path.GetTempPath(), "Bloss", "updates");
-            Directory.CreateDirectory(tempRoot);
-            var setupPath = Path.Combine(
-                tempRoot,
-                $"setup-{releaseInfo.Version}-{DateTime.UtcNow:yyyyMMddHHmmss}.exe");
-
-            await DownloadUpdateAssetAsync(releaseInfo.SetupDownloadUrl, setupPath).ConfigureAwait(true);
-
-            SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateVerifying, 100, isIndeterminate: true);
-            var checksumContent = await DownloadUpdateChecksumAssetAsync(releaseInfo.ChecksumDownloadUrl).ConfigureAwait(true);
-            if (!TryExtractSha256Hash(checksumContent, out var expectedHash))
-            {
-                TryDeleteFile(setupPath);
-                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
-            }
-
-            var downloadedHash = ComputeFileSha256(setupPath);
-            if (!string.Equals(downloadedHash, expectedHash, StringComparison.OrdinalIgnoreCase))
-            {
-                TryDeleteFile(setupPath);
-                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
-            }
+            var setupPath = await _updateService
+                .DownloadAndVerifyInstallerAsync(
+                    releaseInfo,
+                    updateText,
+                    progress => SetUpdateProgressUi(progress.Message, progress.ProgressPercent, progress.IsIndeterminate))
+                .ConfigureAwait(true);
 
             SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateInstallStarting, 100, isIndeterminate: false);
-            StartInstallerUpdateAndRestart(setupPath, releaseInfo.Version);
+            _updateService.StartInstallerUpdateAndRestart(
+                setupPath,
+                releaseInfo.Version,
+                FallbackVersion,
+                _viewModel.CurrentLanguageText.UpdateInstallLaunchFailed);
             ExitApplication();
         }
         catch (Exception ex)
@@ -1318,106 +1777,6 @@ public partial class MainWindow : Window
             {
                 UpdateButton.IsEnabled = true;
             }
-        }
-    }
-
-    private async Task<(UpdateReleaseAssetInfo? Release, string? ErrorMessage)> TryGetLatestReleaseAssetAsync()
-    {
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, UpdateLatestReleaseApiUrl);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue(AppDisplayName, GetDisplayVersion()));
-
-            using var response = await _httpClient
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
-                .ConfigureAwait(true);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return (null, _viewModel.CurrentLanguageText.UpdateReleaseReadFailed);
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(true);
-            using var document = await JsonDocument.ParseAsync(stream).ConfigureAwait(true);
-            var root = document.RootElement;
-
-            if (!root.TryGetProperty("tag_name", out var tagNameElement))
-            {
-                return (null, _viewModel.CurrentLanguageText.UpdateReleaseReadFailed);
-            }
-
-            if (root.TryGetProperty("draft", out var draftElement) &&
-                draftElement.ValueKind is JsonValueKind.True &&
-                draftElement.GetBoolean())
-            {
-                return (null, _viewModel.CurrentLanguageText.UpdateReleaseReadFailed);
-            }
-
-            if (root.TryGetProperty("prerelease", out var prereleaseElement) &&
-                prereleaseElement.ValueKind is JsonValueKind.True &&
-                prereleaseElement.GetBoolean())
-            {
-                return (null, _viewModel.CurrentLanguageText.UpdateReleaseReadFailed);
-            }
-
-            var latestVersion = NormalizeReleaseVersion(tagNameElement.GetString());
-            if (!root.TryGetProperty("assets", out var assetsElement) ||
-                assetsElement.ValueKind != JsonValueKind.Array)
-            {
-                return (null, _viewModel.CurrentLanguageText.UpdateAssetMissing);
-            }
-
-            string? setupDownloadUrl = null;
-            string? checksumDownloadUrl = null;
-            foreach (var asset in assetsElement.EnumerateArray())
-            {
-                if (!asset.TryGetProperty("name", out var nameElement) ||
-                    !asset.TryGetProperty("browser_download_url", out var urlElement))
-                {
-                    continue;
-                }
-
-                var assetName = nameElement.GetString();
-                var downloadUrl = urlElement.GetString();
-                if (string.IsNullOrWhiteSpace(assetName) || string.IsNullOrWhiteSpace(downloadUrl))
-                {
-                    continue;
-                }
-
-                if (string.Equals(assetName, UpdateExpectedAssetName, StringComparison.OrdinalIgnoreCase))
-                {
-                    setupDownloadUrl = downloadUrl;
-                    continue;
-                }
-
-                if (string.Equals(assetName, UpdateExpectedChecksumAssetName, StringComparison.OrdinalIgnoreCase))
-                {
-                    checksumDownloadUrl = downloadUrl;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(setupDownloadUrl))
-            {
-                return (null, _viewModel.CurrentLanguageText.UpdateAssetMissing);
-            }
-
-            if (string.IsNullOrWhiteSpace(checksumDownloadUrl))
-            {
-                return (null, _viewModel.CurrentLanguageText.UpdateChecksumMissing);
-            }
-
-            if (!IsTrustedUpdateDownloadUrl(setupDownloadUrl) ||
-                !IsTrustedUpdateDownloadUrl(checksumDownloadUrl))
-            {
-                return (null, _viewModel.CurrentLanguageText.UpdateSourceNotTrusted);
-            }
-
-            return (new UpdateReleaseAssetInfo(latestVersion, setupDownloadUrl, checksumDownloadUrl), null);
-        }
-        catch
-        {
-            return (null, _viewModel.CurrentLanguageText.UpdateReleaseReadFailed);
         }
     }
 
@@ -1445,7 +1804,7 @@ public partial class MainWindow : Window
                 return null;
             }
 
-            var latestVersion = NormalizeReleaseVersion(tagNameElement.GetString());
+            var latestVersion = UpdateService.NormalizeReleaseVersion(tagNameElement.GetString());
             var releaseUrl = root.TryGetProperty("html_url", out var htmlUrlElement)
                 ? htmlUrlElement.GetString() ?? Ds5DongleReleasePageUrl
                 : Ds5DongleReleasePageUrl;
@@ -1469,7 +1828,7 @@ public partial class MainWindow : Window
                 if (string.IsNullOrWhiteSpace(assetName) ||
                     string.IsNullOrWhiteSpace(downloadUrl) ||
                     !assetName.EndsWith(".uf2", StringComparison.OrdinalIgnoreCase) ||
-                    !IsTrustedUpdateDownloadUrl(downloadUrl))
+                    !UpdateService.IsTrustedDownloadUrl(downloadUrl))
                 {
                     continue;
                 }
@@ -1485,71 +1844,11 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private async Task DownloadUpdateAssetAsync(string downloadUrl, string destinationPath)
-    {
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue(AppDisplayName, GetDisplayVersion()));
-
-            using var response = await _httpClient
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
-                .ConfigureAwait(true);
-            response.EnsureSuccessStatusCode();
-
-            var totalBytes = response.Content.Headers.ContentLength;
-            if (totalBytes is > UpdateMaxInstallerBytes)
-            {
-                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
-            }
-
-            var downloadedBytes = 0L;
-
-            await using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(true);
-            await using var target = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-            var buffer = new byte[81920];
-
-            while (true)
-            {
-                var read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length)).ConfigureAwait(true);
-                if (read <= 0)
-                {
-                    break;
-                }
-
-                await target.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(true);
-                downloadedBytes += read;
-                if (downloadedBytes > UpdateMaxInstallerBytes)
-                {
-                    throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
-                }
-
-                if (totalBytes is > 0)
-                {
-                    var percent = Math.Clamp(downloadedBytes * 100d / totalBytes.Value, 0d, 100d);
-                    var message = string.Format(
-                        _viewModel.CurrentLanguageText.UpdateDownloadingFormat,
-                        Math.Round(percent, 0));
-                    SetUpdateProgressUi(message, percent, isIndeterminate: false);
-                }
-                else
-                {
-                    SetUpdateProgressUi(_viewModel.CurrentLanguageText.UpdateDownloading, 0, isIndeterminate: true);
-                }
-            }
-        }
-        catch
-        {
-            TryDeleteFile(destinationPath);
-            throw;
-        }
-    }
-
     private async Task DownloadDs5DongleFirmwareAsync(string downloadUrl, string destinationPath)
     {
         try
         {
-            if (!IsTrustedUpdateDownloadUrl(downloadUrl))
+            if (!UpdateService.IsTrustedDownloadUrl(downloadUrl))
             {
                 throw new InvalidOperationException(ExtraText("PicoDownloadUrlUntrusted"));
             }
@@ -1612,129 +1911,6 @@ public partial class MainWindow : Window
         ShowTrayNotification(ExtraText("PicoToastTitle"), ExtraText("PicoToastCopied"), Forms.ToolTipIcon.Info);
     }
 
-    private async Task<string> DownloadUpdateChecksumAssetAsync(string downloadUrl)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
-        request.Headers.UserAgent.Add(new ProductInfoHeaderValue(AppDisplayName, GetDisplayVersion()));
-
-        using var response = await _httpClient
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
-            .ConfigureAwait(true);
-        response.EnsureSuccessStatusCode();
-
-        if (response.Content.Headers.ContentLength is > UpdateMaxChecksumBytes)
-        {
-            throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
-        }
-
-        await using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(true);
-        using var memory = new MemoryStream();
-        var buffer = new byte[2048];
-
-        while (true)
-        {
-            var read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length)).ConfigureAwait(true);
-            if (read <= 0)
-            {
-                break;
-            }
-
-            await memory.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(true);
-            if (memory.Length > UpdateMaxChecksumBytes)
-            {
-                throw new InvalidOperationException(_viewModel.CurrentLanguageText.UpdateVerificationFailed);
-            }
-        }
-
-        return Encoding.UTF8.GetString(memory.ToArray());
-    }
-
-    private static bool TryExtractSha256Hash(string checksumContent, out string hash)
-    {
-        hash = string.Empty;
-        if (string.IsNullOrWhiteSpace(checksumContent))
-        {
-            return false;
-        }
-
-        foreach (var rawLine in checksumContent.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
-        {
-            var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith('#'))
-            {
-                continue;
-            }
-
-            var hashCandidate = line;
-            var separator = line.IndexOfAny([' ', '\t']);
-            if (separator > 0)
-            {
-                hashCandidate = line[..separator];
-            }
-
-            if (hashCandidate.Length != 64)
-            {
-                continue;
-            }
-
-            var allHex = true;
-            for (var i = 0; i < hashCandidate.Length; i++)
-            {
-                var ch = hashCandidate[i];
-                var isHex = (ch >= '0' && ch <= '9') ||
-                            (ch >= 'a' && ch <= 'f') ||
-                            (ch >= 'A' && ch <= 'F');
-                if (!isHex)
-                {
-                    allHex = false;
-                    break;
-                }
-            }
-
-            if (!allHex)
-            {
-                continue;
-            }
-
-            hash = hashCandidate.ToUpperInvariant();
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string ComputeFileSha256(string filePath)
-    {
-        using var stream = File.OpenRead(filePath);
-        using var sha256 = SHA256.Create();
-        var hash = sha256.ComputeHash(stream);
-        return Convert.ToHexString(hash);
-    }
-
-    private static bool IsTrustedUpdateDownloadUrl(string downloadUrl)
-    {
-        if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri))
-        {
-            return false;
-        }
-
-        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        foreach (var trustedHost in UpdateTrustedDownloadHosts)
-        {
-            if (string.Equals(uri.Host, trustedHost, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static void TryDeleteFile(string path)
     {
         try
@@ -1750,24 +1926,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private static bool IsRemoteVersionNewer(string currentVersionText, string remoteVersionText)
-    {
-        if (TryParseComparableVersion(currentVersionText, out var currentVersion) &&
-            TryParseComparableVersion(remoteVersionText, out var remoteVersion))
-        {
-            return remoteVersion > currentVersion;
-        }
-
-        return !string.Equals(
-            NormalizeReleaseVersion(currentVersionText),
-            NormalizeReleaseVersion(remoteVersionText),
-            StringComparison.OrdinalIgnoreCase);
-    }
-
     private static bool IsDs5DongleFirmwareUpdateNeeded(string currentVersionText, string latestVersionText)
     {
-        if (TryParseComparableVersion(currentVersionText, out var currentVersion) &&
-            TryParseComparableVersion(latestVersionText, out var latestVersion))
+        if (UpdateService.TryParseComparableVersion(currentVersionText, out var currentVersion) &&
+            UpdateService.TryParseComparableVersion(latestVersionText, out var latestVersion))
         {
             var numericComparison = latestVersion.CompareTo(currentVersion);
             if (numericComparison != 0)
@@ -1777,40 +1939,9 @@ public partial class MainWindow : Window
         }
 
         return !string.Equals(
-            NormalizeReleaseVersion(currentVersionText),
-            NormalizeReleaseVersion(latestVersionText),
+            UpdateService.NormalizeReleaseVersion(currentVersionText),
+            UpdateService.NormalizeReleaseVersion(latestVersionText),
             StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryParseComparableVersion(string? rawVersion, out Version version)
-    {
-        version = new Version(0, 0, 0, 0);
-        if (string.IsNullOrWhiteSpace(rawVersion))
-        {
-            return false;
-        }
-
-        var normalized = NormalizeReleaseVersion(rawVersion);
-        var separatorIndex = normalized.IndexOfAny(['-', '+']);
-        if (separatorIndex >= 0)
-        {
-            normalized = normalized[..separatorIndex];
-        }
-
-        var parsed = Version.TryParse(normalized, out var parsedVersion);
-        version = parsedVersion ?? new Version(0, 0, 0, 0);
-        return parsed;
-    }
-
-    private static string NormalizeReleaseVersion(string? rawVersion)
-    {
-        var text = rawVersion?.Trim() ?? string.Empty;
-        if (text.StartsWith('v') || text.StartsWith('V'))
-        {
-            text = text[1..];
-        }
-
-        return text.Trim();
     }
 
     private void SetUpdateProgressUi(string message, double progressPercent, bool isIndeterminate)
@@ -1902,158 +2033,6 @@ public partial class MainWindow : Window
         UpdateProgressBar.IsIndeterminate = false;
         UpdateProgressBar.Value = 0;
         UpdateProgressTextBlock.Text = string.Empty;
-    }
-
-    private void StartInstallerUpdateAndRestart(string setupPath, string targetVersion)
-    {
-        if (!File.Exists(setupPath))
-        {
-            throw new FileNotFoundException("Downloaded setup file was not found.", setupPath);
-        }
-
-        if (string.IsNullOrWhiteSpace(targetVersion))
-        {
-            targetVersion = FallbackVersion;
-        }
-
-        var currentProcessPath = Process.GetCurrentProcess().MainModule?.FileName;
-        if (string.IsNullOrWhiteSpace(currentProcessPath))
-        {
-            currentProcessPath = Path.Combine(AppContext.BaseDirectory, "Bloss.exe");
-        }
-
-        if (string.IsNullOrWhiteSpace(currentProcessPath) || !File.Exists(currentProcessPath))
-        {
-            throw new FileNotFoundException(_viewModel.CurrentLanguageText.UpdateInstallLaunchFailed);
-        }
-
-        var updateLogDirectory = Path.Combine(Path.GetTempPath(), "Bloss", "updates");
-        Directory.CreateDirectory(updateLogDirectory);
-
-        var installLogPath = Path.Combine(
-            updateLogDirectory,
-            $"install-{GetSafeUpdateLogFileNamePart(targetVersion)}-{DateTime.UtcNow:yyyyMMddHHmmss}.log");
-
-        var scriptPath = Path.Combine(Path.GetTempPath(), $"bloss-updater-{Guid.NewGuid():N}.ps1");
-        var escapedSetupPath = EscapePowerShellSingleQuotedString(setupPath);
-        var escapedAppPath = EscapePowerShellSingleQuotedString(currentProcessPath);
-        var escapedTargetVersion = EscapePowerShellSingleQuotedString(targetVersion);
-        var escapedLogPath = EscapePowerShellSingleQuotedString(installLogPath);
-        var currentPid = Environment.ProcessId;
-
-        var scriptBuilder = new StringBuilder();
-        scriptBuilder.AppendLine("$ErrorActionPreference = 'Continue'");
-        scriptBuilder.AppendLine($"$setupPath = '{escapedSetupPath}'");
-        scriptBuilder.AppendLine($"$appPath = '{escapedAppPath}'");
-        scriptBuilder.AppendLine($"$targetVersion = '{escapedTargetVersion}'");
-        scriptBuilder.AppendLine($"$logPath = '{escapedLogPath}'");
-        scriptBuilder.AppendLine($"$oldPid = {currentPid}");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("function Write-BlossUpdateLog {");
-        scriptBuilder.AppendLine("    param([string]$message)");
-        scriptBuilder.AppendLine("    try {");
-        scriptBuilder.AppendLine("        New-Item -ItemType Directory -Path (Split-Path -Parent $logPath) -Force | Out-Null");
-        scriptBuilder.AppendLine("        Add-Content -LiteralPath $logPath -Value $message -Encoding UTF8");
-        scriptBuilder.AppendLine("    } catch {");
-        scriptBuilder.AppendLine("    }");
-        scriptBuilder.AppendLine("}");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("function Test-BlossFileVersion {");
-        scriptBuilder.AppendLine("    param([string]$filePath, [string]$versionPrefix)");
-        scriptBuilder.AppendLine("    if (-not (Test-Path -LiteralPath $filePath)) { return $false }");
-        scriptBuilder.AppendLine("    try {");
-        scriptBuilder.AppendLine("        $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($filePath)");
-        scriptBuilder.AppendLine("        return (($info.ProductVersion -like ($versionPrefix + '*')) -or ($info.FileVersion -like ($versionPrefix + '*')))");
-        scriptBuilder.AppendLine("    } catch {");
-        scriptBuilder.AppendLine("        return $false");
-        scriptBuilder.AppendLine("    }");
-        scriptBuilder.AppendLine("}");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("function Test-BlossInstalledVersion {");
-        scriptBuilder.AppendLine("    param([string]$versionPrefix)");
-        scriptBuilder.AppendLine("    $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique");
-        scriptBuilder.AppendLine("    foreach ($root in $roots) {");
-        scriptBuilder.AppendLine("        $installDir = Join-Path $root 'Bloss'");
-        scriptBuilder.AppendLine("        $exePath = Join-Path $installDir 'Bloss.exe'");
-        scriptBuilder.AppendLine("        $dllPath = Join-Path $installDir 'Bloss.dll'");
-        scriptBuilder.AppendLine("        if ((Test-BlossFileVersion $exePath $versionPrefix) -and (Test-BlossFileVersion $dllPath $versionPrefix)) {");
-        scriptBuilder.AppendLine("            return $true");
-        scriptBuilder.AppendLine("        }");
-        scriptBuilder.AppendLine("    }");
-        scriptBuilder.AppendLine("    return $false");
-        scriptBuilder.AppendLine("}");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("Write-BlossUpdateLog ('update_start=' + (Get-Date).ToString('o'))");
-        scriptBuilder.AppendLine("Write-BlossUpdateLog ('target_version=' + $targetVersion)");
-        scriptBuilder.AppendLine("Write-BlossUpdateLog ('setup_path=' + $setupPath)");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("while (Get-Process -Id $oldPid -ErrorAction SilentlyContinue) {");
-        scriptBuilder.AppendLine("    Start-Sleep -Milliseconds 600");
-        scriptBuilder.AppendLine("}");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("$installArgs = @(");
-        scriptBuilder.AppendLine("    '/VERYSILENT',");
-        scriptBuilder.AppendLine("    '/SUPPRESSMSGBOXES',");
-        scriptBuilder.AppendLine("    '/NORESTART',");
-        scriptBuilder.AppendLine("    '/SP-',");
-        scriptBuilder.AppendLine("    ('/LOG=\"' + $logPath + '\"')");
-        scriptBuilder.AppendLine(")");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("$installExitCode = $null");
-        scriptBuilder.AppendLine("try {");
-        scriptBuilder.AppendLine("    $process = Start-Process -FilePath $setupPath -ArgumentList $installArgs -Verb RunAs -Wait -PassThru");
-        scriptBuilder.AppendLine("    if ($null -ne $process) { $installExitCode = $process.ExitCode }");
-        scriptBuilder.AppendLine("    Write-BlossUpdateLog ('installer_exit_code=' + $installExitCode)");
-        scriptBuilder.AppendLine("} catch {");
-        scriptBuilder.AppendLine("    Write-BlossUpdateLog ('installer_launch_error=' + $_.Exception.Message)");
-        scriptBuilder.AppendLine("}");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("$installed = $false");
-        scriptBuilder.AppendLine("$deadline = (Get-Date).AddSeconds(120)");
-        scriptBuilder.AppendLine("while ((Get-Date) -lt $deadline) {");
-        scriptBuilder.AppendLine("    if (Test-BlossInstalledVersion $targetVersion) {");
-        scriptBuilder.AppendLine("        $installed = $true");
-        scriptBuilder.AppendLine("        break");
-        scriptBuilder.AppendLine("    }");
-        scriptBuilder.AppendLine("    Start-Sleep -Milliseconds 500");
-        scriptBuilder.AppendLine("}");
-        scriptBuilder.AppendLine("Write-BlossUpdateLog ('installed_target_version=' + $installed)");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("if (Test-Path -LiteralPath $appPath) {");
-        scriptBuilder.AppendLine("    Start-Process -FilePath $appPath");
-        scriptBuilder.AppendLine("}");
-        scriptBuilder.AppendLine();
-        scriptBuilder.AppendLine("Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue");
-        var scriptContent = scriptBuilder.ToString();
-
-        File.WriteAllText(scriptPath, scriptContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "powershell",
-            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-    }
-
-    private static string EscapePowerShellSingleQuotedString(string path)
-    {
-        return path.Replace("'", "''");
-    }
-
-    private static string GetSafeUpdateLogFileNamePart(string value)
-    {
-        var builder = new StringBuilder(value.Length);
-        foreach (var character in value)
-        {
-            builder.Append(char.IsLetterOrDigit(character) || character is '.' or '-' or '_'
-                ? character
-                : '_');
-        }
-
-        return builder.Length > 0 ? builder.ToString() : FallbackVersion;
     }
 
     private void OpenSettingsPopup()
@@ -2250,12 +2229,7 @@ public partial class MainWindow : Window
     private bool IsMouseOverSettingsSurface()
     {
         return SettingsPopupChrome.IsMouseOver ||
-               ColorPopupChrome.IsMouseOver ||
-               SettingsButton.IsMouseOver ||
-               IsCursorWithinElementScreenBounds(SettingsPopupChrome, SettingsAutoCloseProtectedScreenMargin) ||
-               IsCursorWithinElementScreenBounds(ColorPopupChrome, SettingsAutoCloseProtectedScreenMargin) ||
-               IsCursorWithinElementScreenBounds(SettingsButton, SettingsAutoCloseProtectedScreenMargin) ||
-               IsCursorWithinElementScreenBounds(ColorCustomizeButton, SettingsAutoCloseProtectedScreenMargin);
+               ColorPopupChrome.IsMouseOver;
     }
 
     private bool IsAnySettingsDropDownOpen()
@@ -2263,38 +2237,7 @@ public partial class MainWindow : Window
         return ColorPresetComboBox.IsDropDownOpen ||
                GuideSoundComboBox.IsDropDownOpen ||
                LanguageComboBox.IsDropDownOpen ||
-               ColorCustomPopup.IsOpen && IsCursorWithinElementScreenBounds(ColorPopupChrome, SettingsAutoCloseProtectedScreenMargin);
-    }
-
-    private static bool IsCursorWithinElementScreenBounds(FrameworkElement? element, double margin)
-    {
-        if (element is null ||
-            !element.IsVisible ||
-            element.ActualWidth <= 0d ||
-            element.ActualHeight <= 0d)
-        {
-            return false;
-        }
-
-        try
-        {
-            var cursorPosition = Forms.Cursor.Position;
-            var topLeft = element.PointToScreen(new System.Windows.Point(0d, 0d));
-            var bottomRight = element.PointToScreen(new System.Windows.Point(element.ActualWidth, element.ActualHeight));
-            var left = Math.Min(topLeft.X, bottomRight.X) - margin;
-            var top = Math.Min(topLeft.Y, bottomRight.Y) - margin;
-            var right = Math.Max(topLeft.X, bottomRight.X) + margin;
-            var bottom = Math.Max(topLeft.Y, bottomRight.Y) + margin;
-
-            return cursorPosition.X >= left &&
-                   cursorPosition.X <= right &&
-                   cursorPosition.Y >= top &&
-                   cursorPosition.Y <= bottom;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
+               ColorCustomPopup.IsOpen && ColorPopupChrome.IsMouseOver;
     }
 
     private void AnimateSettingsGearClick()
@@ -2322,6 +2265,9 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        _viewModel.MarkUserActivity();
+        UpdatePowerIdleGuideMonitoring();
 
         var originalSource = e.OriginalSource as DependencyObject;
         if (IsSettingsPopupOpen())
@@ -2464,8 +2410,114 @@ public partial class MainWindow : Window
         return _steamRawInputMonitor.HandleWindowMessage(hwnd, msg, wParam, lParam, ref handled);
     }
 
+    private void PowerIdleMonitorTimer_Tick(object? sender, EventArgs e)
+    {
+        UpdatePowerIdleGuideMonitoring();
+    }
+
+    private void UpdatePowerIdleGuideMonitoring()
+    {
+        if (_windowMessageSource is null)
+        {
+            return;
+        }
+
+        var shouldPause = PowerIdlePolicy.ShouldPauseBackgroundWork(
+            _viewModel.GetPowerIdlePauseDelay(),
+            SystemIdleMonitor.GetIdleDuration(),
+            _viewModel.GetLocalIdleDuration(),
+            _viewModel.IsAnyProbeRunning || _isBatteryGuideTriggerCaptureActive,
+            _viewModel.IsRefreshRunning);
+
+        if (shouldPause)
+        {
+            if (_guideMonitorsPausedForPowerIdle)
+            {
+                return;
+            }
+
+            _guideButtonMonitor.Stop();
+            _steamRawInputMonitor.Stop();
+            _guideMonitorsPausedForPowerIdle = true;
+            return;
+        }
+
+        if (!_guideMonitorsPausedForPowerIdle)
+        {
+            return;
+        }
+
+        _guideButtonMonitor.Start();
+        _steamRawInputMonitor.Start(_windowMessageSource.Handle);
+        _guideMonitorsPausedForPowerIdle = false;
+    }
+
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(MainViewModel.WindowsDisplayOffOptions))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                RefreshWindowsDisplayOffOptions();
+            }
+            else
+            {
+                Dispatcher.Invoke(RefreshWindowsDisplayOffOptions);
+            }
+
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.PowerIdlePauseOptions))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                RefreshPowerIdlePauseOptions();
+            }
+            else
+            {
+                Dispatcher.Invoke(RefreshPowerIdlePauseOptions);
+            }
+
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.PowerIdlePauseMinutes))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                SyncPowerIdlePauseSelection();
+                UpdatePowerIdleGuideMonitoring();
+            }
+            else
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    SyncPowerIdlePauseSelection();
+                    UpdatePowerIdleGuideMonitoring();
+                });
+            }
+
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.BatteryGuideTrigger) or
+            nameof(MainViewModel.BatteryGuideTriggerProfiles))
+        {
+            ClearCustomBatteryGuideTriggerPressState();
+            _lastCustomBatteryGuideTriggerToastByBinding.Clear();
+            _batteryGuideTriggerCaptureWindow?.SetProfiles(
+                _viewModel.BatteryGuideTriggerProfiles,
+                _viewModel.BatteryGuideTrigger);
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.BatteryAlertThresholds))
+        {
+            PrimeBatteryAlertToastKeysForCurrentLevels();
+            return;
+        }
+
         if (e.PropertyName is nameof(MainViewModel.ColorPresetId))
         {
             if (Dispatcher.CheckAccess())
@@ -2525,7 +2577,10 @@ public partial class MainWindow : Window
                 RefreshTrayMenuTexts();
                 UpdateVersionMenuHeader();
                 UpdateGuideSoundControls();
+                RefreshPowerIdlePauseOptions();
+                RefreshWindowsDisplayOffOptions();
                 UpdateColorEditorState();
+                _batteryGuideTriggerCaptureWindow?.ApplyLocalizedText(_viewModel.Language);
                 if (!_isPicoFirmwareUpdating)
                 {
                     SetPicoFirmwareUpdateStatus(_viewModel.TextPicoFirmwareReady);
@@ -2539,7 +2594,10 @@ public partial class MainWindow : Window
                     RefreshTrayMenuTexts();
                     UpdateVersionMenuHeader();
                     UpdateGuideSoundControls();
+                    RefreshPowerIdlePauseOptions();
+                    RefreshWindowsDisplayOffOptions();
                     UpdateColorEditorState();
+                    _batteryGuideTriggerCaptureWindow?.ApplyLocalizedText(_viewModel.Language);
                     if (!_isPicoFirmwareUpdating)
                     {
                         SetPicoFirmwareUpdateStatus(_viewModel.TextPicoFirmwareReady);
@@ -2660,12 +2718,12 @@ public partial class MainWindow : Window
 
     private void ColorPresetMarqueeText_Loaded(object sender, RoutedEventArgs e)
     {
-        QueueColorPresetMarqueeReset(sender as WpfControls.TextBlock);
+        QueueColorPresetMarqueeReset(sender as FrameworkElement);
     }
 
     private void ColorPresetMarqueeText_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        QueueColorPresetMarqueeReset(sender as WpfControls.TextBlock);
+        QueueColorPresetMarqueeReset(sender as FrameworkElement);
     }
 
     private void ColorPresetMarqueeViewport_Loaded(object sender, RoutedEventArgs e)
@@ -2700,41 +2758,41 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void QueueColorPresetMarqueeUpdate(WpfControls.TextBlock? textBlock)
+    private static void QueueColorPresetMarqueeUpdate(FrameworkElement? marqueeElement)
     {
-        if (textBlock is null || textBlock.Dispatcher.HasShutdownStarted)
+        if (marqueeElement is null || marqueeElement.Dispatcher.HasShutdownStarted)
         {
             return;
         }
 
-        textBlock.Dispatcher.BeginInvoke(
+        marqueeElement.Dispatcher.BeginInvoke(
             () =>
             {
                 try
                 {
-                    UpdateColorPresetMarquee(textBlock);
+                    UpdateColorPresetMarquee(marqueeElement);
                 }
                 catch (InvalidOperationException)
                 {
-                    ResetColorPresetMarqueeTransform(textBlock);
+                    ResetColorPresetMarqueeTransform(marqueeElement);
                 }
             },
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
-    private static void QueueColorPresetMarqueeReset(WpfControls.TextBlock? textBlock)
+    private static void QueueColorPresetMarqueeReset(FrameworkElement? marqueeElement)
     {
-        if (textBlock is null || textBlock.Dispatcher.HasShutdownStarted)
+        if (marqueeElement is null || marqueeElement.Dispatcher.HasShutdownStarted)
         {
             return;
         }
 
-        textBlock.Dispatcher.BeginInvoke(
+        marqueeElement.Dispatcher.BeginInvoke(
             () =>
             {
                 try
                 {
-                    ResetColorPresetMarqueeTransform(textBlock);
+                    ResetColorPresetMarqueeTransform(marqueeElement);
                 }
                 catch (InvalidOperationException)
                 {
@@ -2744,39 +2802,44 @@ public partial class MainWindow : Window
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
-    private static void UpdateColorPresetMarquee(WpfControls.TextBlock textBlock)
+    private static void UpdateColorPresetMarquee(FrameworkElement marqueeElement)
     {
-        var transform = textBlock.RenderTransform as TranslateTransform;
+        var transform = marqueeElement.RenderTransform as TranslateTransform;
         if (transform is null || transform.IsFrozen)
         {
-            transform = ResetColorPresetMarqueeTransform(textBlock);
+            transform = ResetColorPresetMarqueeTransform(marqueeElement);
         }
         else
         {
             try
             {
                 transform.BeginAnimation(TranslateTransform.XProperty, null);
-                transform.X = 0d;
             }
             catch (InvalidOperationException)
             {
-                transform = ResetColorPresetMarqueeTransform(textBlock);
+                transform = ResetColorPresetMarqueeTransform(marqueeElement);
             }
         }
 
-        var viewport = FindColorPresetMarqueeViewport(textBlock);
-        if (viewport is null ||
-            viewport.ActualWidth <= 1d ||
-            textBlock.ActualWidth <= viewport.ActualWidth + 1d)
+        var viewport = FindColorPresetMarqueeViewport(marqueeElement);
+        if (viewport is null || viewport.ActualWidth <= 1d)
+        {
+            transform.X = 0d;
+            return;
+        }
+
+        var restingX = GetMarqueeRestingX(marqueeElement, viewport);
+        transform.X = restingX;
+
+        if (marqueeElement.ActualWidth <= viewport.ActualWidth + 1d)
         {
             return;
         }
 
-        var overflow = Math.Ceiling(textBlock.ActualWidth - viewport.ActualWidth + ColorPresetMarqueeGap);
-        var scrollSeconds = Math.Clamp(
+        var overflow = Math.Ceiling(marqueeElement.ActualWidth - viewport.ActualWidth + ColorPresetMarqueeGap);
+        var scrollSeconds = Math.Max(
             overflow / ColorPresetMarqueePixelsPerSecond,
-            2.4d,
-            8.0d);
+            2.4d);
         var totalSeconds = ColorPresetMarqueeStartDelaySeconds + scrollSeconds + ColorPresetMarqueeEndDelaySeconds;
 
         var animation = new DoubleAnimationUsingKeyFrames
@@ -2785,8 +2848,8 @@ public partial class MainWindow : Window
             RepeatBehavior = RepeatBehavior.Forever
         };
 
-        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0d, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0d, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(ColorPresetMarqueeStartDelaySeconds))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(restingX, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(restingX, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(ColorPresetMarqueeStartDelaySeconds))));
         animation.KeyFrames.Add(new LinearDoubleKeyFrame(-overflow, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(ColorPresetMarqueeStartDelaySeconds + scrollSeconds))));
         animation.KeyFrames.Add(new LinearDoubleKeyFrame(-overflow, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(totalSeconds))));
 
@@ -2796,16 +2859,42 @@ public partial class MainWindow : Window
         }
         catch (InvalidOperationException)
         {
-            ResetColorPresetMarqueeTransform(textBlock);
+            ResetColorPresetMarqueeTransform(marqueeElement);
         }
     }
 
-    private static TranslateTransform ResetColorPresetMarqueeTransform(WpfControls.TextBlock textBlock)
+    private static TranslateTransform ResetColorPresetMarqueeTransform(FrameworkElement marqueeElement)
     {
         var transform = new TranslateTransform();
-        textBlock.RenderTransform = transform;
-        transform.X = 0d;
+        marqueeElement.RenderTransform = transform;
+        var viewport = FindColorPresetMarqueeViewport(marqueeElement);
+        transform.X = viewport is null ? 0d : GetMarqueeRestingX(marqueeElement, viewport);
         return transform;
+    }
+
+    private static double GetMarqueeRestingX(FrameworkElement marqueeElement, FrameworkElement viewport)
+    {
+        if (viewport.ActualWidth <= 1d ||
+            marqueeElement.ActualWidth <= 1d ||
+            marqueeElement.ActualWidth > viewport.ActualWidth + 1d)
+        {
+            return 0d;
+        }
+
+        var current = GetDependencyParent(viewport);
+        while (current is not null)
+        {
+            if (current is WpfControls.ComboBox comboBox)
+            {
+                return comboBox.HorizontalContentAlignment == System.Windows.HorizontalAlignment.Center
+                    ? Math.Max(0d, (viewport.ActualWidth - marqueeElement.ActualWidth) / 2d)
+                    : 0d;
+            }
+
+            current = GetDependencyParent(current);
+        }
+
+        return 0d;
     }
 
     private static FrameworkElement? FindColorPresetMarqueeViewport(DependencyObject source)
@@ -2813,7 +2902,9 @@ public partial class MainWindow : Window
         var current = GetDependencyParent(source);
         while (current is not null)
         {
-            if (current is FrameworkElement { Name: "ColorPresetMarqueeViewport" } viewport)
+            if (current is FrameworkElement viewport &&
+                (string.Equals(viewport.Name, "ColorPresetMarqueeViewport", StringComparison.Ordinal) ||
+                 string.Equals(viewport.Name, "ComboMarqueeViewport", StringComparison.Ordinal)))
             {
                 return viewport;
             }
@@ -2824,11 +2915,13 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private static WpfControls.TextBlock? FindColorPresetMarqueeText(DependencyObject source)
+    private static FrameworkElement? FindColorPresetMarqueeText(DependencyObject source)
     {
-        if (source is WpfControls.TextBlock { Name: "ColorPresetMarqueeText" } textBlock)
+        if (source is FrameworkElement marqueeElement &&
+            (string.Equals(marqueeElement.Name, "ColorPresetMarqueeText", StringComparison.Ordinal) ||
+             string.Equals(marqueeElement.Name, "ComboMarqueeText", StringComparison.Ordinal)))
         {
-            return textBlock;
+            return marqueeElement;
         }
 
         var childCount = 0;
@@ -2880,6 +2973,83 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SyncPowerIdlePauseSelection()
+    {
+        if (PowerIdlePauseComboBox is null)
+        {
+            return;
+        }
+
+        var normalized = WidgetSettings.NormalizePowerIdlePauseMinutes(_viewModel.PowerIdlePauseMinutes);
+        var selected = _viewModel.PowerIdlePauseOptions
+            .FirstOrDefault(option => option.Minutes == normalized);
+        selected ??= _viewModel.PowerIdlePauseOptions
+            .OrderBy(option => Math.Abs(option.Minutes - normalized))
+            .FirstOrDefault();
+        if (selected is null)
+        {
+            return;
+        }
+
+        _isPowerIdlePauseSyncing = true;
+        try
+        {
+            PowerIdlePauseComboBox.SelectedItem = selected;
+        }
+        finally
+        {
+            _isPowerIdlePauseSyncing = false;
+        }
+    }
+
+    private void RefreshPowerIdlePauseOptions()
+    {
+        if (PowerIdlePauseComboBox is null)
+        {
+            return;
+        }
+
+        PowerIdlePauseComboBox.ItemsSource = _viewModel.PowerIdlePauseOptions;
+        SyncPowerIdlePauseSelection();
+    }
+
+    private void SyncWindowsDisplayOffSelection()
+    {
+        if (WindowsDisplayOffComboBox is null)
+        {
+            return;
+        }
+
+        var currentMinutes = _viewModel.GetCurrentWindowsDisplayOffMinutes();
+        var selected = _viewModel.WindowsDisplayOffOptions
+            .FirstOrDefault(option => option.Minutes == currentMinutes);
+        if (selected is null)
+        {
+            return;
+        }
+
+        _isWindowsDisplayOffSyncing = true;
+        try
+        {
+            WindowsDisplayOffComboBox.SelectedItem = selected;
+        }
+        finally
+        {
+            _isWindowsDisplayOffSyncing = false;
+        }
+    }
+
+    private void RefreshWindowsDisplayOffOptions()
+    {
+        if (WindowsDisplayOffComboBox is null)
+        {
+            return;
+        }
+
+        WindowsDisplayOffComboBox.ItemsSource = _viewModel.WindowsDisplayOffOptions;
+        SyncWindowsDisplayOffSelection();
+    }
+
     private void SyncGuideSoundSelection()
     {
         if (GuideSoundComboBox is null)
@@ -2887,10 +3057,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var options = BatteryGuideSoundCatalog.GetGuideOptions(_viewModel.CustomGuideSoundPath);
+        var options = BatteryGuideSoundCatalog.GetGuideOptions(_viewModel.CustomGuideSoundPath, _viewModel.Language);
         var selected = BatteryGuideSoundCatalog.ResolveGuideSound(
             _viewModel.GuideSoundId,
-            _viewModel.CustomGuideSoundPath);
+            _viewModel.CustomGuideSoundPath,
+            _viewModel.Language);
         _isGuideSoundSyncing = true;
         try
         {
@@ -3462,7 +3633,8 @@ public partial class MainWindow : Window
 
     private void ApplySettingsTextBlockStyle(WpfControls.TextBlock textBlock, double fontSize, FontWeight fontWeight)
     {
-        if (IsSettingsGlyphText(textBlock))
+        if (IsSettingsGlyphText(textBlock) ||
+            IsInsideSettingsTextStyleExcludedControl(textBlock))
         {
             return;
         }
@@ -3474,7 +3646,9 @@ public partial class MainWindow : Window
 
     private void ApplySettingsControlTextStyle(WpfControls.Control control, double fontSize, FontWeight fontWeight)
     {
-        if (control is WpfControls.Slider or WpfControls.ProgressBar or WpfThumb or WpfToggleButton)
+        if (control is WpfControls.Slider or WpfControls.ProgressBar or WpfThumb or WpfToggleButton ||
+            IsSettingsTextStyleExcludedControl(control) ||
+            IsInsideSettingsTextStyleExcludedControl(control))
         {
             return;
         }
@@ -3491,6 +3665,33 @@ public partial class MainWindow : Window
                string.Equals(textBlock.FontFamily?.Source, "Segoe MDL2 Assets", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsSettingsTextStyleExcludedControl(WpfControls.Control control)
+    {
+        return control is WpfControls.ComboBox or WpfControls.ComboBoxItem;
+    }
+
+    private static bool IsInsideSettingsTextStyleExcludedControl(DependencyObject element)
+    {
+        for (var parent = GetVisualOrLogicalParent(element); parent is not null; parent = GetVisualOrLogicalParent(parent))
+        {
+            if (parent is WpfControls.ComboBox or WpfControls.ComboBoxItem)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static DependencyObject? GetVisualOrLogicalParent(DependencyObject element)
+    {
+        var visualParent = element is Visual or System.Windows.Media.Media3D.Visual3D
+            ? VisualTreeHelper.GetParent(element)
+            : null;
+
+        return visualParent ?? LogicalTreeHelper.GetParent(element);
+    }
+
     private void UpdateSelectedColorFromPalette(System.Windows.Point point)
     {
         var width = Math.Max(1d, PaletteSurface.ActualWidth);
@@ -3502,6 +3703,14 @@ public partial class MainWindow : Window
 
         PaletteCursor.Margin = new Thickness(x - 8d, y - 8d, 0d, 0d);
         _viewModel.SetCustomElementColor(_selectedColorElementKey, hex, save: false);
+        ApplyCustomElementColorResource(_selectedColorElementKey, color);
+        UpdateColorEditorState();
+    }
+
+    private void ApplySelectedQuickColor(System.Windows.Media.Color color)
+    {
+        var hex = ToRgbHex(color);
+        _viewModel.SetCustomElementColor(_selectedColorElementKey, hex);
         ApplyCustomElementColorResource(_selectedColorElementKey, color);
         UpdateColorEditorState();
     }
@@ -3699,8 +3908,9 @@ public partial class MainWindow : Window
     {
         var hue = Math.Clamp(x / Math.Max(1d, width), 0d, 1d) * 360d;
         var vertical = Math.Clamp(y / Math.Max(1d, height), 0d, 1d);
-        var saturation = 0.76d;
-        var lightness = 0.90d - (vertical * 0.62d);
+        var darkFade = Math.Clamp((vertical - 0.82d) / 0.18d, 0d, 1d);
+        var saturation = 0.82d * (1d - darkFade);
+        var lightness = (0.92d - (Math.Min(vertical, 0.82d) * 0.62d)) * (1d - darkFade);
         return ColorFromHsl(hue, saturation, lightness);
     }
 
@@ -3836,7 +4046,7 @@ public partial class MainWindow : Window
         contextMenu.Items.Add(_trayOpenMenuItem);
 
         _trayRefreshMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayRefreshNow);
-        _trayRefreshMenuItem.Click += (_, _) => Dispatcher.Invoke(() => _ = _viewModel.RefreshAsync());
+        _trayRefreshMenuItem.Click += (_, _) => Dispatcher.Invoke(() => _ = RefreshFromUserCommandAsync());
         contextMenu.Items.Add(_trayRefreshMenuItem);
 
         _trayResetPositionMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayResetPosition);
@@ -3990,8 +4200,30 @@ public partial class MainWindow : Window
 
     private static WindowBounds GetWorkingAreaFromCurrentCursor()
     {
-        var screen = Forms.Screen.FromPoint(Forms.Cursor.Position);
+        return GetWorkingAreaFromScreen(Forms.Screen.FromPoint(Forms.Cursor.Position), null);
+    }
+
+    private static WindowBounds GetWorkingAreaFromScreen(Forms.Screen screen, Visual? dpiSource)
+    {
         var workingArea = screen.WorkingArea;
+        if (dpiSource is not null)
+        {
+            var presentationSource = PresentationSource.FromVisual(dpiSource);
+            var transform = presentationSource?.CompositionTarget?.TransformFromDevice;
+            if (transform is not null)
+            {
+                var topLeft = transform.Value.Transform(new System.Windows.Point(workingArea.Left, workingArea.Top));
+                var bottomRight = transform.Value.Transform(new System.Windows.Point(workingArea.Right, workingArea.Bottom));
+                return new WindowBounds
+                {
+                    Left = topLeft.X,
+                    Top = topLeft.Y,
+                    Width = Math.Max(1d, bottomRight.X - topLeft.X),
+                    Height = Math.Max(1d, bottomRight.Y - topLeft.Y)
+                };
+            }
+        }
+
         return new WindowBounds
         {
             Left = workingArea.Left,
@@ -4412,6 +4644,21 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_isBatteryGuideTriggerCaptureActive)
+            {
+                return;
+            }
+
+            if (ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, "guide_button_press"))
+            {
+                return;
+            }
+
+            if (_viewModel.HasCustomBatteryGuideTriggerForDevice(e.DeviceKind))
+            {
+                return;
+            }
+
             if (ShouldSuppressSecondarySteamGuideButtonPath(sender, e))
             {
                 return;
@@ -4428,6 +4675,372 @@ public partial class MainWindow : Window
         {
             // Ignore shutdown races while the background monitor is stopping.
         }
+    }
+
+    private void GuideButtonMonitor_InputReportReceived(object? sender, GuideButtonInputReportEventArgs e)
+    {
+        try
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                _ = Dispatcher.BeginInvoke(new Action(() => GuideButtonMonitor_InputReportReceived(sender, e)));
+                return;
+            }
+
+            HandleBatteryGuideInputReport(e);
+        }
+        catch
+        {
+            // Input reports are best-effort; battery display must keep running.
+        }
+    }
+
+    private void HandleBatteryGuideInputReport(GuideButtonInputReportEventArgs e)
+    {
+        if (e.Report.Length == 0)
+        {
+            return;
+        }
+
+        var key = BuildBatteryGuideInputReportKey(e);
+        if (!_lastBatteryGuideTriggerReportByDevice.TryGetValue(key, out var previousReport))
+        {
+            if (_isBatteryGuideTriggerCaptureActive)
+            {
+                var neutralReport = BatteryGuideTriggerParser.CreateNeutralReportForCapture(e.DeviceKind, e.Report);
+                if (TryUpdateBatteryGuideTriggerCapture(e, neutralReport, key))
+                {
+                    _lastBatteryGuideTriggerReportByDevice[key] = neutralReport;
+                    return;
+                }
+            }
+
+            _lastBatteryGuideTriggerReportByDevice[key] = e.Report.ToArray();
+            return;
+        }
+
+        if (_isBatteryGuideTriggerCaptureActive && TryUpdateBatteryGuideTriggerCapture(e, previousReport, key))
+        {
+            return;
+        }
+
+        _lastBatteryGuideTriggerReportByDevice[key] = e.Report.ToArray();
+
+        if (!_viewModel.TryGetBatteryGuideTriggerForDevice(e.DeviceKind, out var persistedTrigger) ||
+            !BatteryGuideTriggerParser.TryParse(persistedTrigger, out var trigger))
+        {
+            RemoveCustomBatteryGuideTriggerReportKey(key);
+            return;
+        }
+
+        var isPressed = BatteryGuideTriggerParser.IsMatch(trigger, e.DeviceKind, e.Report);
+        var hasAnyTriggerBitPressed = isPressed ||
+                                      BatteryGuideTriggerParser.HasAnyTriggerBitPressed(trigger, e.DeviceKind, e.Report);
+        var bindingKey = BuildCustomBatteryGuideTriggerToastKey(trigger);
+        if (!ShouldShowCustomBatteryGuideTriggerOnStateChange(
+                bindingKey,
+                key,
+                isPressed,
+                hasAnyTriggerBitPressed,
+                _customBatteryGuideTriggerPressedReportKeysByBinding))
+        {
+            return;
+        }
+
+        if (ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, "custom_trigger_input"))
+        {
+            RemoveCustomBatteryGuideTriggerReportKey(key);
+            return;
+        }
+
+        if (ShouldSuppressCustomBatteryGuideTriggerToast(bindingKey, trigger))
+        {
+            return;
+        }
+
+        var args = new GuideButtonPressedEventArgs(
+            e.Address,
+            e.DisplayName,
+            e.DeviceKind,
+            GuideButtonGesture.ShortPress);
+        if (ShouldSuppressDuplicateGuideButtonToast(args))
+        {
+            return;
+        }
+
+        GuideButtonEventLog.Write(
+            "custom_trigger_toast_shown",
+            trigger.DeviceKind.ToString(),
+            string.Empty,
+            trigger.DisplayName,
+            "Custom notification-button trigger showed the battery guide.");
+        ShowBatteryGuide(args);
+    }
+
+    private bool TryUpdateBatteryGuideTriggerCapture(
+        GuideButtonInputReportEventArgs e,
+        ReadOnlySpan<byte> previousReport,
+        string key)
+    {
+        if (_batteryGuideTriggerCaptureKey is not null &&
+            !string.Equals(_batteryGuideTriggerCaptureKey, key, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!BatteryGuideTriggerParser.TryCapture(e.DeviceKind, previousReport, e.Report, out var captured))
+        {
+            return false;
+        }
+
+        if (!ShouldReplacePendingBatteryGuideTriggerCapture(_pendingBatteryGuideTriggerCapture, captured))
+        {
+            return true;
+        }
+
+        _batteryGuideTriggerCaptureKey = key;
+        _pendingBatteryGuideTriggerCapture = captured;
+        _batteryGuideTriggerCaptureWindow?.SetCandidate(captured);
+        GuideButtonEventLog.Write(
+            "custom_trigger_capture_candidate",
+            captured.DeviceKind.ToString(),
+            string.Empty,
+            captured.DisplayName,
+            $"Custom notification-button candidate captured. reportId=0x{captured.ReportId:X2}; buttons={captured.Bits.Count}; bits={FormatBatteryGuideTriggerBits(captured)}.");
+        return true;
+    }
+
+    private static string FormatBatteryGuideTriggerBits(BatteryGuideTrigger trigger)
+    {
+        return string.Join(
+            ",",
+            trigger.Bits
+                .OrderBy(bit => bit.Offset)
+                .ThenBy(bit => bit.Mask)
+                .Select(bit => $"{bit.Offset:X2}:{bit.Mask:X2}"));
+    }
+
+    internal static bool ShouldReplacePendingBatteryGuideTriggerCapture(
+        BatteryGuideTrigger? pending,
+        BatteryGuideTrigger captured)
+    {
+        if (pending is null)
+        {
+            return true;
+        }
+
+        if (pending.DeviceKind != captured.DeviceKind || pending.ReportId != captured.ReportId)
+        {
+            return true;
+        }
+
+        if (captured.Bits.Count > pending.Bits.Count)
+        {
+            return true;
+        }
+
+        if (captured.Bits.Count < pending.Bits.Count)
+        {
+            return false;
+        }
+
+        var pendingBits = pending.Bits
+            .OrderBy(bit => bit.Offset)
+            .ThenBy(bit => bit.Mask)
+            .ToArray();
+        var capturedBits = captured.Bits
+            .OrderBy(bit => bit.Offset)
+            .ThenBy(bit => bit.Mask)
+            .ToArray();
+
+        return !pendingBits.SequenceEqual(capturedBits);
+    }
+
+    private static string BuildBatteryGuideInputReportKey(GuideButtonInputReportEventArgs e)
+    {
+        var address = string.IsNullOrWhiteSpace(e.Address)
+            ? "UNKNOWN"
+            : e.Address;
+        var reportId = e.Report.Length == 0 ? 0 : e.Report[0];
+        return $"{e.DeviceKind}:{address}:RID_{reportId:X2}";
+    }
+
+    internal static bool ShouldShowCustomBatteryGuideTriggerOnStateChange(
+        string bindingKey,
+        string reportKey,
+        bool isPressed,
+        bool hasAnyTriggerBitPressed,
+        IDictionary<string, HashSet<string>> pressedReportKeysByBinding)
+    {
+        if (string.IsNullOrWhiteSpace(bindingKey) || string.IsNullOrWhiteSpace(reportKey))
+        {
+            return false;
+        }
+
+        if (!pressedReportKeysByBinding.TryGetValue(bindingKey, out var pressedReportKeys))
+        {
+            if (!isPressed)
+            {
+                return false;
+            }
+
+            pressedReportKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            pressedReportKeysByBinding[bindingKey] = pressedReportKeys;
+        }
+
+        var wasPressedAnywhere = pressedReportKeys.Count > 0;
+        if (isPressed)
+        {
+            pressedReportKeys.Add(reportKey);
+            return !wasPressedAnywhere;
+        }
+
+        if (hasAnyTriggerBitPressed)
+        {
+            return false;
+        }
+
+        pressedReportKeys.Remove(reportKey);
+        if (pressedReportKeys.Count == 0)
+        {
+            pressedReportKeysByBinding.Remove(bindingKey);
+        }
+
+        return false;
+    }
+
+    private void RemoveCustomBatteryGuideTriggerReportKey(string reportKey)
+    {
+        foreach (var bindingKey in _customBatteryGuideTriggerPressedReportKeysByBinding.Keys.ToArray())
+        {
+            var reportKeys = _customBatteryGuideTriggerPressedReportKeysByBinding[bindingKey];
+            reportKeys.Remove(reportKey);
+            if (reportKeys.Count == 0)
+            {
+                _customBatteryGuideTriggerPressedReportKeysByBinding.Remove(bindingKey);
+            }
+        }
+    }
+
+    private void ClearCustomBatteryGuideTriggerPressState()
+    {
+        _customBatteryGuideTriggerPressedReportKeysByBinding.Clear();
+    }
+
+    private bool ShouldSuppressCustomBatteryGuideTriggerToast(string key, BatteryGuideTrigger trigger)
+    {
+        var now = DateTimeOffset.Now;
+        lock (_guideButtonToastSync)
+        {
+            var lastSeen = _lastCustomBatteryGuideTriggerToastByBinding.TryGetValue(key, out var recordedLastSeen)
+                ? recordedLastSeen
+                : (DateTimeOffset?)null;
+
+            var cooldown = GetCustomBatteryGuideTriggerToastCooldown(trigger.DeviceKind);
+            if (ShouldSuppressCustomBatteryGuideTriggerToast(lastSeen, now, trigger.DeviceKind))
+            {
+                GuideButtonEventLog.Write(
+                    "custom_trigger_duplicate_suppressed",
+                    trigger.DeviceKind.ToString(),
+                    string.Empty,
+                    trigger.DisplayName,
+                    $"Duplicate custom battery-guide trigger was ignored. cooldownMs={(int)cooldown.TotalMilliseconds}.");
+                return true;
+            }
+
+            _lastCustomBatteryGuideTriggerToastByBinding[key] = now;
+            return false;
+        }
+    }
+
+    internal static bool ShouldSuppressCustomBatteryGuideTriggerToast(DateTimeOffset? lastSeen, DateTimeOffset now)
+    {
+        return lastSeen.HasValue && now - lastSeen.Value <= CustomBatteryGuideTriggerToastCooldown;
+    }
+
+    internal static bool ShouldSuppressCustomBatteryGuideTriggerToast(
+        DateTimeOffset? lastSeen,
+        DateTimeOffset now,
+        GuideButtonDeviceKind deviceKind)
+    {
+        return lastSeen.HasValue && now - lastSeen.Value <= GetCustomBatteryGuideTriggerToastCooldown(deviceKind);
+    }
+
+    internal static TimeSpan GetCustomBatteryGuideTriggerToastCooldown(GuideButtonDeviceKind deviceKind)
+    {
+        return deviceKind == GuideButtonDeviceKind.SteamController
+            ? SteamCustomBatteryGuideTriggerToastCooldown
+            : CustomBatteryGuideTriggerToastCooldown;
+    }
+
+    private static string BuildCustomBatteryGuideTriggerToastKey(BatteryGuideTrigger trigger)
+    {
+        var bits = string.Join(
+            ',',
+            trigger.Bits
+                .OrderBy(bit => bit.Offset)
+                .ThenBy(bit => bit.Mask)
+                .Select(bit => $"{bit.Offset:X2}:{bit.Mask:X2}"));
+        return $"{trigger.DeviceKind}:{trigger.ReportId:X2}:{bits}";
+    }
+
+    private void SuppressSteamGuideToasts(TimeSpan duration, string reason)
+    {
+        if (duration <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var suppressUntil = now + duration;
+        lock (_guideButtonToastSync)
+        {
+            if (suppressUntil > _steamGuideToastsSuppressedUntilUtc)
+            {
+                _steamGuideToastsSuppressedUntilUtc = suppressUntil;
+            }
+        }
+
+        GuideButtonEventLog.Write(
+            "steam_guide_toast_guard_armed",
+            GuideButtonDeviceKind.SteamController.ToString(),
+            string.Empty,
+            "Steam Controller",
+            $"Steam Controller guide toast guard armed. reason={reason}; durationMs={(int)duration.TotalMilliseconds}.");
+        _steamRawInputMonitor.SuppressGuideInputForKnownDevices(duration, reason);
+    }
+
+    private bool ShouldSuppressSteamGuideToast(
+        GuideButtonDeviceKind deviceKind,
+        string address,
+        string displayName,
+        string source)
+    {
+        if (deviceKind != GuideButtonDeviceKind.SteamController)
+        {
+            return false;
+        }
+
+        DateTimeOffset suppressUntil;
+        var now = DateTimeOffset.UtcNow;
+        lock (_guideButtonToastSync)
+        {
+            suppressUntil = _steamGuideToastsSuppressedUntilUtc;
+        }
+
+        var suppressForRefresh = _viewModel.IsRefreshRunning;
+        if (!suppressForRefresh && now >= suppressUntil)
+        {
+            return false;
+        }
+
+        GuideButtonEventLog.Write(
+            suppressForRefresh ? "steam_guide_toast_refresh_suppressed" : "steam_guide_toast_startup_suppressed",
+            deviceKind.ToString(),
+            address,
+            string.IsNullOrWhiteSpace(displayName) ? "Steam Controller" : displayName,
+            $"Steam Controller guide toast was ignored during connection/refresh settling. source={source}; remainingMs={(int)Math.Max(0, (suppressUntil - now).TotalMilliseconds)}.");
+        return true;
     }
 
     private bool ShouldSuppressSecondarySteamGuideButtonPath(object? sender, GuideButtonPressedEventArgs e)
@@ -4771,7 +5384,17 @@ public partial class MainWindow : Window
             break;
         }
 
+        if (ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, "secondary_fallback"))
+        {
+            return;
+        }
+
         if (ShouldSuppressDuplicateGuideButtonToast(e))
+        {
+            return;
+        }
+
+        if (ShouldSuppressSteamSecondaryFallbackForCustomBatteryGuideTrigger(e))
         {
             return;
         }
@@ -4784,6 +5407,28 @@ public partial class MainWindow : Window
             "Secondary Steam HID monitor event was used because RawInput did not produce a toast for this press.");
 
         _ = Dispatcher.BeginInvoke(new Action(() => ShowBatteryGuide(e)));
+    }
+
+    private bool ShouldSuppressSteamSecondaryFallbackForCustomBatteryGuideTrigger(GuideButtonPressedEventArgs e)
+    {
+        if (!ShouldCustomBatteryGuideTriggerOwnSteamSecondaryFallback(
+                _viewModel.HasCustomBatteryGuideTriggerForDevice(e.DeviceKind)))
+        {
+            return false;
+        }
+
+        GuideButtonEventLog.Write(
+            "secondary_fallback_custom_trigger_suppressed",
+            e.DeviceKind.ToString(),
+            e.Address,
+            e.DisplayName,
+            "Secondary Steam HID monitor event was ignored because a custom notification-button binding owns the Steam guide path.");
+        return true;
+    }
+
+    internal static bool ShouldCustomBatteryGuideTriggerOwnSteamSecondaryFallback(bool hasCustomBatteryGuideTrigger)
+    {
+        return hasCustomBatteryGuideTrigger;
     }
 
     private void CancelPendingSteamSecondaryGuideFallbackLocked(string key)
@@ -4920,7 +5565,8 @@ public partial class MainWindow : Window
             foreach (DeviceItemViewModel item in e.OldItems)
             {
                 item.PropertyChanged -= DeviceItem_PropertyChanged;
-                _lowBatteryToastKeys.Remove(BuildBatteryToastKey(item));
+                _steamGuideConnectionStableByDevice.Remove(BuildSteamDeviceStateKey(item));
+                RemoveBatteryAlertToastKeysForDevice(item);
             }
         }
 
@@ -4929,6 +5575,7 @@ public partial class MainWindow : Window
             foreach (DeviceItemViewModel item in e.NewItems)
             {
                 item.PropertyChanged += DeviceItem_PropertyChanged;
+                UpdateSteamGuideConnectionSuppressState(item, "steam_device_added");
                 CheckLowBatteryToast(item);
             }
         }
@@ -4946,31 +5593,173 @@ public partial class MainWindow : Window
             nameof(DeviceItemViewModel.IsBatteryConnecting) or
             nameof(DeviceItemViewModel.IsStale))
         {
+            if (e.PropertyName is nameof(DeviceItemViewModel.IsConnected) or
+                nameof(DeviceItemViewModel.IsBatteryConnecting) or
+                nameof(DeviceItemViewModel.IsStale))
+            {
+                UpdateSteamGuideConnectionSuppressState(item, $"steam_device_{e.PropertyName}");
+            }
+
             CheckLowBatteryToast(item);
         }
     }
 
+    private void UpdateSteamGuideConnectionSuppressState(DeviceItemViewModel item, string reason)
+    {
+        if (!IsSteamControllerDevice(item))
+        {
+            return;
+        }
+
+        var key = BuildSteamDeviceStateKey(item);
+        var stableNow = item.IsConnected && !item.IsStale && !item.IsBatteryConnecting;
+        var wasStable = _steamGuideConnectionStableByDevice.TryGetValue(key, out var recordedStable) && recordedStable;
+        _steamGuideConnectionStableByDevice[key] = stableNow;
+
+        if (stableNow && !wasStable)
+        {
+            SuppressSteamGuideToasts(SteamGuideToastConnectionSuppressDuration, reason);
+        }
+    }
+
+    private static string BuildSteamDeviceStateKey(DeviceItemViewModel item)
+    {
+        var address = AddressNormalizer.NormalizeAddress(item.Address);
+        return string.IsNullOrWhiteSpace(address)
+            ? item.DeviceId
+            : address;
+    }
+
     private void CheckLowBatteryToast(DeviceItemViewModel item)
     {
-        var key = BuildBatteryToastKey(item);
         if (!item.IsConnected || item.IsStale || item.IsBatteryConnecting || item.BatteryPercent is not int percent)
         {
-            _lowBatteryToastKeys.Remove(key);
+            RemoveBatteryAlertToastKeysForDevice(item);
             return;
         }
 
-        if (percent >= 30)
+        var thresholds = BuildBatteryAlertThresholds(_viewModel.BatteryAlertThresholds);
+        foreach (var threshold in thresholds.Where(threshold => percent > threshold))
         {
-            _lowBatteryToastKeys.Remove(key);
+            _lowBatteryToastKeys.Remove(BuildBatteryAlertToastKey(item, threshold));
+        }
+
+        var targetThreshold = ResolveBatteryAlertThresholdToShow(percent, thresholds);
+        if (targetThreshold <= 0)
+        {
             return;
         }
 
+        var key = BuildBatteryAlertToastKey(item, targetThreshold);
         if (!_lowBatteryToastKeys.Add(key))
         {
             return;
         }
 
+        if (ShouldSuppressAutomaticBatteryToastOnStartup(DateTimeOffset.UtcNow, _automaticBatteryToastStartupSuppressUntilUtc))
+        {
+            return;
+        }
+
+        if (ShouldSuppressSteamBatteryToastDuringSettling(item, targetThreshold))
+        {
+            return;
+        }
+
         ShowBatteryToast(item.Snapshot, automatic: true);
+    }
+
+    private bool ShouldSuppressSteamBatteryToastDuringSettling(DeviceItemViewModel item, int threshold)
+    {
+        if (!IsSteamControllerDevice(item))
+        {
+            return false;
+        }
+
+        DateTimeOffset suppressUntil;
+        var now = DateTimeOffset.UtcNow;
+        lock (_guideButtonToastSync)
+        {
+            suppressUntil = _steamGuideToastsSuppressedUntilUtc;
+        }
+
+        var suppressForRefresh = _viewModel.IsRefreshRunning;
+        if (!suppressForRefresh && now >= suppressUntil)
+        {
+            return false;
+        }
+
+        GuideButtonEventLog.Write(
+            suppressForRefresh ? "steam_battery_toast_refresh_suppressed" : "steam_battery_toast_settling_suppressed",
+            GuideButtonDeviceKind.SteamController.ToString(),
+            item.Address,
+            string.IsNullOrWhiteSpace(item.DisplayName) ? "Steam Controller" : item.DisplayName,
+            $"Steam Controller automatic battery toast was ignored during connection/refresh settling. threshold={threshold}; remainingMs={(int)Math.Max(0, (suppressUntil - now).TotalMilliseconds)}.");
+        return true;
+    }
+
+    internal static bool ShouldSuppressAutomaticBatteryToastOnStartup(
+        DateTimeOffset nowUtc,
+        DateTimeOffset suppressUntilUtc)
+    {
+        return nowUtc < suppressUntilUtc;
+    }
+
+    private void ResetBatteryAlertToastKeys()
+    {
+        _lowBatteryToastKeys.Clear();
+    }
+
+    private void CheckAllLowBatteryToasts()
+    {
+        foreach (var item in _viewModel.Devices)
+        {
+            CheckLowBatteryToast(item);
+        }
+    }
+
+    private void PrimeBatteryAlertToastKeysForCurrentLevels()
+    {
+        ResetBatteryAlertToastKeys();
+        var thresholds = BuildBatteryAlertThresholds(_viewModel.BatteryAlertThresholds);
+        foreach (var item in _viewModel.Devices)
+        {
+            if (!item.IsConnected || item.IsStale || item.IsBatteryConnecting || item.BatteryPercent is not int percent)
+            {
+                continue;
+            }
+
+            var targetThreshold = ResolveBatteryAlertThresholdToShow(percent, thresholds);
+            if (targetThreshold > 0)
+            {
+                _lowBatteryToastKeys.Add(BuildBatteryAlertToastKey(item, targetThreshold));
+            }
+        }
+    }
+
+    private void RemoveBatteryAlertToastKeysForDevice(DeviceItemViewModel item)
+    {
+        var prefix = BuildBatteryToastKey(item) + "|";
+        _lowBatteryToastKeys.RemoveWhere(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal static IReadOnlyList<int> BuildBatteryAlertThresholds(string? customThresholds)
+    {
+        return WidgetSettings.GetBatteryAlertThresholdPercents(customThresholds)
+            .Append(WidgetSettings.ForcedBatteryAlertThresholdPercent)
+            .Distinct()
+            .OrderBy(threshold => threshold)
+            .ToArray();
+    }
+
+    internal static int ResolveBatteryAlertThresholdToShow(int percent, IReadOnlyList<int> thresholds)
+    {
+        return thresholds.FirstOrDefault(threshold => percent <= threshold);
+    }
+
+    private static string BuildBatteryAlertToastKey(DeviceItemViewModel item, int threshold)
+    {
+        return $"{BuildBatteryToastKey(item)}|T{threshold:D2}";
     }
 
     private void ShowBatteryToast(DeviceBatterySnapshot snapshot, bool automatic)
@@ -5136,12 +5925,10 @@ public partial class MainWindow : Window
     private string BuildMissingGuideDeviceMessage(GuideButtonPressedEventArgs e)
     {
         var name = string.IsNullOrWhiteSpace(e.DisplayName)
-            ? "Controller"
+            ? ExtraText("MissingGuideDeviceFallbackName")
             : e.DisplayName.Trim();
 
-        return string.Equals(_viewModel.Language, "ko", StringComparison.OrdinalIgnoreCase)
-            ? $"{name}: 배터리 정보를 아직 화면 목록에서 찾지 못했습니다."
-            : $"{name}: battery info is not in the list yet.";
+        return ExtraFormat("MissingGuideDeviceMessageFormat", name);
     }
 
     private void RestartBatteryGuideHideTimer(DeviceItemViewModel item)
@@ -5596,11 +6383,6 @@ public partial class MainWindow : Window
             // Ignore temporary file cleanup failures.
         }
     }
-
-    private sealed record UpdateReleaseAssetInfo(
-        string Version,
-        string SetupDownloadUrl,
-        string ChecksumDownloadUrl);
 
     private sealed record Ds5DongleFirmwareInfo(
         string Version,

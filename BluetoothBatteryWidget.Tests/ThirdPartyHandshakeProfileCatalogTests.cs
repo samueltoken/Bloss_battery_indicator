@@ -27,6 +27,8 @@ public sealed class ThirdPartyHandshakeProfileCatalogTests
             endpointSignal: string.Empty);
 
         Assert.Equal("xbox.layer", profile.ProfileId);
+        Assert.Contains((byte)0x12, profile.FeatureReportIds);
+        Assert.Contains((byte)0x12, profile.RecoveryInputReportIds);
     }
 
     [Fact]

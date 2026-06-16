@@ -53,11 +53,28 @@ public sealed class PlayStationUsbBridgeSupportTests
     }
 
     [Fact]
+    public void BuildSyntheticAddress_Pico2WFirmwarePathChanged_ReturnsSameStableAddress()
+    {
+        var oldAddress = PlayStationUsbBridgeSupport.BuildSyntheticAddress(
+            @"HID\VID_054C&PID_0CE6&MI_03\8&OLDPATH&0&0000",
+            @"\\?\hid#vid_054c&pid_0ce6&mi_03#8&oldpath&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            "0CE6");
+        var updatedAddress = PlayStationUsbBridgeSupport.BuildSyntheticAddress(
+            @"HID\VID_054C&PID_0CE6&MI_03\9&NEWPATH&0&0000",
+            @"\\?\hid#vid_054c&pid_0ce6&mi_03#9&newpath&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            "0CE6");
+
+        Assert.Equal(PlayStationUsbBridgeSupport.StableDualSensePico2WAddress, oldAddress);
+        Assert.Equal(oldAddress, updatedAddress);
+    }
+
+    [Fact]
     public void Compose_UsbPicoDualSenseConnectedWithSonyHidReading_ShowsBattery()
     {
         var address = PlayStationUsbBridgeSupport.BuildSyntheticAddress(
             @"HID\VID_054C&PID_0CE6&MI_03\8&1A2B3C4D&0&0000",
-            @"\\?\hid#vid_054c&pid_0ce6&mi_03#8&13c03f06&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}");
+            @"\\?\hid#vid_054c&pid_0ce6&mi_03#8&13c03f06&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            "0CE6");
         var connected = new List<ConnectedBluetoothDevice>
         {
             new(

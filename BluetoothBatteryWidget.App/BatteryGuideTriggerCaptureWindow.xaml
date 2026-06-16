@@ -1,0 +1,680 @@
+<Window x:Class="BluetoothBatteryWidget.App.BatteryGuideTriggerCaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Battery guide trigger"
+        Width="1448"
+        Height="1086"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        UseLayoutRounding="True"
+        Focusable="True"
+        Loaded="Window_Loaded"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <DropShadowEffect x:Key="BlueprintGlow"
+                          BlurRadius="8"
+                          ShadowDepth="0"
+                          Opacity="0.75"
+                          Color="#FFFFFFFF" />
+        <Style x:Key="BlueprintLine" TargetType="{x:Type Shape}">
+            <Setter Property="Stroke" Value="#F2FFFFFF" />
+            <Setter Property="StrokeThickness" Value="3" />
+            <Setter Property="StrokeStartLineCap" Value="Round" />
+            <Setter Property="StrokeEndLineCap" Value="Round" />
+            <Setter Property="StrokeLineJoin" Value="Round" />
+            <Setter Property="Effect" Value="{StaticResource BlueprintGlow}" />
+        </Style>
+        <Style x:Key="ThinBlueprintLine" TargetType="{x:Type Shape}" BasedOn="{StaticResource BlueprintLine}">
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="Opacity" Value="0.58" />
+        </Style>
+        <Style x:Key="HotspotSurfaceStyle" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="3" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+        </Style>
+        <Style x:Key="CaptureActionButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="MinWidth" Value="116" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="Foreground" Value="#FAFFFFFF" />
+            <Setter Property="Background" Value="#181D2730" />
+            <Setter Property="BorderBrush" Value="#82FFFFFF" />
+            <Setter Property="BorderThickness" Value="1.2" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ButtonChrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="Background" Value="#26344B62" />
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#CCFFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.38" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="CaptureTopTabControlStyle" TargetType="{x:Type TabControl}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="ItemsPanel">
+                <Setter.Value>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal"
+                                    ClipToBounds="False" />
+                    </ItemsPanelTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabControl}">
+                        <ItemsPresenter KeyboardNavigation.TabIndex="1" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="CaptureTopTabItemStyle" TargetType="{x:Type TabItem}">
+            <Setter Property="Width" Value="158" />
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Foreground" Value="#D9FFFFFF" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabItem}">
+                        <Border x:Name="TabChrome"
+                                Background="#101A2430"
+                                BorderBrush="#4DFFFFFF"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                ClipToBounds="True"
+                                RenderTransformOrigin="0.5,0.5"
+                                SnapsToDevicePixels="True">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="TabPressScale"
+                                                ScaleX="1"
+                                                ScaleY="1" />
+                            </Border.RenderTransform>
+                            <Grid>
+                                <Border x:Name="ConfiguredFillLayer"
+                                        Background="#D9410A16"
+                                        CornerRadius="10"
+                                        Opacity="0" />
+                                <Ellipse x:Name="WaterPulse"
+                                         Width="132"
+                                         Height="132"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         Fill="#663C8DFF"
+                                         Opacity="0"
+                                         RenderTransformOrigin="0.5,0.5">
+                                    <Ellipse.RenderTransform>
+                                        <ScaleTransform x:Name="WaterPulseScale"
+                                                        ScaleX="0.24"
+                                        ScaleY="0.24" />
+                                    </Ellipse.RenderTransform>
+                                </Ellipse>
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  ContentSource="Header"
+                                                  RecognizesAccessKey="True"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"
+                                                  TextElement.FontSize="{TemplateBinding FontSize}"
+                                                  TextElement.FontWeight="{TemplateBinding FontWeight}" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="UIElement.PreviewMouseLeftButtonDown">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TabPressScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="0.965"
+                                                         Duration="0:0:0.06" />
+                                        <DoubleAnimation Storyboard.TargetName="TabPressScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="0.94"
+                                                         Duration="0:0:0.06" />
+                                        <DoubleAnimation Storyboard.TargetName="WaterPulse"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         From="0.76"
+                                                         To="0"
+                                                         Duration="0:0:0.52">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="WaterPulseScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         From="0.18"
+                                                         To="2.25"
+                                                         Duration="0:0:0.52">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="WaterPulseScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         From="0.18"
+                                                         To="2.25"
+                                                         Duration="0:0:0.52">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="UIElement.PreviewMouseLeftButtonUp">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TabPressScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="1"
+                                                         Duration="0:0:0.18">
+                                            <DoubleAnimation.EasingFunction>
+                                                <BackEase EasingMode="EaseOut" Amplitude="0.22" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="TabPressScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="1"
+                                                         Duration="0:0:0.18">
+                                            <DoubleAnimation.EasingFunction>
+                                                <BackEase EasingMode="EaseOut" Amplitude="0.22" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="Mouse.MouseLeave">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TabPressScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="1"
+                                                         Duration="0:0:0.14" />
+                                        <DoubleAnimation Storyboard.TargetName="TabPressScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="1"
+                                                         Duration="0:0:0.14" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#66295D9F" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#C6A9D6FF" />
+                                <Setter Property="Foreground" Value="#FFFFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#A52258C8" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FF75C7FF" />
+                                <Setter Property="Foreground" Value="#FFFFFFFF" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="WaterPulse"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             From="0.62"
+                                                             To="0"
+                                                             Duration="0:0:0.48">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="WaterPulseScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             From="0.22"
+                                                             To="2.0"
+                                                             Duration="0:0:0.48">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="WaterPulseScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             From="0.22"
+                                                             To="2.0"
+                                                             Duration="0:0:0.48">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Configured">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#DC420914" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FFFF5F66" />
+                                <Setter TargetName="ConfiguredFillLayer" Property="Opacity" Value="1" />
+                                <Setter TargetName="WaterPulse" Property="Fill" Value="#99FF4054" />
+                                <Setter Property="Foreground" Value="#FFFFF1F1" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Steam">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#D70B4D30" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FF5DE3A6" />
+                                <Setter TargetName="WaterPulse" Property="Fill" Value="#9A20D67A" />
+                                <Setter Property="Foreground" Value="#FFF0FFF7" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="SteamConfigured">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#EA0B5D37" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FF78F0B8" />
+                                <Setter TargetName="ConfiguredFillLayer" Property="Background" Value="#F00C6D40" />
+                                <Setter TargetName="ConfiguredFillLayer" Property="Opacity" Value="1" />
+                                <Setter TargetName="WaterPulse" Property="Fill" Value="#A820D67A" />
+                                <Setter Property="Foreground" Value="#FFF0FFF7" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="Configured" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="TabChrome" Property="Background" Value="#EA53101F" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FFFF8B8B" />
+                                <Setter TargetName="ConfiguredFillLayer" Property="Background" Value="#EA5D1222" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="Tag" Value="Configured" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="TabChrome" Property="Background" Value="#F05A1021" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FFFF9898" />
+                                <Setter TargetName="ConfiguredFillLayer" Property="Background" Value="#F0631426" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="Steam" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="TabChrome" Property="Background" Value="#E20F6C43" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FF93FFD0" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="Tag" Value="Steam" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="TabChrome" Property="Background" Value="#F0117448" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FFA7FFD9" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="SteamConfigured" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="TabChrome" Property="Background" Value="#F00F7749" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FFA8FFD8" />
+                                <Setter TargetName="ConfiguredFillLayer" Property="Background" Value="#F5118050" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="Tag" Value="SteamConfigured" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="TabChrome" Property="Background" Value="#F4148555" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#FFB8FFE0" />
+                                <Setter TargetName="ConfiguredFillLayer" Property="Background" Value="#F8188E5C" />
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="WindowSurface"
+            Margin="10"
+            CornerRadius="14"
+            BorderBrush="#4DFFFFFF"
+            BorderThickness="1"
+            ClipToBounds="True"
+            RenderTransformOrigin="0.5,0.5"
+            SizeChanged="WindowSurface_SizeChanged">
+        <Border.RenderTransform>
+            <TransformGroup>
+                <ScaleTransform x:Name="WindowSurfaceScale"
+                                ScaleX="1"
+                                ScaleY="1" />
+                <SkewTransform x:Name="WindowSurfaceSkew"
+                               AngleX="0"
+                               AngleY="0" />
+                <TranslateTransform x:Name="WindowSurfaceTranslate"
+                                    X="0"
+                                    Y="0" />
+            </TransformGroup>
+        </Border.RenderTransform>
+        <Border.Background>
+            <SolidColorBrush x:Name="WindowSurfaceBackgroundBrush"
+                             Color="#FF0F2A5C" />
+        </Border.Background>
+        <Grid x:Name="WindowSurfaceRoot"
+              ClipToBounds="True">
+            <Grid x:Name="CaptureThemeLayer"
+                  Panel.ZIndex="0"
+                  IsHitTestVisible="False"
+                  ClipToBounds="True">
+                <Border x:Name="CaptureThemeBaseTint"
+                        Opacity="0.26">
+                    <Border.Background>
+                        <SolidColorBrush x:Name="CaptureThemeBaseTintBrush"
+                                         Color="#FF2258C8" />
+                    </Border.Background>
+                </Border>
+                <Canvas x:Name="CaptureThemeRippleCanvas"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        ClipToBounds="True">
+                    <Ellipse x:Name="CaptureThemeRipple"
+                             Width="1280"
+                             Height="1280"
+                             Opacity="0"
+                             RenderTransformOrigin="0.5,0.5">
+                        <Ellipse.RenderTransform>
+                            <ScaleTransform x:Name="CaptureThemeRippleScale"
+                                            ScaleX="0.03"
+                                            ScaleY="0.03" />
+                        </Ellipse.RenderTransform>
+                    </Ellipse>
+                </Canvas>
+            </Grid>
+            <Grid x:Name="CaptureContentLayer"
+                  Margin="24,18,24,20"
+                  Panel.ZIndex="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Margin="0,0,0,8"
+                    Background="#01000000"
+                    Cursor="SizeAll"
+                    MouseLeftButtonDown="HeaderDragArea_MouseLeftButtonDown">
+                <TextBlock x:Name="PromptTextBlock"
+                           HorizontalAlignment="Center"
+                           Text="조합할 2개의 버튼을 눌러주세요"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="#F7FFFFFF" />
+            </Border>
+
+            <TabControl x:Name="CaptureTabControl"
+                        Grid.Row="1"
+                        Margin="12,0,12,10"
+                        Style="{StaticResource CaptureTopTabControlStyle}"
+                        PreviewMouseLeftButtonDown="CaptureTabControl_PreviewMouseLeftButtonDown"
+                        SelectionChanged="CaptureTabControl_SelectionChanged">
+                <TabItem x:Name="CustomTabItem"
+                         Header="사용자정의"
+                         IsSelected="True"
+                         Style="{StaticResource CaptureTopTabItemStyle}" />
+                <TabItem x:Name="PlayStationTabItem"
+                         Header="PS"
+                         Style="{StaticResource CaptureTopTabItemStyle}" />
+                <TabItem x:Name="SteamControllerTabItem"
+                         Header="STEAMCON"
+                         Style="{StaticResource CaptureTopTabItemStyle}" />
+            </TabControl>
+
+            <Viewbox Grid.Row="2"
+                     Stretch="Uniform"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center">
+                <Canvas Width="1448"
+                        Height="1086"
+                        ClipToBounds="False">
+                    <Image x:Name="OriginalBlueprintImage"
+                           Canvas.Left="0"
+                           Canvas.Top="0"
+                           Width="1448"
+                           Height="1086"
+                           Stretch="Uniform"
+                           SnapsToDevicePixels="True"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           Opacity="0"
+                           Visibility="Collapsed" />
+                    <Image x:Name="BlueprintImageLineLayer"
+                           Canvas.Left="0"
+                           Canvas.Top="0"
+                           Width="1448"
+                           Height="1086"
+                           Stretch="Uniform"
+                           SnapsToDevicePixels="True"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           IsHitTestVisible="False"
+                           Opacity="0.96"
+                           Visibility="Collapsed" />
+                    <Rectangle x:Name="BlueprintThemeWash"
+                               Canvas.Left="0"
+                               Canvas.Top="0"
+                               Width="1448"
+                               Height="1086"
+                               IsHitTestVisible="False"
+                               Opacity="0">
+                        <Rectangle.Fill>
+                            <SolidColorBrush x:Name="BlueprintThemeWashBrush"
+                                             Color="#FF2258C8" />
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Canvas x:Name="VectorBlueprintLayer"
+                             Width="1448"
+                             Height="1086"
+                             Visibility="Collapsed">
+                    <Path Style="{StaticResource BlueprintLine}"
+                          StrokeThickness="4"
+                          Fill="#01000000"
+                          Data="M94,780 C57,735 51,657 66,531 C84,375 132,222 255,205 C323,196 371,212 436,219 C505,227 967,227 1036,219 C1101,212 1149,196 1217,205 C1340,222 1388,375 1406,531 C1421,657 1415,735 1378,780 C1326,844 1247,834 1193,762 L1037,555 C1022,535 1002,525 978,525 L494,525 C470,525 450,535 435,555 L279,762 C225,834 146,844 94,780 Z" />
+                    <Path Style="{StaticResource BlueprintLine}"
+                          StrokeThickness="3"
+                          Opacity="0.94"
+                          Fill="Transparent"
+                          Data="M255,205 C283,139 364,148 392,212 M1217,205 C1189,139 1108,148 1080,212" />
+                    <Path Style="{StaticResource BlueprintLine}"
+                          StrokeThickness="3"
+                          Opacity="0.72"
+                          Fill="Transparent"
+                          Data="M87,768 C125,820 210,829 279,762 M1193,762 C1262,829 1347,820 1385,768" />
+
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="736" Y1="246" X2="736" Y2="870" StrokeDashArray="5,9" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="159" Y1="424" X2="1313" Y2="424" StrokeDashArray="5,9" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="322" Y1="552" X2="322" Y2="861" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="1290" Y1="552" X2="1290" Y2="861" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="342" Y1="903" X2="1130" Y2="903" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="206" Y1="903" X2="620" Y2="903" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="852" Y1="903" X2="1266" Y2="903" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="206" Y1="876" X2="206" Y2="930" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="736" Y1="876" X2="736" Y2="930" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="1266" Y1="876" X2="1266" Y2="930" />
+
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="201" Y1="575" X2="201" Y2="673" StrokeDashArray="7,10" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="165" Y1="624" X2="237" Y2="624" />
+                    <Ellipse Canvas.Left="191" Canvas.Top="614" Width="20" Height="20" Stroke="#A8FFFFFF" StrokeThickness="1.4" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="1270" Y1="575" X2="1270" Y2="673" StrokeDashArray="7,10" />
+                    <Line Style="{StaticResource ThinBlueprintLine}" X1="1234" Y1="624" X2="1306" Y2="624" />
+                    <Ellipse Canvas.Left="1260" Canvas.Top="614" Width="20" Height="20" Stroke="#A8FFFFFF" StrokeThickness="1.4" />
+                    <Ellipse Canvas.Left="727" Canvas.Top="326" Width="18" Height="18" Stroke="#A8FFFFFF" StrokeThickness="1.4" />
+                    <Ellipse Canvas.Left="727" Canvas.Top="788" Width="18" Height="18" Stroke="#A8FFFFFF" StrokeThickness="1.4" />
+
+                    <Border Canvas.Left="95" Canvas.Top="83" Width="104" Height="58" CornerRadius="12" BorderBrush="#F2FFFFFF" BorderThickness="3" Effect="{StaticResource BlueprintGlow}">
+                        <TextBlock Text="LT" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="32" Foreground="#F7FFFFFF" />
+                    </Border>
+                    <Line Style="{StaticResource BlueprintLine}" X1="199" Y1="112" X2="306" Y2="112" />
+                    <Line Style="{StaticResource BlueprintLine}" X1="306" Y1="112" X2="376" Y2="195" />
+                    <Border Canvas.Left="52" Canvas.Top="198" Width="104" Height="58" CornerRadius="12" BorderBrush="#F2FFFFFF" BorderThickness="3" Effect="{StaticResource BlueprintGlow}">
+                        <TextBlock Text="LB" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="32" Foreground="#F7FFFFFF" />
+                    </Border>
+                    <Line Style="{StaticResource BlueprintLine}" X1="156" Y1="227" X2="246" Y2="227" />
+                    <Line Style="{StaticResource BlueprintLine}" X1="246" Y1="227" X2="287" Y2="255" />
+                    <Border Canvas.Left="1272" Canvas.Top="83" Width="104" Height="58" CornerRadius="12" BorderBrush="#F2FFFFFF" BorderThickness="3" Effect="{StaticResource BlueprintGlow}">
+                        <TextBlock Text="RT" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="32" Foreground="#F7FFFFFF" />
+                    </Border>
+                    <Line Style="{StaticResource BlueprintLine}" X1="1272" Y1="112" X2="1166" Y2="112" />
+                    <Line Style="{StaticResource BlueprintLine}" X1="1166" Y1="112" X2="1096" Y2="195" />
+                    <Border Canvas.Left="1315" Canvas.Top="198" Width="104" Height="58" CornerRadius="12" BorderBrush="#F2FFFFFF" BorderThickness="3" Effect="{StaticResource BlueprintGlow}">
+                        <TextBlock Text="RB" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="32" Foreground="#F7FFFFFF" />
+                    </Border>
+                    <Line Style="{StaticResource BlueprintLine}" X1="1315" Y1="227" X2="1225" Y2="227" />
+                    <Line Style="{StaticResource BlueprintLine}" X1="1225" Y1="227" X2="1184" Y2="255" />
+
+                    <Path Style="{StaticResource BlueprintLine}"
+                          StrokeThickness="4"
+                          Fill="#01000000"
+                          Data="M349,314 H411 V383 H480 V445 H411 V514 H349 V445 H280 V383 H349 Z" />
+                    <TextBlock Canvas.Left="361" Canvas.Top="328" Text="△" FontSize="40" Foreground="#F7FFFFFF" />
+                    <TextBlock Canvas.Left="293" Canvas.Top="396" Text="◁" FontSize="40" Foreground="#F7FFFFFF" />
+                    <TextBlock Canvas.Left="428" Canvas.Top="396" Text="▷" FontSize="40" Foreground="#F7FFFFFF" />
+                    <TextBlock Canvas.Left="361" Canvas.Top="463" Text="▽" FontSize="40" Foreground="#F7FFFFFF" />
+
+                    <Ellipse Canvas.Left="542" Canvas.Top="302" Width="60" Height="60" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <TextBlock Canvas.Left="566" Canvas.Top="312" Text="-" FontSize="40" Foreground="#F7FFFFFF" />
+                    <Ellipse Canvas.Left="870" Canvas.Top="302" Width="60" Height="60" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <TextBlock Canvas.Left="889" Canvas.Top="309" Text="+" FontSize="42" Foreground="#F7FFFFFF" />
+                    <Ellipse Canvas.Left="673" Canvas.Top="372" Width="126" Height="126" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <Path Canvas.Left="704" Canvas.Top="406" Width="66" Height="58" Stretch="Uniform" Stroke="#F7FFFFFF" StrokeThickness="6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" Data="M5,29 L33,5 L61,29 M13,25 V55 H53 V25" />
+                    <Border Canvas.Left="710" Canvas.Top="555" Width="52" Height="52" CornerRadius="10" BorderBrush="#F2FFFFFF" BorderThickness="4" Effect="{StaticResource BlueprintGlow}" />
+
+                    <Ellipse Canvas.Left="463" Canvas.Top="506" Width="155" Height="155" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <Ellipse Canvas.Left="483" Canvas.Top="526" Width="115" Height="115" Stroke="#F2FFFFFF" StrokeThickness="3" Effect="{StaticResource BlueprintGlow}" />
+                    <Ellipse Canvas.Left="855" Canvas.Top="506" Width="155" Height="155" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <Ellipse Canvas.Left="875" Canvas.Top="526" Width="115" Height="115" Stroke="#F2FFFFFF" StrokeThickness="3" Effect="{StaticResource BlueprintGlow}" />
+
+                    <Ellipse Canvas.Left="1038" Canvas.Top="314" Width="82" Height="82" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <TextBlock Canvas.Left="1066" Canvas.Top="327" Text="Y" FontSize="43" Foreground="#F7FFFFFF" />
+                    <Ellipse Canvas.Left="934" Canvas.Top="405" Width="82" Height="82" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <TextBlock Canvas.Left="961" Canvas.Top="418" Text="X" FontSize="43" Foreground="#F7FFFFFF" />
+                    <Ellipse Canvas.Left="1143" Canvas.Top="405" Width="82" Height="82" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <TextBlock Canvas.Left="1171" Canvas.Top="418" Text="B" FontSize="43" Foreground="#F7FFFFFF" />
+                    <Ellipse Canvas.Left="1038" Canvas.Top="496" Width="82" Height="82" Stroke="#F2FFFFFF" StrokeThickness="4" Effect="{StaticResource BlueprintGlow}" />
+                    <TextBlock Canvas.Left="1065" Canvas.Top="509" Text="A" FontSize="43" Foreground="#F7FFFFFF" />
+                    </Canvas>
+
+                    <Border x:Name="LTKey" Canvas.Left="105" Canvas.Top="80" Width="96" Height="62" CornerRadius="12" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="LBKey" Canvas.Left="62" Canvas.Top="201" Width="98" Height="58" CornerRadius="12" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="RTKey" Canvas.Left="1245" Canvas.Top="80" Width="98" Height="62" CornerRadius="12" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="RBKey" Canvas.Left="1288" Canvas.Top="201" Width="98" Height="59" CornerRadius="12" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="UpKey" Canvas.Left="341" Canvas.Top="343" Width="83" Height="73" CornerRadius="7" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="LeftKey" Canvas.Left="268" Canvas.Top="416" Width="75" Height="83" CornerRadius="7" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="RightKey" Canvas.Left="424" Canvas.Top="416" Width="74" Height="83" CornerRadius="7" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="DownKey" Canvas.Left="341" Canvas.Top="499" Width="83" Height="75" CornerRadius="7" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="ViewKey" Canvas.Left="554" Canvas.Top="302" Width="58" Height="58" CornerRadius="29" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="MenuKey" Canvas.Left="836" Canvas.Top="302" Width="58" Height="58" CornerRadius="29" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="GuideKey" Canvas.Left="666" Canvas.Top="392" Width="117" Height="117" CornerRadius="58.5" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="QuickAccessKey" Canvas.Left="696" Canvas.Top="602" Width="58" Height="58" CornerRadius="10" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="LeftPadKey" Canvas.Left="467" Canvas.Top="541" Width="172" Height="176" CornerRadius="86" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="RightPadKey" Canvas.Left="808" Canvas.Top="541" Width="173" Height="176" CornerRadius="86.5" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="YKey" Canvas.Left="1041" Canvas.Top="331" Width="86" Height="87" CornerRadius="43" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="XKey" Canvas.Left="954" Canvas.Top="416" Width="86" Height="86" CornerRadius="43" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="BKey" Canvas.Left="1128" Canvas.Top="416" Width="85" Height="86" CornerRadius="42.5" Style="{StaticResource HotspotSurfaceStyle}" />
+                    <Border x:Name="AKey" Canvas.Left="1041" Canvas.Top="501" Width="86" Height="88" CornerRadius="43" Style="{StaticResource HotspotSurfaceStyle}" />
+                </Canvas>
+            </Viewbox>
+
+            <Grid Grid.Row="3"
+                  Margin="12,10,12,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0"
+                        Height="46"
+                        CornerRadius="8"
+                        Background="#101B2633"
+                        BorderBrush="#66FFFFFF"
+                        BorderThickness="1">
+                    <Grid>
+                        <TextBlock x:Name="CandidateTextBlock"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Text="대기 중"
+                                   FontSize="19"
+                                   FontWeight="SemiBold"
+                                   Foreground="#F8FFFFFF" />
+                        <TextBlock x:Name="ProfileDetailTextBlock"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Visibility="Collapsed"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="#F8FFFFFF" />
+                    </Grid>
+                </Border>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Margin="16,0,0,0">
+                    <Button x:Name="SaveButton"
+                            Style="{StaticResource CaptureActionButtonStyle}"
+                            IsEnabled="False"
+                            Click="SaveButton_Click"
+                            Content="저장하기" />
+                    <Button x:Name="RetryButton"
+                            Style="{StaticResource CaptureActionButtonStyle}"
+                            Click="RetryButton_Click"
+                            Content="다시 설정하기" />
+                    <Button x:Name="CancelButton"
+                            Style="{StaticResource CaptureActionButtonStyle}"
+                            Click="CancelButton_Click"
+                            Content="취소" />
+                </StackPanel>
+            </Grid>
+            </Grid>
+            <Canvas x:Name="CaptureThemeSurfaceRippleCanvas"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Panel.ZIndex="30"
+                    IsHitTestVisible="False"
+                    ClipToBounds="True">
+                <Rectangle x:Name="CaptureThemeFloodWash"
+                           Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Grid}}"
+                           Height="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Grid}}"
+                           Opacity="0">
+                    <Rectangle.Fill>
+                        <SolidColorBrush x:Name="CaptureThemeFloodWashBrush"
+                                         Color="#FF2258C8" />
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Ellipse x:Name="CaptureThemeSurfaceRipple"
+                         Width="1280"
+                         Height="1280"
+                         Opacity="0"
+                         RenderTransformOrigin="0.5,0.5">
+                    <Ellipse.RenderTransform>
+                        <ScaleTransform x:Name="CaptureThemeSurfaceRippleScale"
+                                        ScaleX="0.03"
+                                        ScaleY="0.03" />
+                    </Ellipse.RenderTransform>
+                </Ellipse>
+            </Canvas>
+        </Grid>
+    </Border>
+</Window>

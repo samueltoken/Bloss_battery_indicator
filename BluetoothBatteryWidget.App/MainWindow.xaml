@@ -37,14 +37,14 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
         <DataTemplate x:Key="ColorPresetComboTemplate">
-            <Grid Width="138">
+            <Grid Width="124">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Grid Width="34"
+                <Grid Width="30"
                       Height="18"
-                      Margin="0,0,8,0"
+                      Margin="0,0,6,0"
                       VerticalAlignment="Center">
                     <Border CornerRadius="9"
                             Background="{Binding PreviewBrush}" />
@@ -183,6 +183,7 @@
             <Setter Property="Background" Value="#EAF5FFFF" />
             <Setter Property="BorderBrush" Value="#7FA5C7E6" />
             <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,6" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -195,7 +196,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="8,6">
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
@@ -208,6 +209,199 @@
                                 <Setter TargetName="PanelButtonBorder" Property="Background" Value="#D5E9FAFF" />
                                 <Setter TargetName="PanelButtonBorder" Property="BorderBrush" Value="#4D7AA7CC" />
                             </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BatteryGuideTriggerSelectButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource GlassPanelActionButtonStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid ClipToBounds="True">
+                            <Border x:Name="PanelButtonBorder"
+                                    CornerRadius="12"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="8,6" />
+                            <Border x:Name="ActiveGuideTriggerBorder"
+                                    CornerRadius="12"
+                                    BorderBrush="#9ED8F3FF"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="8,6"
+                                    Opacity="0">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#66B7E9FF"
+                                                      BlurRadius="9"
+                                                      ShadowDepth="0"
+                                                      Opacity="0.55" />
+                                </Border.Effect>
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0"
+                                                         EndPoint="1,0">
+                                        <GradientStop x:Name="GuideActiveStopA"
+                                                      Color="#DDF7FCFF"
+                                                      Offset="-0.18" />
+                                        <GradientStop x:Name="GuideActiveStopB"
+                                                      Color="#BCE8F7FF"
+                                                      Offset="0.45" />
+                                        <GradientStop x:Name="GuideActiveStopC"
+                                                      Color="#E7E5FFFF"
+                                                      Offset="1.18" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                            <ContentPresenter Margin="8,6"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PanelButtonBorder" Property="Background" Value="#F3FAFFFF" />
+                                <Setter TargetName="PanelButtonBorder" Property="BorderBrush" Value="#6C97C2E0" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="PanelButtonBorder" Property="Background" Value="#D5E9FAFF" />
+                                <Setter TargetName="PanelButtonBorder" Property="BorderBrush" Value="#4D7AA7CC" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding HasCustomBatteryGuideTrigger}" Value="True">
+                                <Setter Property="Foreground" Value="#102A40" />
+                                <Setter Property="BorderBrush" Value="#84C7E8FF" />
+                                <Setter TargetName="PanelButtonBorder" Property="Opacity" Value="0" />
+                                <Setter TargetName="ActiveGuideTriggerBorder" Property="Opacity" Value="1" />
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard x:Name="BatteryGuideTriggerActivePulse">
+                                        <Storyboard RepeatBehavior="Forever"
+                                                    AutoReverse="True">
+                                            <DoubleAnimation Storyboard.TargetName="GuideActiveStopA"
+                                                             Storyboard.TargetProperty="Offset"
+                                                             From="-0.18"
+                                                             To="0.08"
+                                                             Duration="0:0:2.4" />
+                                            <DoubleAnimation Storyboard.TargetName="GuideActiveStopB"
+                                                             Storyboard.TargetProperty="Offset"
+                                                             From="0.45"
+                                                             To="0.62"
+                                                             Duration="0:0:2.4" />
+                                            <DoubleAnimation Storyboard.TargetName="GuideActiveStopC"
+                                                             Storyboard.TargetProperty="Offset"
+                                                             From="1.18"
+                                                             To="0.94"
+                                                             Duration="0:0:2.4" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <StopStoryboard BeginStoryboardName="BatteryGuideTriggerActivePulse" />
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BatteryGuideTriggerResetButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#10243C" />
+            <Setter Property="Background" Value="#EAF5FFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Width="{TemplateBinding Width}"
+                              Height="{TemplateBinding Height}"
+                              ClipToBounds="True"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Grid x:Name="ResetCircleBody"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <ScaleTransform x:Name="ResetCircleScale"
+                                                    ScaleX="1"
+                                                    ScaleY="1" />
+                                </Grid.RenderTransform>
+                                <Border x:Name="ResetWhiteCircle"
+                                        CornerRadius="16"
+                                        Background="#EAF5FFFF"
+                                        BorderBrush="#BFD8E9F6"
+                                        BorderThickness="1" />
+                                <Image x:Name="ResetCircleImage"
+                                       Source="pack://application:,,,/Assets/reset-button-blue.png"
+                                       Stretch="Uniform"
+                                       Opacity="0"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                            </Grid>
+                            <Ellipse x:Name="ResetInnerPulse"
+                                     Width="22"
+                                     Height="22"
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Center"
+                                     Fill="#334A88FF"
+                                     Opacity="0"
+                                     RenderTransformOrigin="0.5,0.5">
+                                <Ellipse.RenderTransform>
+                                    <ScaleTransform x:Name="ResetInnerPulseScale"
+                                                    ScaleX="0.65"
+                                                    ScaleY="0.65" />
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="Button.Click">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ResetInnerPulse"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         From="0.22"
+                                                         To="0"
+                                                         Duration="0:0:0.34" />
+                                        <DoubleAnimation Storyboard.TargetName="ResetInnerPulseScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         From="0.65"
+                                                         To="1.05"
+                                                         Duration="0:0:0.34"
+                                                         DecelerationRatio="0.78" />
+                                        <DoubleAnimation Storyboard.TargetName="ResetInnerPulseScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         From="0.65"
+                                                         To="1.05"
+                                                         Duration="0:0:0.34"
+                                                         DecelerationRatio="0.78" />
+                                        <DoubleAnimation Storyboard.TargetName="ResetCircleScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         From="0.9"
+                                                         To="1"
+                                                         Duration="0:0:0.32"
+                                                         DecelerationRatio="0.7" />
+                                        <DoubleAnimation Storyboard.TargetName="ResetCircleScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         From="0.9"
+                                                         To="1"
+                                                         Duration="0:0:0.32"
+                                                         DecelerationRatio="0.7" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                            </EventTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ResetWhiteCircle" Property="Background" Value="#F5FBFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ResetWhiteCircle" Property="Background" Value="#DCECF8FF" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding HasCustomBatteryGuideTrigger}" Value="True">
+                                <Setter Property="Foreground" Value="#FFFFFFFF" />
+                                <Setter TargetName="ResetWhiteCircle" Property="Opacity" Value="0" />
+                                <Setter TargetName="ResetCircleImage" Property="Opacity" Value="1" />
+                                <Setter TargetName="ResetInnerPulse" Property="Fill" Value="#66FFFFFF" />
+                            </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -349,6 +543,42 @@
             <Setter Property="BorderBrush" Value="#88BDD6E8" />
         </Style>
 
+        <Style x:Key="ColorQuickSwatchButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="SwatchButtonChrome"
+                                CornerRadius="9"
+                                BorderThickness="1"
+                                BorderBrush="#88A7BED2"
+                                Background="#8EF6FBFF"
+                                Padding="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SwatchButtonChrome" Property="BorderBrush" Value="#5F8DC2E8" />
+                                <Setter TargetName="SwatchButtonChrome" Property="Background" Value="#D8F8FCFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="SwatchButtonChrome" Property="BorderBrush" Value="#416F9EC7" />
+                                <Setter TargetName="SwatchButtonChrome" Property="Background" Value="#BDDFF2FF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="DangerExitButtonStyle"
                TargetType="Button"
                BasedOn="{StaticResource GlassPanelActionButtonStyle}">
@@ -452,7 +682,7 @@
             <Setter Property="BorderBrush" Value="#8FB9D7EF" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Padding" Value="10,4,30,4" />
+            <Setter Property="Padding" Value="8,4,2,4" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -477,6 +707,108 @@
                                                   ContentTemplate="{TemplateBinding ItemTemplate}"
                                                   ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                                   IsHitTestVisible="False" />
+
+                                <TextBlock Grid.Column="1"
+                                           Text="⌄"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           IsHitTestVisible="False" />
+
+                                <ToggleButton Grid.ColumnSpan="2"
+                                              Focusable="False"
+                                              Style="{StaticResource ComboTransparentToggleButtonStyle}"
+                                              Background="Transparent"
+                                              BorderThickness="0"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                            </Grid>
+
+                            <Popup x:Name="PART_Popup"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Fade"
+                                   Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}">
+                                <Border Margin="0,6,0,0"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        CornerRadius="12"
+                                        BorderThickness="1"
+                                        BorderBrush="#86AFCDEA"
+                                        Background="#ECF7FFFF">
+                                    <ScrollViewer MaxHeight="240"
+                                                  Margin="4"
+                                                  SnapsToDevicePixels="True"
+                                                  VerticalScrollBarVisibility="Hidden"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  CanContentScroll="True">
+                                        <StackPanel IsItemsHost="True"
+                                                    KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#4E89B8E2" />
+                                <Setter TargetName="ComboBorder" Property="Background" Value="#F0F9FFFF" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ComboBorder" Property="Background" Value="#F2FAFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GlassScrollingComboBoxStyle"
+               TargetType="ComboBox"
+               BasedOn="{StaticResource GlassPresetComboBoxStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="ComboBorder"
+                                    CornerRadius="10"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" />
+
+                            <Grid Margin="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="26" />
+                                </Grid.ColumnDefinitions>
+
+                                <Grid x:Name="ComboMarqueeViewport"
+                                      Margin="{TemplateBinding Padding}"
+                                      Height="18"
+                                      VerticalAlignment="Center"
+                                      ClipToBounds="True"
+                                      IsHitTestVisible="False"
+                                      Loaded="ColorPresetMarqueeViewport_Loaded"
+                                      SizeChanged="ColorPresetMarqueeViewport_SizeChanged">
+                                    <Canvas Height="18"
+                                            VerticalAlignment="Center"
+                                            IsHitTestVisible="False">
+                                        <TextBlock x:Name="ComboMarqueeText"
+                                                   Canvas.Left="0"
+                                                   Canvas.Top="1"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{TemplateBinding Foreground}"
+                                                   Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                                   Loaded="ColorPresetMarqueeText_Loaded"
+                                                   SizeChanged="ColorPresetMarqueeText_SizeChanged">
+                                            <TextBlock.RenderTransform>
+                                                <TranslateTransform />
+                                            </TextBlock.RenderTransform>
+                                        </TextBlock>
+                                    </Canvas>
+                                </Grid>
 
                                 <TextBlock Grid.Column="1"
                                            Text="⌄"
@@ -1161,7 +1493,7 @@
                Margin="0,0,4,4"
                Panel.ZIndex="50"
                DragDelta="ResizeGripThumb_DragDelta"
-               ToolTip="Resize">
+               ToolTip="{Binding TextResizeTooltip}">
             <Thumb.Template>
                 <ControlTemplate TargetType="Thumb">
                     <Grid Width="16" Height="16" Background="Transparent">
@@ -1408,6 +1740,7 @@
                             </Grid>
 
                             <Grid Height="32"
+                                  Margin="0,0,0,10"
                                   SnapsToDevicePixels="True"
                                   UseLayoutRounding="True">
                                 <Grid.ColumnDefinitions>
@@ -1428,6 +1761,57 @@
                                               IsChecked="{Binding GuideSoundEnabled, Mode=OneWay}"
                                               Checked="GuideSoundToggle_Checked"
                                               Unchecked="GuideSoundToggle_Unchecked" />
+                            </Grid>
+
+                            <Grid Height="32"
+                                  Margin="0,0,0,10"
+                                  SnapsToDevicePixels="True"
+                                  UseLayoutRounding="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="148" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="PowerIdlePauseLabelTextBlock"
+                                           Margin="0,0,14,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding TextPowerIdlePause}" />
+                                <ComboBox x:Name="PowerIdlePauseComboBox"
+                                          Grid.Column="1"
+                                          Height="32"
+                                          Style="{StaticResource GlassScrollingComboBoxStyle}"
+                                          ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
+                                          Tag="{Binding SelectedItem.Label, RelativeSource={RelativeSource Self}}"
+                                          MouseEnter="ComboBoxMarquee_MouseEnter"
+                                          MouseLeave="ComboBoxMarquee_MouseLeave"
+                                          SelectionChanged="PowerIdlePauseComboBox_SelectionChanged"
+                                          DisplayMemberPath="Label" />
+                            </Grid>
+
+                            <Grid Height="32"
+                                  SnapsToDevicePixels="True"
+                                  UseLayoutRounding="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="148" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="WindowsDisplayOffLabelTextBlock"
+                                           Margin="0,0,14,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding TextWindowsDisplayOff}" />
+                                <ComboBox x:Name="WindowsDisplayOffComboBox"
+                                          Grid.Column="1"
+                                          Height="32"
+                                          Style="{StaticResource GlassScrollingComboBoxStyle}"
+                                          ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
+                                          Tag="{Binding SelectedItem.Label, RelativeSource={RelativeSource Self}}"
+                                          MouseEnter="ComboBoxMarquee_MouseEnter"
+                                          MouseLeave="ComboBoxMarquee_MouseLeave"
+                                          SelectionChanged="WindowsDisplayOffComboBox_SelectionChanged"
+                                          DisplayMemberPath="Label" />
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -1578,8 +1962,6 @@
                                           ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
                                           ItemTemplate="{StaticResource ColorPresetComboTemplate}"
                                           PreviewMouseLeftButtonDown="ColorPresetComboBox_PreviewMouseLeftButtonDown"
-                                          MouseEnter="ColorPresetComboBox_MouseEnter"
-                                          MouseLeave="ColorPresetComboBox_MouseLeave"
                                           SelectionChanged="ColorPresetComboBox_SelectionChanged" />
                             </Grid>
 
@@ -1665,14 +2047,17 @@
                                       VerticalAlignment="Center">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="34" />
+                                        <ColumnDefinition Width="36" />
                                     </Grid.ColumnDefinitions>
                                     <ComboBox x:Name="GuideSoundComboBox"
                                               Grid.Column="0"
                                               Height="32"
                                               ToolTip="{Binding TextGuideSoundSelectorTooltip}"
-                                              Style="{StaticResource GlassPresetComboBoxStyle}"
+                                              Style="{StaticResource GlassScrollingComboBoxStyle}"
                                               ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
+                                              Tag="{Binding SelectedItem.DisplayName, RelativeSource={RelativeSource Self}}"
+                                              MouseEnter="ComboBoxMarquee_MouseEnter"
+                                              MouseLeave="ComboBoxMarquee_MouseLeave"
                                               SelectionChanged="GuideSoundComboBox_SelectionChanged"
                                               DisplayMemberPath="DisplayName" />
                                     <Button x:Name="PreviewGuideSoundButton"
@@ -1685,6 +2070,95 @@
                                             ToolTip="{Binding TextGuideSoundPreviewTooltip}"
                                             Content="▶" />
                                 </Grid>
+                            </Grid>
+
+                            <Grid x:Name="BatteryGuideTriggerRowGrid"
+                                  Height="32"
+                                  Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="160" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="BatteryGuideTriggerLabelTextBlock"
+                                           Grid.Column="0"
+                                           Margin="0,0,10,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextBatteryGuideTrigger}" />
+                                <Grid Grid.Column="1"
+                                      Height="32"
+                                      VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="34" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="BatteryGuideTriggerSelectButton"
+                                            Grid.Column="0"
+                                            Height="32"
+                                            Margin="0,0,4,0"
+                                            Focusable="False"
+                                            IsTabStop="False"
+                                            Style="{StaticResource BatteryGuideTriggerSelectButtonStyle}"
+                                            PreviewMouseLeftButtonDown="BatteryGuideTriggerSelectButton_PreviewMouseLeftButtonDown"
+                                            Click="BatteryGuideTriggerSelectButton_Click"
+                                            Content="{Binding TextBatteryGuideTriggerSelect}" />
+                                    <Button x:Name="BatteryGuideTriggerResetButton"
+                                            Grid.Column="1"
+                                            Width="32"
+                                            Height="32"
+                                            Margin="4,0,0,0"
+                                            Padding="0"
+                                            Background="#FF3D7AF0"
+                                            Style="{StaticResource BatteryGuideTriggerResetButtonStyle}"
+                                            Click="BatteryGuideTriggerResetButton_Click"
+                                            ToolTip="{Binding TextRestoreDefault}">
+                                        <Viewbox x:Name="BatteryGuideTriggerResetIcon"
+                                                 Width="18"
+                                                 Height="18"
+                                                 Stretch="Uniform"
+                                                 SnapsToDevicePixels="True">
+                                            <Canvas Width="24"
+                                                    Height="24"
+                                                    ClipToBounds="False"
+                                                    SnapsToDevicePixels="True">
+                                                <Canvas.RenderTransform>
+                                                    <RotateTransform x:Name="BatteryGuideTriggerResetRotate"
+                                                                     CenterX="12"
+                                                                     CenterY="12" />
+                                                </Canvas.RenderTransform>
+                                                <Path x:Name="BatteryGuideTriggerResetPath"
+                                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      Data="M17.65,6.35C16.2,4.9 14.21,4 12,4C7.58,4 4,7.58 4,12C4,16.42 7.58,20 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.82,16.33 14.61,18 12,18C8.69,18 6,15.31 6,12C6,8.69 8.69,6 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                </Grid>
+                            </Grid>
+
+                            <Grid x:Name="BatteryAlertThresholdsRowGrid"
+                                  Height="32"
+                                  Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="160" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="BatteryAlertThresholdsLabelTextBlock"
+                                           Grid.Column="0"
+                                           Margin="0,0,10,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           Text="{Binding TextBatteryAlertThresholds}" />
+                                <Button x:Name="BatteryAlertThresholdsButton"
+                                        Grid.Column="1"
+                                        Height="32"
+                                        Style="{StaticResource GlassPanelActionButtonStyle}"
+                                        ToolTip="{Binding TextBatteryAlertThresholdsTooltip}"
+                                        Content="{Binding BatteryAlertThresholdsButtonText}"
+                                        Click="BatteryAlertThresholdsButton_Click" />
                             </Grid>
 
                             <Grid x:Name="UserFontRowGrid"
@@ -1953,11 +2427,24 @@
                                    VerticalAlignment="Center"
                                    Foreground="{StaticResource SettingsTextBrush}"
                                    Text="{Binding TextUiScale}" />
-                        <TextBlock Grid.Row="0"
-                                   Grid.Column="1"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource SettingsTitleBrush}"
-                                   Text="{Binding UiScaleStep, StringFormat={}{0:+#;-#;0}}" />
+                        <Border x:Name="UiScaleValueBadge"
+                                Grid.Row="0"
+                                Grid.Column="1"
+                                Width="42"
+                                Height="22"
+                                Margin="0,0,10,0"
+                                HorizontalAlignment="Right"
+                                CornerRadius="9"
+                                BorderThickness="1"
+                                BorderBrush="#8CB9D0E4"
+                                Background="#B8FFFFFF">
+                            <TextBlock HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource SettingsTitleBrush}"
+                                       TextAlignment="Center"
+                                       Text="{Binding UiScaleStep, StringFormat={}{0:+#;-#;0}}" />
+                        </Border>
                         <Slider x:Name="UiScaleSlider"
                                 Grid.Row="1"
                                 Grid.ColumnSpan="2"
@@ -1986,14 +2473,17 @@
                                    VerticalAlignment="Center"
                                    TextAlignment="Center"
                                    Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="Language" />
+                                   Text="{Binding TextLanguage}" />
                         <ComboBox x:Name="LanguageComboBox"
                                   Grid.Column="1"
                                   Width="160"
                                   Height="32"
                                   HorizontalContentAlignment="Center"
-                                  Style="{StaticResource GlassPresetComboBoxStyle}"
+                                  Style="{StaticResource GlassScrollingComboBoxStyle}"
                                   ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
+                                  Tag="{Binding SelectedItem.Label, RelativeSource={RelativeSource Self}}"
+                                  MouseEnter="ComboBoxMarquee_MouseEnter"
+                                  MouseLeave="ComboBoxMarquee_MouseLeave"
                                   SelectionChanged="LanguageComboBox_SelectionChanged"
                                   DisplayMemberPath="Label" />
                     </Grid>
@@ -2100,7 +2590,7 @@
                VerticalOffset="-8"
                StaysOpen="True">
             <Border x:Name="ColorPopupChrome"
-                    Width="380"
+                    Width="430"
                     Padding="12"
                     CornerRadius="18"
                     BorderThickness="1"
@@ -2304,7 +2794,7 @@
 
                         <StackPanel Grid.Column="1">
                             <Border x:Name="PaletteSurface"
-                                    Height="172"
+                                    Height="196"
                                     CornerRadius="16"
                                     ClipToBounds="True"
                                     MouseLeftButtonDown="PaletteSurface_MouseLeftButtonDown"
@@ -2330,7 +2820,8 @@
                                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                                 <GradientStop Color="#DDFFFFFF" Offset="0" />
                                                 <GradientStop Color="#00FFFFFF" Offset="0.45" />
-                                                <GradientStop Color="#99000000" Offset="1" />
+                                                <GradientStop Color="#26000000" Offset="0.78" />
+                                                <GradientStop Color="#F2000000" Offset="1" />
                                             </LinearGradientBrush>
                                         </Rectangle.Fill>
                                     </Rectangle>
@@ -2345,6 +2836,94 @@
                                              Margin="0" />
                                 </Grid>
                             </Border>
+
+                            <StackPanel x:Name="ColorQuickSwatchPanel"
+                                        Margin="0,10,0,0"
+                                        Orientation="Horizontal">
+                                <Button Width="30"
+                                        Height="24"
+                                        Margin="0,0,6,0"
+                                        Padding="0"
+                                        Style="{StaticResource ColorQuickSwatchButtonStyle}"
+                                        Background="Transparent"
+                                        BorderBrush="#88A7BED2"
+                                        BorderThickness="1"
+                                        Cursor="Hand"
+                                        Focusable="False"
+                                        Tag="#000000"
+                                        Click="ColorQuickSwatchButton_Click">
+                                    <Border Width="20" Height="14" CornerRadius="5" Background="#FF000000" />
+                                </Button>
+                                <Button Width="30"
+                                        Height="24"
+                                        Margin="0,0,6,0"
+                                        Padding="0"
+                                        Style="{StaticResource ColorQuickSwatchButtonStyle}"
+                                        Background="Transparent"
+                                        BorderBrush="#88A7BED2"
+                                        BorderThickness="1"
+                                        Cursor="Hand"
+                                        Focusable="False"
+                                        Tag="#1E1E1E"
+                                        Click="ColorQuickSwatchButton_Click">
+                                    <Border Width="20" Height="14" CornerRadius="5" Background="#FF1E1E1E" />
+                                </Button>
+                                <Button Width="30"
+                                        Height="24"
+                                        Margin="0,0,6,0"
+                                        Padding="0"
+                                        Style="{StaticResource ColorQuickSwatchButtonStyle}"
+                                        Background="Transparent"
+                                        BorderBrush="#88A7BED2"
+                                        BorderThickness="1"
+                                        Cursor="Hand"
+                                        Focusable="False"
+                                        Tag="#6B7280"
+                                        Click="ColorQuickSwatchButton_Click">
+                                    <Border Width="20" Height="14" CornerRadius="5" Background="#FF6B7280" />
+                                </Button>
+                                <Button Width="30"
+                                        Height="24"
+                                        Margin="0,0,6,0"
+                                        Padding="0"
+                                        Style="{StaticResource ColorQuickSwatchButtonStyle}"
+                                        Background="Transparent"
+                                        BorderBrush="#88A7BED2"
+                                        BorderThickness="1"
+                                        Cursor="Hand"
+                                        Focusable="False"
+                                        Tag="#FFFFFF"
+                                        Click="ColorQuickSwatchButton_Click">
+                                    <Border Width="20" Height="14" CornerRadius="5" BorderBrush="#66869AAF" BorderThickness="1" Background="#FFFFFFFF" />
+                                </Button>
+                                <Button Width="30"
+                                        Height="24"
+                                        Margin="0,0,6,0"
+                                        Padding="0"
+                                        Style="{StaticResource ColorQuickSwatchButtonStyle}"
+                                        Background="Transparent"
+                                        BorderBrush="#88A7BED2"
+                                        BorderThickness="1"
+                                        Cursor="Hand"
+                                        Focusable="False"
+                                        Tag="#F43F5E"
+                                        Click="ColorQuickSwatchButton_Click">
+                                    <Border Width="20" Height="14" CornerRadius="5" Background="#FFF43F5E" />
+                                </Button>
+                                <Button Width="30"
+                                        Height="24"
+                                        Padding="0"
+                                        Style="{StaticResource ColorQuickSwatchButtonStyle}"
+                                        Background="Transparent"
+                                        BorderBrush="#88A7BED2"
+                                        BorderThickness="1"
+                                        Cursor="Hand"
+                                        Focusable="False"
+                                        Tag="#2563EB"
+                                        Click="ColorQuickSwatchButton_Click">
+                                    <Border Width="20" Height="14" CornerRadius="5" Background="#FF2563EB" />
+                                </Button>
+                            </StackPanel>
 
                             <Grid Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
@@ -2391,9 +2970,10 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Row="0"
-                                       Grid.ColumnSpan="2"
+                                       Grid.ColumnSpan="3"
                                        FontSize="13"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource SettingsTitleBrush}"
@@ -2405,16 +2985,27 @@
                                        VerticalAlignment="Center"
                                        Foreground="{DynamicResource SettingsTextBrush}"
                                        Text="{Binding TextSettingsTextFontSize}" />
-                            <TextBlock Grid.Row="1"
-                                       Grid.Column="1"
-                                       Margin="0,9,0,0"
-                                       VerticalAlignment="Center"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource SettingsTitleBrush}"
-                                       Text="{Binding SettingsTextFontSize, StringFormat={}{0:0}}" />
+                            <Border x:Name="SettingsTextFontSizeValueBadge"
+                                    Grid.Row="1"
+                                    Grid.Column="1"
+                                    Width="42"
+                                    Height="22"
+                                    Margin="0,9,0,0"
+                                    HorizontalAlignment="Center"
+                                    CornerRadius="9"
+                                    BorderThickness="1"
+                                    BorderBrush="#8CB9D0E4"
+                                    Background="#B8FFFFFF">
+                                <TextBlock HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SettingsTitleBrush}"
+                                           TextAlignment="Center"
+                                           Text="{Binding SettingsTextFontSize, StringFormat={}{0:0}}" />
+                            </Border>
                             <Slider x:Name="SettingsTextFontSizeSlider"
                                     Grid.Row="2"
-                                    Grid.ColumnSpan="2"
+                                    Grid.ColumnSpan="3"
                                     Margin="0,0,0,4"
                                     Style="{StaticResource UiScaleSliderStyle}"
                                     Minimum="11"
@@ -2433,6 +3024,7 @@
                                        Text="{Binding TextSettingsTextBold}" />
                             <StackPanel Grid.Row="3"
                                         Grid.Column="1"
+                                        Grid.ColumnSpan="2"
                                         Orientation="Horizontal"
                                         HorizontalAlignment="Right">
                                 <ToggleButton x:Name="SettingsTextBoldToggle"

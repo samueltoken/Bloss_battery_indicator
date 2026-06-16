@@ -1,8 +1,11 @@
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using BluetoothBatteryWidget.App.Services;
+using BluetoothBatteryWidget.Core.Models;
 
 namespace BluetoothBatteryWidget.App;
 
@@ -25,10 +28,14 @@ public partial class IconImageAdjustWindow : Window
     private double _zoomFactor = 1.0d;
     private double _offsetX;
     private double _offsetY;
+    private string _language;
 
-    public IconImageAdjustWindow(string sourceImagePath)
+    public IconImageAdjustWindow(string sourceImagePath, string? language = null)
     {
+        _language = WidgetSettings.NormalizeLanguage(language);
         InitializeComponent();
+        ApplyLocalizedText(_language);
+        WindowPopInAnimator.AttachCentered(this);
         _sourceImage = LoadBitmap(sourceImagePath);
         AttachHandlers();
         _isUiReady = true;
@@ -37,6 +44,19 @@ public partial class IconImageAdjustWindow : Window
     }
 
     public string? ResultImagePath { get; private set; }
+
+    internal void ApplyLocalizedText(string? language)
+    {
+        _language = WidgetSettings.NormalizeLanguage(language);
+        Title = UiLanguageCatalog.GetExtraText(_language, "IconImageAdjustWindowTitle");
+        HeadingTextBlock.Text = UiLanguageCatalog.GetExtraText(_language, "IconImageAdjustHeading");
+        HintTextBlock.Text = UiLanguageCatalog.GetExtraText(_language, "IconImageAdjustHint");
+        GuideThicknessLabelTextBlock.Text = UiLanguageCatalog.GetExtraText(_language, "IconImageAdjustGuideThickness");
+        WarningTextBlock.Text = UiLanguageCatalog.GetExtraText(_language, "IconImageAdjustWarning");
+        CancelButton.Content = UiLanguageCatalog.GetExtraText(_language, "IconImageAdjustCancel");
+        ApplyButton.Content = UiLanguageCatalog.GetExtraText(_language, "IconImageAdjustApply");
+        ZoomValueText.Text = BuildZoomText();
+    }
 
     public static bool IsGeneratedTempPath(string? path)
     {
@@ -212,8 +232,16 @@ public partial class IconImageAdjustWindow : Window
         PreviewImage.Height = height;
         System.Windows.Controls.Canvas.SetLeft(PreviewImage, left);
         System.Windows.Controls.Canvas.SetTop(PreviewImage, top);
-        ZoomValueText.Text = $"배율 {_zoomFactor:0.00}x";
+        ZoomValueText.Text = BuildZoomText();
         ApplyGuideThickness();
+    }
+
+    private string BuildZoomText()
+    {
+        return string.Format(
+            CultureInfo.CurrentCulture,
+            UiLanguageCatalog.GetExtraText(_language, "IconImageAdjustZoomFormat"),
+            _zoomFactor);
     }
 
     private RenderTargetBitmap RenderAdjustedBitmap()

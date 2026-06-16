@@ -177,10 +177,63 @@ public sealed class SettingsColorCustomizationTests
         Assert.Contains("SetSettingsTextBold", source);
         Assert.Contains("ClearSettingsTextStyle", source);
         Assert.Contains("ApplySettingsTextStyle", source);
+        Assert.Contains("IsSettingsTextStyleExcludedControl", source);
+        Assert.Contains("control is WpfControls.ComboBox or WpfControls.ComboBoxItem", source);
+        Assert.Contains("IsInsideSettingsTextStyleExcludedControl(textBlock)", source);
 
         Assert.Contains("UseCustomSettingsTextStyle", viewModel);
         Assert.Contains("SettingsTextFontSize", viewModel);
         Assert.Contains("SettingsTextBold", viewModel);
+    }
+
+    [Fact]
+    public void ColorPresetNameOnly_ScrollsOnHover()
+    {
+        var xaml = File.ReadAllText(FindSourceFile("BluetoothBatteryWidget.App", "MainWindow.xaml"));
+
+        Assert.Contains("x:Name=\"ColorPresetMarqueeViewport\"", xaml);
+        Assert.Contains("x:Name=\"ColorPresetMarqueeText\"", xaml);
+        Assert.Contains("<Grid Width=\"124\">", xaml);
+        Assert.Contains("<Grid Width=\"30\"", xaml);
+        Assert.Contains("Margin=\"0,0,6,0\"", xaml);
+        Assert.Contains("MouseEnter=\"ColorPresetMarqueeViewport_MouseEnter\"", xaml);
+        Assert.Contains("MouseLeave=\"ColorPresetMarqueeViewport_MouseLeave\"", xaml);
+        Assert.DoesNotContain("MouseEnter=\"ColorPresetComboBox_MouseEnter\"", xaml);
+        Assert.DoesNotContain("MouseLeave=\"ColorPresetComboBox_MouseLeave\"", xaml);
+    }
+
+    [Fact]
+    public void ColorPalette_ExposesBlackQuickSwatchAndMoreRoom()
+    {
+        var xaml = File.ReadAllText(FindSourceFile("BluetoothBatteryWidget.App", "MainWindow.xaml"));
+        var source = File.ReadAllText(FindSourceFile("BluetoothBatteryWidget.App", "MainWindow.xaml.cs"));
+
+        Assert.Contains("Width=\"430\"", xaml);
+        Assert.Contains("x:Name=\"PaletteSurface\"", xaml);
+        Assert.Contains("Height=\"196\"", xaml);
+        Assert.Contains("x:Name=\"ColorQuickSwatchPanel\"", xaml);
+        Assert.Contains("Tag=\"#000000\"", xaml);
+        Assert.Contains("Background=\"#FF000000\"", xaml);
+        Assert.Contains("Click=\"ColorQuickSwatchButton_Click\"", xaml);
+        Assert.Contains("private void ColorQuickSwatchButton_Click", source);
+        Assert.Contains("ApplySelectedQuickColor", source);
+        Assert.Contains("var darkFade", source);
+    }
+
+    [Fact]
+    public void SettingsSizeValues_UseStableAlignedBadges()
+    {
+        var xaml = File.ReadAllText(FindSourceFile("BluetoothBatteryWidget.App", "MainWindow.xaml"));
+
+        Assert.Contains("x:Name=\"UiScaleValueBadge\"", xaml);
+        Assert.Contains("x:Name=\"SettingsTextFontSizeValueBadge\"", xaml);
+        Assert.Contains("Grid.Column=\"1\"", xaml);
+        Assert.Contains("Width=\"42\"", xaml);
+        Assert.Contains("TextAlignment=\"Center\"", xaml);
+        Assert.Contains("Margin=\"0,0,10,0\"", xaml);
+        Assert.Contains("HorizontalAlignment=\"Right\"", xaml);
+        Assert.Contains("Grid.ColumnSpan=\"2\"", xaml);
+        Assert.Contains("Grid.ColumnSpan=\"3\"", xaml);
     }
 
     private static string FindSourceFile(params string[] pathParts)

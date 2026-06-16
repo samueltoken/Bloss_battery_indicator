@@ -2,12 +2,36 @@
 using BluetoothBatteryWidget.Core.Services;
 using Microsoft.Win32.SafeHandles;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace BluetoothBatteryWidget.App.Services;
 
 public sealed class GamepadProbeService
 {
+    private static readonly Regex TraceDevicePathPattern = new(
+        @"(?i)(?:\\\\\?\\)?(?:HID|BTHENUM|BTHLE|USB)[#\\][^\s,;""\]]+",
+        RegexOptions.Compiled);
+    private static readonly Regex TraceMacAddressPattern = new(
+        @"(?i)(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}",
+        RegexOptions.Compiled);
+    private static readonly Regex TraceCompactAddressPattern = new(
+        @"(?i)(?<![0-9A-F])[0-9A-F]{12}(?![0-9A-F])",
+        RegexOptions.Compiled);
+    private static readonly Regex TraceVidPidEqualsPattern = new(
+        @"(?i)\b(?<name>VID|PID)=[0-9A-F]{4}\b",
+        RegexOptions.Compiled);
+    private static readonly Regex TraceVidPidUnderscorePattern = new(
+        @"(?i)\b(?<name>VID|PID)_[0-9A-F]{4}\b",
+        RegexOptions.Compiled);
+    private static readonly Regex TraceFingerprintPattern = new(
+        @"(?i)\bFP=FP_[^|\s,;""\]]+",
+        RegexOptions.Compiled);
+    private static readonly Regex TraceEndpointPattern = new(
+        @"(?i)\bEP=[^|\s,;""\]]+",
+        RegexOptions.Compiled);
+
     private static readonly byte[] ProbeReportIds =
     [
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
@@ -16,7 +40,7 @@ public sealed class GamepadProbeService
         0x30, 0x31, 0x32,
         0x81, 0x82
     ];
-    private static readonly byte[] FeatureProbeReportIds = [0x02, 0x03, 0x05, 0x11, 0x21, 0x31, 0x81, 0x82];
+    private static readonly byte[] FeatureProbeReportIds = [0x02, 0x03, 0x05, 0x11, 0x12, 0x21, 0x31, 0x81, 0x82];
 
     private static readonly byte[] QuickScanReportIds = [0x01, 0x11, 0x21, 0x31];
     private static readonly int[] StreamTimeoutLadderMs = [180, 260, 420, 700];
@@ -245,6 +269,8 @@ public sealed class GamepadProbeService
                     ApplyHardFailCooldownIfNeeded(observedProbeKeys, diagnostics);
                     Report(onProgress, ProbeStage.Failed, 100, "Candidate evaluation failed");
                     diagnostics.TopCandidatesText = BuildTopCandidatesText(endpointSelections, limit: 5);
+                    diagnostics.CandidateObservationsText = BuildCandidateObservationsText(endpointSelections, limit: 40);
+                    diagnostics.CandidateDecisionHintsText = BuildCandidateDecisionHintsText(endpointSelections, diagnostics, limit: 40);
                     traceTopCandidates = SplitTopCandidates(diagnostics.TopCandidatesText);
                     var failure = BuildFailureResult(
                         BuildEvaluationFailureMessage(diagnostics, endpointSelections),
@@ -261,6 +287,8 @@ public sealed class GamepadProbeService
                     .ThenBy(candidate => candidate.Endpoint.DevicePath, StringComparer.OrdinalIgnoreCase)
                     .ToList();
                 diagnostics.TopCandidatesText = BuildTopCandidatesText(rankedCandidates, limit: 5);
+                diagnostics.CandidateObservationsText = BuildCandidateObservationsText(rankedCandidates, limit: 40);
+                diagnostics.CandidateDecisionHintsText = BuildCandidateDecisionHintsText(rankedCandidates, diagnostics, limit: 40);
                 traceTopCandidates = SplitTopCandidates(diagnostics.TopCandidatesText);
 
                 var selected = SelectPreferredCandidate(rankedCandidates, diagnostics, out var selectedSuppressionReason);
@@ -313,6 +341,24 @@ public sealed class GamepadProbeService
                     return failure;
                 }
 
+                if (IsCoarseXboxBucketCandidate(selectedWinner))
+                {
+                    diagnostics.BlockReason = "xbox_flags_coarse_bucket";
+                    diagnostics.SuppressionReason = diagnostics.BlockReason;
+                    diagnostics.ReasonCode = diagnostics.BlockReason;
+                    traceBlockReason = diagnostics.BlockReason;
+                    Report(onProgress, ProbeStage.Completed, ProbeProgressCalculator.PersistProfile(1), "Only coarse Xbox battery flags found");
+                    var coarseOnly = new ProbeResult(
+                        Success: true,
+                        BatteryPercent: null,
+                        Message: "Xbox식 4단계 배터리 신호만 확인되었습니다. 1% 후보가 반복 확인될 때까지 숫자를 저장하지 않습니다.",
+                        Profile: null,
+                        ErrorDetail: null,
+                        IsPending: true);
+                    AppendProbeTrace(connectedDevice, normalizedAddress, ProbeStage.Completed, "completed_coarse_bucket_only", coarseOnly, diagnostics, observedProbeKeys, traceTopCandidates, traceWinnerDecoder, traceBlockReason);
+                    return coarseOnly;
+                }
+
                 Report(onProgress, ProbeStage.EvaluateCandidates, ProbeProgressCalculator.EvaluateCandidates(1), "Candidate evaluation complete");
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -328,9 +374,11 @@ public sealed class GamepadProbeService
                                  !string.Equals(voteIdentityKey, "IDENTITY_UNKNOWN", StringComparison.OrdinalIgnoreCase)
                     ? voteIdentityKey
                     : modelKey;
-                var shouldDelayConfirmation = ShouldDelayImmediateAcceptance(selectedWinner, rankedCandidates, diagnostics) ||
+                var requiresRepeatedExactProof = RequiresRepeatedExactHidProof(selected, connectedDevice.DisplayName, selectedWinner);
+                var shouldDelayConfirmation = requiresRepeatedExactProof ||
+                                              ShouldDelayImmediateAcceptance(selectedWinner, rankedCandidates, diagnostics) ||
                                               !string.IsNullOrWhiteSpace(selectedSuppressionReason);
-                var allowImmediateEstimated = ShouldAllowImmediateEstimatedAcceptance(
+                var allowImmediateEstimated = !requiresRepeatedExactProof && ShouldAllowImmediateEstimatedAcceptance(
                     selectedWinner.Score,
                     diagnostics.GetObservedReportCount(selectedWinner.ReportId),
                     diagnostics.DecoderConfidence,
@@ -408,6 +456,7 @@ public sealed class GamepadProbeService
                     IsGenericDecoder(selectedWinner.Decoder) &&
                     selectedWinner.Score >= ActivePolicy.GenericMinScore &&
                     ActivePolicy.XboxGenericAcceptanceMode == XboxGenericAcceptanceMode.AllowEstimated &&
+                    !requiresRepeatedExactProof &&
                     !shouldDelayConfirmation)
                 {
                     _profileStore.Upsert(estimatedProfile);
@@ -442,15 +491,62 @@ public sealed class GamepadProbeService
                     selectedWinner.Score,
                     DateTimeOffset.Now,
                     evidenceType: evidenceType,
-                    lastValidationStats: $"decoder={selectedWinner.Decoder};score={selectedWinner.Score}");
+                    lastValidationStats: $"decoder={selectedWinner.Decoder};report=0x{selectedWinner.ReportId:X2};offset={selectedWinner.Offset};percent={selectedWinner.BatteryPercent};score={selectedWinner.Score}",
+                    candidatePercent: selectedWinner.BatteryPercent);
                 var requiredVotes = RequiresExtraVotes(selected, selectedWinner, diagnostics, selectedSuppressionReason)
                     ? 3
                     : 2;
-                var learningDecision = ResolveLearningDecision(selectedWinner.Score, votes, requiredVotes);
+                if (requiresRepeatedExactProof)
+                {
+                    requiredVotes = Math.Max(requiredVotes, 3);
+                }
+
+                var learningDecision = ResolveLearningDecision(
+                    selectedWinner.Score,
+                    votes,
+                    requiredVotes,
+                    requireVotesForConfirmed: requiresRepeatedExactProof);
+                var hasRequiredExactMovement = true;
+                PendingGamepadCandidate? pendingCandidate = null;
+                if (requiresRepeatedExactProof)
+                {
+                    _pendingCandidateStore.TryGetVote(pendingKey, candidateKey, out pendingCandidate);
+                    hasRequiredExactMovement = HasRepeatedExactCandidateMovement(pendingCandidate);
+                    if (learningDecision.PersistProfile && !hasRequiredExactMovement)
+                    {
+                        diagnostics.BlockReason = "exact_hid_candidate_needs_movement";
+                        traceBlockReason = diagnostics.BlockReason;
+                        learningDecision = learningDecision with
+                        {
+                            PersistProfile = false,
+                            IsPending = true,
+                            Confidence = BatteryConfidence.Estimated
+                        };
+                    }
+                }
+                diagnostics.SelectedCandidateProofText = BuildSelectedCandidateProofText(
+                    selectedWinner,
+                    votes,
+                    requiredVotes,
+                    requiresRepeatedExactProof,
+                    hasRequiredExactMovement,
+                    pendingCandidate,
+                    learningDecision);
 
                 if (learningDecision.PersistProfile)
                 {
-                    _profileStore.Upsert(estimatedProfile);
+                    var validatedProfile = requiresRepeatedExactProof
+                        ? estimatedProfile with
+                        {
+                            ValidationKind = GamepadProfileStore.RepeatedExactHidValidationKind,
+                            ValidationCount = votes
+                        }
+                        : estimatedProfile with
+                        {
+                            ValidationKind = "vote",
+                            ValidationCount = votes
+                        };
+                    _profileStore.Upsert(validatedProfile);
                     diagnostics.ProfileStateBefore = GamepadProfileState.Active.ToString();
                     diagnostics.ProfileStateAfter = GamepadProfileState.Active.ToString();
                     diagnostics.AcceptancePath = "confirmed_after_recheck";
@@ -464,8 +560,8 @@ public sealed class GamepadProbeService
                     var persistedEstimated = new ProbeResult(
                         Success: true,
                         BatteryPercent: selectedWinner.BatteryPercent,
-                        Message: "수집 완료 (재측정 검증 2/2).",
-                        Profile: estimatedProfile,
+                        Message: $"수집 완료 (재측정 검증 {votes}/{Math.Max(2, requiredVotes)}).",
+                        Profile: validatedProfile,
                         ErrorDetail: null,
                         IsPending: false);
                     AppendProbeTrace(connectedDevice, normalizedAddress, ProbeStage.Completed, "completed_estimated", persistedEstimated, diagnostics, observedProbeKeys, traceTopCandidates, traceWinnerDecoder, traceBlockReason);
@@ -474,10 +570,13 @@ public sealed class GamepadProbeService
 
                 Report(onProgress, ProbeStage.Completed, ProbeProgressCalculator.PersistProfile(1), "Collection pending verification");
                 var voteTarget = Math.Max(2, requiredVotes);
+                var pendingMessage = requiresRepeatedExactProof && !hasRequiredExactMovement && votes >= voteTarget
+                    ? $"임시 후보 저장 ({votes}/{voteTarget}, 값 변화 확인 대기). 같은 위치가 배터리처럼 움직여야 적용됩니다."
+                    : $"임시 후보 저장 ({votes}/{voteTarget}). 동일 기기에서 추가 수집 후 적용됩니다.";
                 var pending = new ProbeResult(
                     Success: true,
                     BatteryPercent: null,
-                    Message: $"임시 후보 저장 ({votes}/{voteTarget}). 동일 기기에서 추가 수집 후 적용됩니다.",
+                    Message: pendingMessage,
                     Profile: estimatedProfile,
                     ErrorDetail: null,
                     IsPending: learningDecision.IsPending);
@@ -968,8 +1067,31 @@ public sealed class GamepadProbeService
 
     internal static LearningDecision ResolveLearningDecision(int bestScore, int votes, int requiredVotes)
     {
+        return ResolveLearningDecision(
+            bestScore,
+            votes,
+            requiredVotes,
+            requireVotesForConfirmed: false);
+    }
+
+    internal static LearningDecision ResolveLearningDecision(
+        int bestScore,
+        int votes,
+        int requiredVotes,
+        bool requireVotesForConfirmed)
+    {
+        var voteTarget = Math.Max(2, requiredVotes);
         if (bestScore >= ConfirmedScoreThreshold)
         {
+            if (requireVotesForConfirmed && votes < voteTarget)
+            {
+                return new LearningDecision(
+                    Accepted: true,
+                    PersistProfile: false,
+                    IsPending: true,
+                    Confidence: BatteryConfidence.Estimated);
+            }
+
             return new LearningDecision(
                 Accepted: true,
                 PersistProfile: true,
@@ -988,8 +1110,8 @@ public sealed class GamepadProbeService
 
         return new LearningDecision(
             Accepted: true,
-            PersistProfile: votes >= Math.Max(2, requiredVotes),
-            IsPending: votes < Math.Max(2, requiredVotes),
+            PersistProfile: votes >= voteTarget,
+            IsPending: votes < voteTarget,
             Confidence: BatteryConfidence.Estimated);
     }
 
@@ -1011,6 +1133,23 @@ public sealed class GamepadProbeService
             ? "UNKNOWN"
             : decoder.Trim().ToUpperInvariant();
         return $"IDK_{normalizedIdentity}|RID_{reportId:X2}|OFF_{Math.Max(0, offset)}|DEC_{normalizedDecoder}";
+    }
+
+    internal static bool HasRepeatedExactCandidateMovement(PendingGamepadCandidate? candidate)
+    {
+        if (candidate is null ||
+            candidate.VoteCount < GamepadProfileStore.RepeatedExactHidValidationMinCount)
+        {
+            return false;
+        }
+
+        if (candidate?.MinPercent is not int minPercent ||
+            candidate.MaxPercent is not int maxPercent)
+        {
+            return false;
+        }
+
+        return maxPercent - minPercent >= 2;
     }
 
     private static ProbeResult BuildFailureResult(
@@ -1424,6 +1563,170 @@ public sealed class GamepadProbeService
         return string.Join(" | ", text);
     }
 
+    private static string BuildCandidateObservationsText(IEnumerable<EndpointSelectionCandidate> candidates, int limit)
+    {
+        var text = candidates
+            .SelectMany(candidate =>
+            {
+                var profile = string.IsNullOrWhiteSpace(candidate.HandshakeProfileId)
+                    ? "unknown"
+                    : candidate.HandshakeProfileId;
+                return GamepadProbeCandidateEvaluator.EnumerateCandidates(candidate.ReportsById)
+                    .Select(observation => new
+                    {
+                        Candidate = observation,
+                        Profile = profile
+                    });
+            })
+            .OrderByDescending(item => item.Candidate.Score)
+            .ThenBy(item => string.Equals(item.Candidate.Decoder, GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags, StringComparison.Ordinal) ? 1 : 0)
+            .ThenBy(item => item.Candidate.ReportId)
+            .ThenBy(item => item.Candidate.Offset)
+            .Take(Math.Max(1, limit))
+            .Select(item =>
+            {
+                var candidate = item.Candidate;
+                return $"{candidate.Decoder}@0x{candidate.ReportId:X2}[off={candidate.Offset},pct={candidate.BatteryPercent},score={candidate.Score},profile={item.Profile}]";
+            });
+
+        return string.Join(" | ", text);
+    }
+
+    private static string BuildCandidateDecisionHintsText(
+        IEnumerable<EndpointSelectionCandidate> candidates,
+        ProbeDiagnostics diagnostics,
+        int limit)
+    {
+        var text = candidates
+            .SelectMany(candidate =>
+            {
+                var profile = string.IsNullOrWhiteSpace(candidate.HandshakeProfileId)
+                    ? "unknown"
+                    : candidate.HandshakeProfileId;
+                return GamepadProbeCandidateEvaluator.EnumerateCandidates(candidate.ReportsById)
+                    .Select(observation => new
+                    {
+                        Candidate = observation,
+                        Profile = profile
+                    });
+            })
+            .OrderBy(item => ResolveCandidateDecisionRank(item.Candidate))
+            .ThenBy(item => GetCandidateReportWatchRank(item.Candidate.ReportId))
+            .ThenByDescending(item => item.Candidate.Score)
+            .ThenBy(item => item.Candidate.Offset)
+            .Take(Math.Max(1, limit))
+            .Select(item => BuildCandidateDecisionHint(
+                item.Candidate,
+                item.Profile,
+                diagnostics.GetObservedReportCount(item.Candidate.ReportId)));
+
+        return string.Join(" | ", text);
+    }
+
+    internal static string BuildCandidateDecisionHint(GamepadBatteryCandidate candidate, string profile, int reportSeen = 0)
+    {
+        var (decision, reason) = ResolveCandidateDecisionHint(candidate);
+        var need = string.Equals(decision, "reject-exact", StringComparison.Ordinal)
+            ? "none"
+            : "repeat3+move2";
+        return $"{decision}:{candidate.Decoder}@0x{candidate.ReportId:X2}[off={candidate.Offset},pct={candidate.BatteryPercent},score={candidate.Score},seen={Math.Max(0, reportSeen)},need={need},reason={reason},profile={profile}]";
+    }
+
+    internal static string BuildSelectedCandidateProofText(
+        GamepadBatteryCandidate candidate,
+        int votes,
+        int requiredVotes,
+        bool requiresRepeatedExactProof,
+        bool hasRequiredExactMovement,
+        PendingGamepadCandidate? pendingCandidate,
+        LearningDecision learningDecision)
+    {
+        var voteTarget = Math.Max(1, requiredVotes);
+        var voteText = $"{Math.Max(0, votes)}/{voteTarget}";
+        var repeatOk = votes >= voteTarget;
+        var repeatText = repeatOk ? "yes" : "no";
+        var movementText = ResolveCandidateMovementText(pendingCandidate);
+        var gate = "standard";
+        if (requiresRepeatedExactProof)
+        {
+            gate = learningDecision.PersistProfile
+                ? "ready-after-repeat-and-movement"
+                : !repeatOk && !hasRequiredExactMovement
+                    ? "needs-repeat-and-movement"
+                    : !repeatOk
+                    ? "needs-repeat"
+                    : !hasRequiredExactMovement
+                        ? "needs-movement"
+                        : "pending-decision";
+        }
+
+        return $"selected={candidate.Decoder}@0x{candidate.ReportId:X2}[off={candidate.Offset},pct={candidate.BatteryPercent},score={candidate.Score},votes={voteText},repeat={repeatText},movement={movementText},gate={gate}]";
+    }
+
+    private static string ResolveCandidateMovementText(PendingGamepadCandidate? pendingCandidate)
+    {
+        if (pendingCandidate?.MinPercent is not int minPercent ||
+            pendingCandidate.MaxPercent is not int maxPercent)
+        {
+            return "unknown";
+        }
+
+        return maxPercent - minPercent >= 2
+            ? $"yes:{minPercent}-{maxPercent}"
+            : $"no:{minPercent}-{maxPercent}";
+    }
+
+    private static (string Decision, string Reason) ResolveCandidateDecisionHint(GamepadBatteryCandidate candidate)
+    {
+        if (string.Equals(candidate.Decoder, GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags, StringComparison.Ordinal))
+        {
+            return ("reject-exact", "xbox-bucket-open-source");
+        }
+
+        if (candidate.Decoder is
+            GamepadProbeCandidateEvaluator.DecoderPercent100 or
+            GamepadProbeCandidateEvaluator.DecoderPercent255 or
+            GamepadProbeCandidateEvaluator.DecoderNibble10)
+        {
+            if (candidate.ReportId == 0x04)
+            {
+                return ("demote", "status-report-needs-stronger-proof");
+            }
+
+            return ("watch", "needs-same-report-repeat-and-movement");
+        }
+
+        return ("unknown", "unsupported-decoder");
+    }
+
+    private static int ResolveCandidateDecisionRank(GamepadBatteryCandidate candidate)
+    {
+        var (decision, _) = ResolveCandidateDecisionHint(candidate);
+        return decision switch
+        {
+            "reject-exact" => 0,
+            "watch" => 1,
+            "demote" => 2,
+            _ => 3
+        };
+    }
+
+    private static int GetCandidateReportWatchRank(byte reportId)
+    {
+        return reportId switch
+        {
+            0x31 => 0,
+            0x11 => 1,
+            0x12 => 2,
+            0x01 => 3,
+            0x21 => 4,
+            0x81 => 5,
+            0x82 => 6,
+            0x04 => 50,
+            _ => 100 + reportId
+        };
+    }
+
     private static List<string> SplitTopCandidates(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -1654,6 +1957,28 @@ public sealed class GamepadProbeService
         return diagnostics.GetObservedReportCount(winner.ReportId) < 2;
     }
 
+    private static bool IsCoarseXboxBucketCandidate(GamepadBatteryCandidate candidate)
+    {
+        return string.Equals(
+            candidate.Decoder,
+            GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags,
+            StringComparison.Ordinal);
+    }
+
+    private static bool RequiresRepeatedExactHidProof(
+        EndpointSelectionCandidate selected,
+        string? displayName,
+        GamepadBatteryCandidate candidate)
+    {
+        if (!IsGenericDecoder(candidate.Decoder))
+        {
+            return false;
+        }
+
+        return IsXboxLayerCandidate(displayName, selected.VendorId) ||
+               string.Equals(selected.HandshakeProfileId, "brand.easysmx", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string ResolveVoteIdentityKey(
         EndpointSelectionCandidate selected,
         string normalizedAddress,
@@ -1801,27 +2126,30 @@ public sealed class GamepadProbeService
                 ts = DateTimeOffset.Now,
                 outcome,
                 stage = stage.ToString(),
-                processPath = ProcessPath,
+                processPath = "masked",
                 buildStamp = BuildStamp,
                 device = new
                 {
                     device.DisplayName,
-                    address = normalizedAddress,
-                    categoryHint = device.CategoryHint
+                    address = "masked",
+                    categoryHint = SanitizeProbeTraceText(device.CategoryHint)
                 },
                 success = result.Success,
-                message = result.Message,
+                message = SanitizeProbeTraceText(result.Message),
                 isPending = result.IsPending,
                 batteryPercent = result.BatteryPercent,
                 observedReportIds = diagnostics.ToObservedReportText(),
-                topCandidates,
+                topCandidates = SanitizeProbeTraceList(topCandidates),
+                candidateObservations = SanitizeProbeTraceList(SplitTopCandidates(diagnostics.CandidateObservationsText)),
+                candidateDecisionHints = SanitizeProbeTraceList(SplitTopCandidates(diagnostics.CandidateDecisionHintsText)),
+                selectedCandidateProof = SanitizeProbeTraceText(diagnostics.SelectedCandidateProofText),
                 winnerDecoder,
                 blockReason,
                 suppressionReason = diagnostics.SuppressionReason,
                 decoderConfidence = diagnostics.DecoderConfidence,
                 reliabilityScore = diagnostics.ReliabilityScore,
                 reasonCode = diagnostics.ReasonCode,
-                identityKey = diagnostics.IdentityKey,
+                identityKey = SanitizeProbeTraceText(diagnostics.IdentityKey),
                 handshakeProfileId = diagnostics.HandshakeProfileId,
                 profileId = diagnostics.HandshakeProfileId,
                 pathType = diagnostics.PathType,
@@ -1839,8 +2167,8 @@ public sealed class GamepadProbeService
                 activeSource = diagnostics.ActiveSource,
                 noSignalRecoveryAttempted = diagnostics.NoSignalRecoveryAttempted,
                 noSignalRecoveryRecovered = diagnostics.NoSignalRecoveryRecovered,
-                observedModelKeys = observedModelKeys.ToArray(),
-                diagnostics = diagnostics.ToDiagnosticText()
+                observedModelKeys = SanitizeProbeTraceList(observedModelKeys),
+                diagnostics = SanitizeProbeTraceText(diagnostics.ToDiagnosticText())
             };
 
             var json = JsonSerializer.Serialize(payload);
@@ -1850,6 +2178,31 @@ public sealed class GamepadProbeService
         {
             // Ignore trace logging failures.
         }
+    }
+
+    internal static string SanitizeProbeTraceText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var sanitized = TraceDevicePathPattern.Replace(value, "DEVICE_PATH_MASKED");
+        sanitized = TraceMacAddressPattern.Replace(sanitized, "ADDR_MASKED");
+        sanitized = TraceCompactAddressPattern.Replace(sanitized, "ADDR_MASKED");
+        sanitized = TraceVidPidEqualsPattern.Replace(sanitized, match => $"{match.Groups["name"].Value.ToUpperInvariant()}=MASKED");
+        sanitized = TraceVidPidUnderscorePattern.Replace(sanitized, match => $"{match.Groups["name"].Value.ToUpperInvariant()}_MASKED");
+        sanitized = TraceFingerprintPattern.Replace(sanitized, "FP=FP_MASKED");
+        sanitized = TraceEndpointPattern.Replace(sanitized, "EP=EP_MASKED");
+        return sanitized;
+    }
+
+    private static string[] SanitizeProbeTraceList(IEnumerable<string> values)
+    {
+        return values
+            .Select(SanitizeProbeTraceText)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
     }
 
     private static void RotateTraceLogIfNeeded()
@@ -1885,10 +2238,18 @@ public sealed class GamepadProbeService
     {
         try
         {
-            var assemblyVersion = typeof(GamepadProbeService).Assembly.GetName().Version?.ToString();
-            if (!string.IsNullOrWhiteSpace(assemblyVersion))
+            var assembly = typeof(GamepadProbeService).Assembly;
+            var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(informational))
             {
-                return assemblyVersion;
+                var plusIndex = informational.IndexOf('+');
+                return plusIndex > 0 ? informational[..plusIndex] : informational;
+            }
+
+            var assemblyVersion = assembly.GetName().Version;
+            if (assemblyVersion is not null)
+            {
+                return $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{Math.Max(0, assemblyVersion.Build)}";
             }
         }
         catch
@@ -2049,6 +2410,12 @@ public sealed class GamepadProbeService
         public int GlobalNoAddressSkipCount { get; private set; }
 
         public string TopCandidatesText { get; set; } = string.Empty;
+
+        public string CandidateObservationsText { get; set; } = string.Empty;
+
+        public string CandidateDecisionHintsText { get; set; } = string.Empty;
+
+        public string SelectedCandidateProofText { get; set; } = string.Empty;
 
         public string WinnerDecoder { get; set; } = string.Empty;
 

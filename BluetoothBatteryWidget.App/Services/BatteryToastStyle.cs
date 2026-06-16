@@ -7,34 +7,42 @@ namespace BluetoothBatteryWidget.App.Services;
 
 internal enum BatteryToastSeverity
 {
-    Healthy,
-    Warning,
-    Low
+    Full,
+    Draining,
+    NeedsCharge,
+    ChargeNow
 }
 
 internal static class BatteryToastStyle
 {
     public static BatteryToastSeverity ResolveSeverity(int percent)
     {
-        if (percent < 30)
+        percent = Math.Clamp(percent, 0, 100);
+        if (percent >= 80)
         {
-            return BatteryToastSeverity.Low;
+            return BatteryToastSeverity.Full;
         }
 
-        if (percent < 60)
+        if (percent >= 60)
         {
-            return BatteryToastSeverity.Warning;
+            return BatteryToastSeverity.Draining;
         }
 
-        return BatteryToastSeverity.Healthy;
+        if (percent >= 30)
+        {
+            return BatteryToastSeverity.NeedsCharge;
+        }
+
+        return BatteryToastSeverity.ChargeNow;
     }
 
     public static WpfBrush ResolveAccentBrush(BatteryToastSeverity severity)
     {
         return severity switch
         {
-            BatteryToastSeverity.Low => new SolidColorBrush(WpfColor.FromRgb(232, 38, 38)),
-            BatteryToastSeverity.Warning => new SolidColorBrush(WpfColor.FromRgb(242, 181, 55)),
+            BatteryToastSeverity.ChargeNow => new SolidColorBrush(WpfColor.FromRgb(232, 38, 38)),
+            BatteryToastSeverity.NeedsCharge => new SolidColorBrush(WpfColor.FromRgb(242, 181, 55)),
+            BatteryToastSeverity.Draining => new SolidColorBrush(WpfColor.FromRgb(45, 190, 114)),
             _ => new SolidColorBrush(WpfColor.FromRgb(47, 123, 234))
         };
     }
@@ -51,17 +59,12 @@ internal static class BatteryToastStyle
             return "Charging";
         }
 
-        var percent = snapshot.BatteryPercent ?? 0;
-        if (automatic || percent < 30)
+        return ResolveSeverity(snapshot.BatteryPercent ?? 0) switch
         {
-            return "Low Battery";
-        }
-
-        if (percent < 60)
-        {
-            return "Battery Notice";
-        }
-
-        return "Battery OK";
+            BatteryToastSeverity.Full => "Battery enough",
+            BatteryToastSeverity.Draining => "Battery draining",
+            BatteryToastSeverity.NeedsCharge => "Charging needed",
+            _ => "Charge now"
+        };
     }
 }

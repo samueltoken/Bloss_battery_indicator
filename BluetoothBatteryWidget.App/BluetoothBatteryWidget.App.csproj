@@ -15,14 +15,17 @@
     <AssemblyName>Bloss</AssemblyName>
     <Title>Bloss</Title>
     <Product>Bloss</Product>
-    <Version>1.0.6</Version>
-    <AssemblyVersion>1.0.6.0</AssemblyVersion>
-    <FileVersion>1.0.6.0</FileVersion>
-    <InformationalVersion>1.0.6</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Resource Include="Assets\controller-guide-blueprint.png" Condition="Exists('Assets\controller-guide-blueprint.png')" />
+    <Resource Include="Assets\reset-button-blue.png" Condition="Exists('Assets\reset-button-blue.png')" />
+    <None Include="Assets\controller-guide-blueprint.jpg" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\controller-guide-blueprint.jpg')" />
+    <None Include="Assets\controller-guide-blueprint.jpeg" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\controller-guide-blueprint.jpeg')" />
+    <None Include="Assets\battery-guide-trigger-blueprint.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\battery-guide-trigger-blueprint.png')" />
+    <None Include="Assets\battery-guide-trigger-blueprint.jpg" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\battery-guide-trigger-blueprint.jpg')" />
+    <None Include="Assets\battery-guide-trigger-blueprint.jpeg" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\battery-guide-trigger-blueprint.jpeg')" />
     <EmbeddedResource Include="Assets\battery-guide-chime.wav" LogicalName="BluetoothBatteryWidget.App.Assets.battery-guide-chime.wav" />
     <EmbeddedResource Include="Assets\guide-sound-infographic-2s.wav" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-infographic-2s.wav" />
     <EmbeddedResource Include="Assets\guide-sound-infographic-1s.wav" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-infographic-1s.wav" />
@@ -31,6 +34,7 @@
     <EmbeddedResource Include="Assets\guide-sound-warning.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-warning.mp3" />
     <EmbeddedResource Include="Assets\guide-sound-smile.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.guide-sound-smile.mp3" />
     <EmbeddedResource Include="Assets\labs-outer-space.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.labs-outer-space.mp3" />
+    <EmbeddedResource Include="Assets\version-107-digital-city.mp3" LogicalName="BluetoothBatteryWidget.App.Assets.version-107-digital-city.mp3" />
     <Resource Include="Assets\kofi_symbol.png" />
   </ItemGroup>
 

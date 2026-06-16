@@ -101,7 +101,7 @@ public sealed class SonyHidBatteryLevelProvider
                         }
 
                         var address = isUsbPicoDualSense
-                            ? PlayStationUsbBridgeSupport.BuildSyntheticAddress(instanceId, devicePath)
+                            ? PlayStationUsbBridgeSupport.BuildSyntheticAddress(instanceId, devicePath, productId)
                             : AddressNormalizer.ExtractAddressFromInstanceId(instanceId);
                         if (string.IsNullOrEmpty(address) && !isUsbPicoDualSense)
                         {

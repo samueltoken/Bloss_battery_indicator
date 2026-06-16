@@ -291,6 +291,84 @@ public sealed class WidgetSettingsColorPresetTests
     }
 
     [Fact]
+    public void PowerIdlePauseMinutes_DefaultsToWindowsAuto()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.Equal(WidgetSettings.DefaultPowerIdlePauseMinutes, settings.PowerIdlePauseMinutes);
+        Assert.Equal(WidgetSettings.AutoPowerIdlePauseMinutes, settings.PowerIdlePauseMinutes);
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_DefaultsToGuideButton()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.Empty(settings.BatteryGuideTrigger);
+        Assert.NotNull(settings.BatteryGuideTriggerProfiles);
+        Assert.Empty(settings.BatteryGuideTriggerProfiles);
+        Assert.Equal("DualSense", WidgetSettings.DualSenseBatteryGuideProfileKey);
+        Assert.Equal("SteamController", WidgetSettings.SteamControllerBatteryGuideProfileKey);
+    }
+
+    [Fact]
+    public void NormalizeBatteryGuideTriggerProfiles_NormalizesKnownDeviceKeys()
+    {
+        var profiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Sony DualSense"] = " DualSense|01|0A:04|Mic \r\n",
+            ["Steam Controller"] = "SteamController|45|03:40,04:80|View + RT",
+            ["Unknown"] = "DualSense|01|0A:01|PS",
+            ["Steam"] = ""
+        };
+
+        var normalized = WidgetSettings.NormalizeBatteryGuideTriggerProfiles(profiles);
+
+        Assert.Equal(2, normalized.Count);
+        Assert.Equal("DualSense|01|0A:04|Mic", normalized[WidgetSettings.DualSenseBatteryGuideProfileKey]);
+        Assert.Equal(
+            "SteamController|45|03:40,04:80|View + RT",
+            normalized[WidgetSettings.SteamControllerBatteryGuideProfileKey]);
+        Assert.False(normalized.ContainsKey("Unknown"));
+    }
+
+    [Fact]
+    public void LastSeenReleaseNotesVersion_DefaultsToEmpty()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.Empty(settings.LastSeenReleaseNotesVersion);
+    }
+
+    [Fact]
+    public void BatteryAlertThresholds_DefaultsToThirty()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.Equal("30", settings.BatteryAlertThresholds);
+        Assert.Equal(15, WidgetSettings.ForcedBatteryAlertThresholdPercent);
+        Assert.Equal(30, WidgetSettings.MinimumCustomBatteryAlertThresholdPercent);
+        Assert.Equal(80, WidgetSettings.MaximumCustomBatteryAlertThresholdPercent);
+    }
+
+    [Theory]
+    [InlineData("80, 30, 15, 29, 30, 90", "30, 80")]
+    [InlineData("45% / 60 | 75; bad", "45, 60, 75")]
+    [InlineData("10, 20, 90", "")]
+    public void NormalizeBatteryAlertThresholds_KeepsOnlyThirtyToEightyAndSorts(string input, string expected)
+    {
+        Assert.Equal(expected, WidgetSettings.NormalizeBatteryAlertThresholds(input));
+    }
+
+    [Fact]
+    public void GetBatteryAlertThresholdPercents_ParsesMultipleSeparators()
+    {
+        var thresholds = WidgetSettings.GetBatteryAlertThresholdPercents("30,40; 50 / 60 | 70 80");
+
+        Assert.Equal([30, 40, 50, 60, 70, 80], thresholds);
+    }
+
+    [Fact]
     public void NameOverrides_DefaultsToEmptyDictionary()
     {
         var settings = new WidgetSettings();
@@ -317,5 +395,42 @@ public sealed class WidgetSettingsColorPresetTests
     public void NormalizeBatteryHoldSeconds_ClampsRange(int input, int expected)
     {
         Assert.Equal(expected, WidgetSettings.NormalizeBatteryHoldSeconds(input));
+    }
+
+    [Theory]
+    [InlineData(-2, 0)]
+    [InlineData(-1, -1)]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(10, 10)]
+    [InlineData(300, 300)]
+    [InlineData(999, 300)]
+    public void NormalizePowerIdlePauseMinutes_ClampsRange(int input, int expected)
+    {
+        Assert.Equal(expected, WidgetSettings.NormalizePowerIdlePauseMinutes(input));
+    }
+
+    [Fact]
+    public void NormalizeBatteryGuideTrigger_RemovesControlsAndLimitsLength()
+    {
+        var input = new string('A', WidgetSettings.MaximumBatteryGuideTriggerLength + 20) + "\r\n";
+
+        var normalized = WidgetSettings.NormalizeBatteryGuideTrigger(input);
+
+        Assert.Equal(WidgetSettings.MaximumBatteryGuideTriggerLength, normalized.Length);
+        Assert.DoesNotContain('\r', normalized);
+        Assert.DoesNotContain('\n', normalized);
+    }
+
+    [Fact]
+    public void NormalizeReleaseNotesVersion_RemovesControlsAndLimitsLength()
+    {
+        var input = new string('1', WidgetSettings.MaximumReleaseNotesVersionLength + 20) + "\r\n";
+
+        var normalized = WidgetSettings.NormalizeReleaseNotesVersion(input);
+
+        Assert.Equal(WidgetSettings.MaximumReleaseNotesVersionLength, normalized.Length);
+        Assert.DoesNotContain('\r', normalized);
+        Assert.DoesNotContain('\n', normalized);
     }
 }

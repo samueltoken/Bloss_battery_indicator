@@ -20,7 +20,8 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0"
+        <TextBlock x:Name="HeadingTextBlock"
+                   Grid.Row="0"
                    Text="원형 안에 보일 위치를 맞춰주세요"
                    FontSize="15"
                    FontWeight="SemiBold"
@@ -98,7 +99,8 @@
                    FontWeight="SemiBold"
                    Text="배율 1.00x" />
 
-        <TextBlock Grid.Row="3"
+        <TextBlock x:Name="HintTextBlock"
+                   Grid.Row="3"
                    Margin="0,6,0,0"
                    Foreground="#4A6A85"
                    FontSize="12"
@@ -112,7 +114,8 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="48" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0"
+            <TextBlock x:Name="GuideThicknessLabelTextBlock"
+                       Grid.Column="0"
                        VerticalAlignment="Center"
                        Margin="0,0,8,0"
                        Foreground="#294A67"
@@ -134,7 +137,8 @@
                        Text="2.0" />
         </Grid>
 
-        <TextBlock Grid.Row="5"
+        <TextBlock x:Name="WarningTextBlock"
+                   Grid.Row="5"
                    Margin="0,10,0,0"
                    Foreground="#4A6A85"
                    FontSize="12"
@@ -145,11 +149,13 @@
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,14,0,0">
-            <Button Width="88"
+            <Button x:Name="CancelButton"
+                    Width="88"
                     Margin="0,0,8,0"
                     Content="취소"
                     Click="CancelButton_Click" />
-            <Button Width="88"
+            <Button x:Name="ApplyButton"
+                    Width="88"
                     Content="적용"
                     IsDefault="True"
                     Click="ApplyButton_Click" />

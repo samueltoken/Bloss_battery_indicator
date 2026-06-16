@@ -29,7 +29,10 @@ public sealed class PlayStationUsbConnectedDeviceProvider : IConnectedDeviceProv
                     continue;
                 }
 
-                var address = PlayStationUsbBridgeSupport.BuildSyntheticAddress(endpoint.InstanceId, endpoint.DevicePath);
+                var address = PlayStationUsbBridgeSupport.BuildSyntheticAddress(
+                    endpoint.InstanceId,
+                    endpoint.DevicePath,
+                    endpoint.ProductId);
                 if (string.IsNullOrWhiteSpace(address))
                 {
                     continue;

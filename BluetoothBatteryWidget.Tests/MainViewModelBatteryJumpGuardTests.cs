@@ -84,9 +84,9 @@ public sealed class MainViewModelBatteryJumpGuardTests
     private static PnpBatteryReading CreateSteamSetupApiReading(int percent, DateTimeOffset observedAt)
     {
         return new PnpBatteryReading(
-            InstanceId: @"BTHENUM\DEV_AABBCCDDE011\7&SAMPLE&0&BLUETOOTHDEVICE_AABBCCDDE011",
-            Address: "AABBCCDDE011",
-            DisplayName: "Steam Ctrl (BT) SAMPLE000001",
+            InstanceId: @"BTHENUM\DEV_AABBCCDDE0F0\7&1A2B3C4D&0&BLUETOOTHDEVICE_AABBCCDDE0F0",
+            Address: "AABBCCDDE0F0",
+            DisplayName: "Steam Ctrl (BT) FXA0000000000",
             BatteryPercent: percent,
             BatteryConfidence: BatteryConfidence.Confirmed,
             SourceKind: BatterySourceKind.SetupApi,

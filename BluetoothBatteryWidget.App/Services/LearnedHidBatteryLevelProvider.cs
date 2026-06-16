@@ -98,6 +98,37 @@ public sealed class LearnedHidBatteryLevelProvider
                         continue;
                     }
 
+                    if (ShouldHoldProfileForRepeatedProof(
+                            profile,
+                            connected.DisplayName,
+                            endpoint.VendorId,
+                            transportVendorId))
+                    {
+                        _profileStore.Quarantine(profile);
+                        var displayName = string.IsNullOrWhiteSpace(connected.DisplayName)
+                            ? endpoint.DisplayName
+                            : connected.DisplayName;
+
+                        byAddress[normalizedAddress] = new PnpBatteryReading(
+                            InstanceId: endpoint.InstanceId,
+                            Address: normalizedAddress,
+                            DisplayName: displayName,
+                            BatteryPercent: null,
+                            BatteryConfidence: BatteryConfidence.Estimated,
+                            SourceKind: BatterySourceKind.LearnedHid,
+                            RawMetric: null,
+                            ModelKey: BatteryModelKeyResolver.ResolveNormalizedModelKey(
+                                endpoint.VendorId,
+                                endpoint.ProductId,
+                                transportVendorId,
+                                transportProductId,
+                                normalizedAddress,
+                                displayName),
+                            IsBatterySuspect: true,
+                            ReasonCode: "exact_hid_candidate_needs_repeat");
+                        continue;
+                    }
+
                     var outcome = TryRevalidateProfile(
                         handle,
                         profile,
@@ -181,7 +212,8 @@ public sealed class LearnedHidBatteryLevelProvider
                                 transportProductId,
                                 normalizedAddress,
                                 displayName),
-                            IsBatterySuspect: isSuspect);
+                            IsBatterySuspect: isSuspect,
+                            ReasonCode: outcome.LowEvidence ? "xbox_flags_coarse_bucket" : string.Empty);
                     }
                 }
             }
@@ -276,6 +308,64 @@ public sealed class LearnedHidBatteryLevelProvider
             RevalidationFailureKind.DecodeMismatch => healthState.MismatchStrike >= RevalidationFailureToNaThreshold,
             _ => false
         };
+    }
+
+    internal static bool ShouldHoldProfileForRepeatedProof(
+        GamepadBatteryProfile profile,
+        string? displayName,
+        string? endpointVendorId,
+        string? transportVendorId)
+    {
+        if (!IsGenericExactDecoder(profile.Decoder))
+        {
+            return false;
+        }
+
+        if (!IsXboxLayerRuntime(displayName, profile.VendorId, endpointVendorId, transportVendorId))
+        {
+            return false;
+        }
+
+        return !HasRepeatedExactHidValidation(profile);
+    }
+
+    private static bool IsGenericExactDecoder(string? decoder)
+    {
+        return string.Equals(decoder, GamepadProbeCandidateEvaluator.DecoderPercent100, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(decoder, GamepadProbeCandidateEvaluator.DecoderPercent255, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(decoder, GamepadProbeCandidateEvaluator.DecoderNibble10, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsXboxLayerRuntime(
+        string? displayName,
+        string? profileVendorId,
+        string? endpointVendorId,
+        string? transportVendorId)
+    {
+        if (!string.IsNullOrWhiteSpace(displayName) &&
+            (displayName.Contains("xbox", StringComparison.OrdinalIgnoreCase) ||
+             displayName.Contains("easysmx", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return IsMicrosoftVendor(profileVendorId) ||
+               IsMicrosoftVendor(endpointVendorId) ||
+               IsMicrosoftVendor(transportVendorId);
+    }
+
+    private static bool IsMicrosoftVendor(string? vendorId)
+    {
+        return string.Equals(vendorId?.Trim(), "045E", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasRepeatedExactHidValidation(GamepadBatteryProfile profile)
+    {
+        return string.Equals(
+                   profile.ValidationKind,
+                   GamepadProfileStore.RepeatedExactHidValidationKind,
+                   StringComparison.OrdinalIgnoreCase) &&
+               profile.ValidationCount >= GamepadProfileStore.RepeatedExactHidValidationMinCount;
     }
 
     private static bool IsSameVendorProduct(
@@ -434,7 +524,6 @@ public sealed class LearnedHidBatteryLevelProvider
         var decodedSamples = new List<int>(RevalidationSampleCount);
         var readSampleCount = 0;
         var decodeFailureCount = 0;
-        var xboxSuspiciousSampleCount = 0;
 
         for (var sampleIndex = 0; sampleIndex < RevalidationSampleCount; sampleIndex++)
         {
@@ -459,14 +548,6 @@ public sealed class LearnedHidBatteryLevelProvider
                 continue;
             }
 
-            if (string.Equals(profile.Decoder, GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags, StringComparison.Ordinal) &&
-                XboxBluetoothBatteryDecoder.TryDecode(profile.ReportId, report, out var xboxDecoded, out var onUsb) &&
-                xboxDecoded <= 10 &&
-                onUsb)
-            {
-                xboxSuspiciousSampleCount++;
-            }
-
             decodedSamples.Add(decoded);
         }
 
@@ -485,25 +566,20 @@ public sealed class LearnedHidBatteryLevelProvider
             return new RevalidationOutcome(false, 0, false, RevalidationFailureKind.WeakSignal);
         }
 
+        var isXboxFlags = string.Equals(
+            profile.Decoder,
+            GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags,
+            StringComparison.Ordinal);
+        if (isXboxFlags)
+        {
+            return new RevalidationOutcome(true, 0, true, RevalidationFailureKind.None);
+        }
+
         var min = decodedSamples.Min();
         var max = decodedSamples.Max();
         if (max - min > RevalidationSpreadThreshold)
         {
             return new RevalidationOutcome(false, 0, false, RevalidationFailureKind.SpreadOutlier);
-        }
-
-        var isXboxFlags = string.Equals(
-            profile.Decoder,
-            GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags,
-            StringComparison.Ordinal);
-        var allLowSamples = decodedSamples.All(sample => sample <= 10);
-        var weakEvidenceSamples = decodedSamples.Count <= RevalidationMinSuccessCount;
-        var narrowSpread = max - min <= 2;
-        if (isXboxFlags &&
-            (xboxSuspiciousSampleCount >= RevalidationMinSuccessCount ||
-             (allLowSamples && weakEvidenceSamples && narrowSpread)))
-        {
-            return new RevalidationOutcome(true, 0, true, RevalidationFailureKind.None);
         }
 
         var percent = (int)Math.Round(decodedSamples.Average(), MidpointRounding.AwayFromZero);

@@ -95,6 +95,241 @@ public sealed class BatteryEvidenceResolverTests
     }
 
     [Fact]
+    public void ResolveAndRecord_GameInputRepeatedSuspiciousHigh_HidesPercentAsNa()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        var readings = new List<PnpBatteryReading>
+        {
+            new(
+                InstanceId: "GAMEINPUT_SLOT_0",
+                Address: "AABBCCDDE003",
+                DisplayName: "GuliKit Controller XW",
+                BatteryPercent: 100,
+                BatteryConfidence: BatteryConfidence.Estimated,
+                SourceKind: BatterySourceKind.GameInput,
+                RawMetric: 100,
+                ModelKey: "ID=VID_045E|PID_02E0|TR=VID_045E|PID_02E0|FP=FP_AABBCCDDE003",
+                SuggestCalibration: true,
+                IsBatterySuspect: true)
+        };
+
+        IReadOnlyList<PnpBatteryReading> resolved = [];
+        for (var index = 0; index < 4; index++)
+        {
+            resolved = resolver.ResolveAndRecord(readings, now.AddSeconds(index));
+        }
+
+        Assert.Single(resolved);
+        Assert.Null(resolved[0].BatteryPercent);
+        Assert.Equal(BatteryDisplayState.NA, resolved[0].DisplayState);
+        Assert.True(resolved[0].SuggestCalibration);
+        Assert.True(resolved[0].IsBatterySuspect);
+    }
+
+    [Theory]
+    [InlineData("EasySMX D10", "VID_2F24|PID_00F8")]
+    [InlineData("GuliKit Controller XW", "VID_045E|PID_02E0")]
+    [InlineData("Flydigi Vader 4 Pro", "VID_04B4|PID_2412")]
+    [InlineData("GameSir G7 SE", "VID_3537|PID_1020")]
+    public void ResolveAndRecord_ThirdPartyRepeatedUnmarkedFixedHigh_HidesPercentAsNa(
+        string displayName,
+        string modelKey)
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        var address = "AABBCCDDE004";
+
+        IReadOnlyList<PnpBatteryReading> resolved = [];
+        for (var index = 0; index < 4; index++)
+        {
+            resolved = resolver.ResolveAndRecord(
+                [
+                    new PnpBatteryReading(
+                        InstanceId: $"GAMEINPUT_SLOT_{index}",
+                        Address: address,
+                        DisplayName: displayName,
+                        BatteryPercent: 100,
+                        BatteryConfidence: BatteryConfidence.Confirmed,
+                        SourceKind: BatterySourceKind.GameInput,
+                        RawMetric: 100,
+                        ModelKey: modelKey,
+                        ReasonCode: "gameinput_direct")
+                ],
+                now.AddSeconds(index));
+        }
+
+        Assert.Single(resolved);
+        Assert.Null(resolved[0].BatteryPercent);
+        Assert.Equal(BatteryDisplayState.NA, resolved[0].DisplayState);
+        Assert.True(resolved[0].SuggestCalibration);
+        Assert.True(resolved[0].IsBatterySuspect);
+        Assert.Equal("gameinput_block_unreliable", resolved[0].ReasonCode);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_GameInputSilentAfterRepeatedSuspiciousHigh_KeepsNa()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        var address = "AABBCCDDE003";
+        var modelKey = "ID=VID_045E|PID_02E0|TR=VID_045E|PID_02E0|FP=FP_AABBCCDDE003";
+
+        observationStore.Record(
+            Enumerable.Range(0, 4).Select(index => new BatteryEvidence(
+                Address: address,
+                ModelKey: modelKey,
+                SourceKind: BatterySourceKind.GameInput,
+                DerivedPercent: 100,
+                RawMetric: 100,
+                ObservedAt: now.AddSeconds(index),
+                ReasonCode: "gameinput_scaled_full_suspect")),
+            now.AddSeconds(4));
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                new PnpBatteryReading(
+                    InstanceId: "SETUP",
+                    Address: address,
+                    DisplayName: "GuliKit Controller XW",
+                    BatteryPercent: null,
+                    SourceKind: BatterySourceKind.SetupApi)
+            ],
+            now.AddSeconds(5));
+
+        Assert.Single(resolved);
+        Assert.Null(resolved[0].BatteryPercent);
+        Assert.Equal(BatteryDisplayState.NA, resolved[0].DisplayState);
+        Assert.NotEqual("recent_gameinput_fallback", resolved[0].ReasonCode);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_GameInputSilentAfterSingleSuspiciousHigh_KeepsNa()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        var address = "AABBCCDDE003";
+
+        observationStore.Record(
+            [
+                new BatteryEvidence(
+                    Address: address,
+                    ModelKey: "ID=VID_045E|PID_02E0|TR=VID_045E|PID_02E0|FP=FP_AABBCCDDE003",
+                    SourceKind: BatterySourceKind.GameInput,
+                    DerivedPercent: 100,
+                    RawMetric: 100,
+                    ObservedAt: now,
+                    ReasonCode: "gameinput_scaled_full_suspect")
+            ],
+            now);
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                new PnpBatteryReading(
+                    InstanceId: "SETUP",
+                    Address: address,
+                    DisplayName: "GuliKit Controller XW",
+                    BatteryPercent: null,
+                    SourceKind: BatterySourceKind.SetupApi)
+            ],
+            now.AddSeconds(1));
+
+        Assert.Single(resolved);
+        Assert.Null(resolved[0].BatteryPercent);
+        Assert.Equal(BatteryDisplayState.NA, resolved[0].DisplayState);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_GameInputSilentAfterStableSuspiciousHigh_KeepsNa()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        var address = "AABBCCDDE003";
+        var modelKey = "ID=VID_045E|PID_02E0|TR=VID_045E|PID_02E0|FP=FP_AABBCCDDE003";
+
+        observationStore.Record(
+            Enumerable.Range(0, 4).Select(index => new BatteryEvidence(
+                Address: address,
+                ModelKey: modelKey,
+                SourceKind: BatterySourceKind.GameInput,
+                DerivedPercent: 100,
+                RawMetric: 100,
+                ObservedAt: now.AddHours(-2).AddSeconds(index),
+                ReasonCode: "gameinput_scaled_full_suspect")),
+            now.AddHours(-2).AddSeconds(4));
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                new PnpBatteryReading(
+                    InstanceId: "SETUP",
+                    Address: address,
+                    DisplayName: "GuliKit Controller XW",
+                    BatteryPercent: null,
+                    SourceKind: BatterySourceKind.SetupApi)
+            ],
+            now);
+
+        Assert.Single(resolved);
+        Assert.Null(resolved[0].BatteryPercent);
+        Assert.Equal(BatteryDisplayState.NA, resolved[0].DisplayState);
+        Assert.NotEqual("stable_gameinput_fallback", resolved[0].ReasonCode);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_GameInputSilentAfterOldSingleSuspiciousHigh_KeepsNa()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+        var address = "AABBCCDDE003";
+
+        observationStore.Record(
+            [
+                new BatteryEvidence(
+                    Address: address,
+                    ModelKey: "ID=VID_045E|PID_02E0|TR=VID_045E|PID_02E0|FP=FP_AABBCCDDE003",
+                    SourceKind: BatterySourceKind.GameInput,
+                    DerivedPercent: 100,
+                    RawMetric: 100,
+                    ObservedAt: now.AddHours(-2),
+                    ReasonCode: "gameinput_scaled_full_suspect")
+            ],
+            now.AddHours(-2));
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                new PnpBatteryReading(
+                    InstanceId: "SETUP",
+                    Address: address,
+                    DisplayName: "GuliKit Controller XW",
+                    BatteryPercent: null,
+                    SourceKind: BatterySourceKind.SetupApi)
+            ],
+            now);
+
+        Assert.Single(resolved);
+        Assert.Null(resolved[0].BatteryPercent);
+        Assert.Equal(BatteryDisplayState.NA, resolved[0].DisplayState);
+    }
+
+    [Fact]
     public void ResolveAndRecord_GameInputSevereDrop_HidesPercentAsSuspect()
     {
         var root = CreateTempDirectory();
@@ -821,6 +1056,138 @@ public sealed class BatteryEvidenceResolverTests
     }
 
     [Fact]
+    public void ResolveAndRecord_SteamControllerBluetoothStableSuspectGameInput_ConfirmsLikeReleaseDayOne()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+
+        observationStore.Record(
+            [
+                new BatteryEvidence(
+                    Address: "AABBCCDDE011",
+                    ModelKey: "VID_28DE|PID_1303",
+                    SourceKind: BatterySourceKind.GameInput,
+                    DerivedPercent: 96,
+                    RawMetric: 812,
+                    ObservedAt: now.AddMinutes(-3),
+                    ReasonCode: "gameinput_estimated_unverified"),
+                new BatteryEvidence(
+                    Address: "AABBCCDDE011",
+                    ModelKey: "VID_28DE|PID_1303",
+                    SourceKind: BatterySourceKind.GameInput,
+                    DerivedPercent: 96,
+                    RawMetric: 812,
+                    ObservedAt: now.AddMinutes(-1),
+                    ReasonCode: "gameinput_estimated_unverified")
+            ],
+            now.AddMinutes(-1));
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                CreateSteamBluetoothReading(
+                    96,
+                    rawMetric: 812,
+                    BatterySourceKind.GameInput,
+                    isBatterySuspect: true,
+                    reasonCode: "gameinput_estimated_unverified")
+            ],
+            now);
+
+        Assert.Single(resolved);
+        Assert.Equal(96, resolved[0].BatteryPercent);
+        Assert.Equal(BatteryConfidence.Confirmed, resolved[0].BatteryConfidence);
+        Assert.False(resolved[0].SuggestCalibration);
+        Assert.False(resolved[0].IsBatterySuspect);
+        Assert.Equal("gameinput_confirmed", resolved[0].ReasonCode);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_GenericStableSuspectGameInput_RemainsEstimated()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+
+        observationStore.Record(
+            [
+                new BatteryEvidence(
+                    Address: "112233445566",
+                    ModelKey: "VID_2DC8|PID_6100",
+                    SourceKind: BatterySourceKind.GameInput,
+                    DerivedPercent: 96,
+                    RawMetric: 812,
+                    ObservedAt: now.AddMinutes(-3),
+                    ReasonCode: "gameinput_estimated_unverified"),
+                new BatteryEvidence(
+                    Address: "112233445566",
+                    ModelKey: "VID_2DC8|PID_6100",
+                    SourceKind: BatterySourceKind.GameInput,
+                    DerivedPercent: 96,
+                    RawMetric: 812,
+                    ObservedAt: now.AddMinutes(-1),
+                    ReasonCode: "gameinput_estimated_unverified")
+            ],
+            now.AddMinutes(-1));
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                new PnpBatteryReading(
+                    InstanceId: "GAMEINPUT_SAMPLE",
+                    Address: "112233445566",
+                    DisplayName: "Generic Controller",
+                    BatteryPercent: 96,
+                    BatteryConfidence: BatteryConfidence.Confirmed,
+                    SourceKind: BatterySourceKind.GameInput,
+                    RawMetric: 812,
+                    ModelKey: "VID_2DC8|PID_6100",
+                    ReasonCode: "gameinput_estimated_unverified",
+                    ActiveSource: "gameinput",
+                    PathType: "bluetooth",
+                    DisplayState: BatteryDisplayState.Verified,
+                    IsBatterySuspect: true)
+            ],
+            now);
+
+        Assert.Single(resolved);
+        Assert.Equal(96, resolved[0].BatteryPercent);
+        Assert.Equal(BatteryConfidence.Estimated, resolved[0].BatteryConfidence);
+        Assert.True(resolved[0].SuggestCalibration);
+        Assert.True(resolved[0].IsBatterySuspect);
+        Assert.Equal("gameinput_estimated_unverified", resolved[0].ReasonCode);
+    }
+
+    [Fact]
+    public void ResolveAndRecord_SteamControllerBluetoothSuspectFullGameInput_StillHoldsHundred()
+    {
+        var root = CreateTempDirectory();
+        var observationStore = new BatteryObservationStore(Path.Combine(root, "observations.jsonl"));
+        var calibrationStore = new CalibrationStore(Path.Combine(root, "calibrations.json"));
+        var resolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
+        var now = DateTimeOffset.UtcNow;
+
+        var resolved = resolver.ResolveAndRecord(
+            [
+                CreateSteamBluetoothReading(
+                    100,
+                    rawMetric: 812,
+                    BatterySourceKind.GameInput,
+                    isBatterySuspect: true,
+                    reasonCode: "gameinput_scaled_full_suspect")
+            ],
+            now);
+
+        Assert.Single(resolved);
+        Assert.Null(resolved[0].BatteryPercent);
+        Assert.True(resolved[0].IsBatterySuspect);
+        Assert.Equal("gameinput_hold_low_confidence", resolved[0].ReasonCode);
+    }
+
+    [Fact]
     public void ResolveAndRecord_SteamTritonChargingFullWithoutRecentNonFull_KeepsReportedHundred()
     {
         var root = CreateTempDirectory();
@@ -1179,7 +1546,9 @@ public sealed class BatteryEvidenceResolverTests
     private static PnpBatteryReading CreateSteamBluetoothReading(
         int batteryPercent,
         double rawMetric,
-        BatterySourceKind sourceKind)
+        BatterySourceKind sourceKind,
+        bool isBatterySuspect = false,
+        string? reasonCode = null)
     {
         return new PnpBatteryReading(
             InstanceId: "BTHLEDEVICE\\{0000180F-0000-1000-8000-00805F9B34FB}_DEV_VID&0228DE_PID&1303_REV&0100_AABBCCDDE011",
@@ -1190,10 +1559,11 @@ public sealed class BatteryEvidenceResolverTests
             SourceKind: sourceKind,
             RawMetric: rawMetric,
             ModelKey: "VID_28DE|PID_1303",
-            ReasonCode: $"{sourceKind.ToString().ToLowerInvariant()}_direct",
+            ReasonCode: reasonCode ?? $"{sourceKind.ToString().ToLowerInvariant()}_direct",
             ActiveSource: sourceKind.ToString().ToLowerInvariant(),
             PathType: "bluetooth",
-            DisplayState: BatteryDisplayState.Verified);
+            DisplayState: BatteryDisplayState.Verified,
+            IsBatterySuspect: isBatterySuspect);
     }
 
     private static string CreateTempDirectory()

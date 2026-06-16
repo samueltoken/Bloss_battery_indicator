@@ -17,15 +17,29 @@ public sealed class WidgetSettingsStore
     private readonly string _legacySettingsPath;
 
     public WidgetSettingsStore()
+        : this(GetDefaultSettingsPath(), GetDefaultLegacySettingsPath())
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var root = Path.Combine(appData, "Bloss");
+    }
 
-        _settingsPath = Path.Combine(root, "settings.json");
-        _legacySettingsPath = Path.Combine(appData, "BluetoothBatteryWidget", "settings.json");
+    internal WidgetSettingsStore(string settingsPath, string legacySettingsPath)
+    {
+        _settingsPath = settingsPath;
+        _legacySettingsPath = legacySettingsPath;
     }
 
     public string SettingsPath => _settingsPath;
+
+    private static string GetDefaultSettingsPath()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        return Path.Combine(appData, "Bloss", "settings.json");
+    }
+
+    private static string GetDefaultLegacySettingsPath()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        return Path.Combine(appData, "BluetoothBatteryWidget", "settings.json");
+    }
 
     public WidgetSettings Load()
     {
@@ -40,7 +54,7 @@ public sealed class WidgetSettingsStore
 
             var json = File.ReadAllText(_settingsPath);
             var loaded = JsonSerializer.Deserialize<WidgetSettings>(json, JsonOptions);
-            return Normalize(loaded ?? new WidgetSettings());
+            return NormalizeLoaded(loaded ?? new WidgetSettings());
         }
         catch
         {
@@ -54,7 +68,7 @@ public sealed class WidgetSettingsStore
         var directory = Path.GetDirectoryName(_settingsPath)!;
         Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(normalized, JsonOptions);
-        File.WriteAllText(_settingsPath, json);
+        AtomicFileWriter.WriteAllText(_settingsPath, json);
     }
 
     private void MigrateLegacySettingsIfNeeded()
@@ -111,8 +125,25 @@ public sealed class WidgetSettingsStore
         settings.Language = WidgetSettings.NormalizeLanguage(settings.Language);
         settings.CustomGuideSoundPath = WidgetSettings.NormalizeOptionalAudioPath(settings.CustomGuideSoundPath);
         settings.GuideSoundId = WidgetSettings.NormalizeGuideSoundId(settings.GuideSoundId);
+        settings.BatteryGuideTrigger = WidgetSettings.NormalizeBatteryGuideTrigger(settings.BatteryGuideTrigger);
+        settings.BatteryGuideTriggerProfiles =
+            WidgetSettings.NormalizeBatteryGuideTriggerProfiles(settings.BatteryGuideTriggerProfiles);
+        if (!string.IsNullOrWhiteSpace(settings.BatteryGuideTrigger) &&
+            BatteryGuideTriggerParser.TryParse(settings.BatteryGuideTrigger, out var legacyTrigger))
+        {
+            var legacyProfileKey =
+                WidgetSettings.NormalizeBatteryGuideTriggerProfileKey(legacyTrigger.DeviceKind.ToString());
+            if (!string.IsNullOrWhiteSpace(legacyProfileKey))
+            {
+                settings.BatteryGuideTriggerProfiles.TryAdd(legacyProfileKey, settings.BatteryGuideTrigger);
+            }
+        }
+
+        settings.BatteryAlertThresholds = WidgetSettings.NormalizeBatteryAlertThresholds(settings.BatteryAlertThresholds);
         settings.LastDs5DongleFirmwareVersion =
             WidgetSettings.NormalizeFirmwareVersionText(settings.LastDs5DongleFirmwareVersion);
+        settings.LastSeenReleaseNotesVersion =
+            WidgetSettings.NormalizeReleaseNotesVersion(settings.LastSeenReleaseNotesVersion);
         if (settings.GuideSoundId == WidgetSettings.GuideSoundCustomFile &&
             string.IsNullOrWhiteSpace(settings.CustomGuideSoundPath))
         {
@@ -141,6 +172,8 @@ public sealed class WidgetSettingsStore
         }
 
         settings.GamepadDisconnectGraceSeconds = normalizedDisconnectGrace;
+        settings.PowerIdlePauseMinutes = WidgetSettings.NormalizePowerIdlePauseMinutes(settings.PowerIdlePauseMinutes);
+        settings.SettingsSchemaVersion = WidgetSettings.CurrentSettingsSchemaVersion;
         settings.IconOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         settings.IconImageOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         settings.NameOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -149,6 +182,19 @@ public sealed class WidgetSettingsStore
         settings.NameOverrides = NameOverrideParser.Parse(settings.NameOverrides)
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         return settings;
+    }
+
+    private static WidgetSettings NormalizeLoaded(WidgetSettings settings)
+    {
+        var loadedSchemaVersion = settings.SettingsSchemaVersion;
+        var normalized = Normalize(settings);
+        if (loadedSchemaVersion < WidgetSettings.WindowsPowerIdleAutoSettingsSchemaVersion &&
+            normalized.PowerIdlePauseMinutes == WidgetSettings.LegacyDefaultPowerIdlePauseMinutes)
+        {
+            normalized.PowerIdlePauseMinutes = WidgetSettings.AutoPowerIdlePauseMinutes;
+        }
+
+        return normalized;
     }
 }
 

@@ -11,6 +11,7 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
     private const uint RidiDeviceName = 0x20000007;
     private const uint RidiDeviceInfo = 0x2000000B;
     private const uint RidevInputSink = 0x00000100;
+    private const uint RidevRemove = 0x00000001;
     private const uint RidevPageOnly = 0x00000020;
     private const ushort UsagePageGenericDesktop = 0x01;
     private const ushort UsagePageVendorSteam = 0xFF00;
@@ -31,9 +32,12 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
     private static readonly TimeSpan RawHidCautiousReleaseStabilityDelay = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan RawHidStalePressedResetGap = TimeSpan.FromMilliseconds(1800);
     private static readonly TimeSpan RawHidMissedReleaseRecoveryGap = TimeSpan.FromMilliseconds(700);
+    private static readonly TimeSpan RawHidFirstInputSettlingDuration = TimeSpan.FromSeconds(6);
 
     private readonly object _sync = new();
     private readonly Dictionary<string, DateTimeOffset> _lastPressByAddress = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _guideInputSuppressedUntilByAddress = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _seenRawHidInputByAddress = new(StringComparer.OrdinalIgnoreCase);
     private readonly SteamRawHidGuideButtonStateTracker _rawHidGuideButtonStateTracker = new(
         ShortPressMinimumDuration,
         ShortPressMaximumDuration,
@@ -48,6 +52,7 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
     private bool _disposed;
 
     public event EventHandler<GuideButtonPressedEventArgs>? GuideButtonPressed;
+    public event EventHandler<GuideButtonInputReportEventArgs>? InputReportReceived;
 
     public void SetKnownDeviceProvider(Func<IReadOnlyList<GuideButtonKnownDevice>> provider)
     {
@@ -83,6 +88,19 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         lock (_sync)
         {
             return _rawHidGuideButtonStateTracker.ClearActivity(address, DateTimeOffset.Now);
+        }
+    }
+
+    public void SuppressGuideInputForKnownDevices(TimeSpan duration, string reason)
+    {
+        if (duration <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        foreach (var device in ReadKnownSteamDevices())
+        {
+            SuppressGuideInput(device.Address, duration, reason, device.DisplayName);
         }
     }
 
@@ -124,6 +142,46 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         LogRawDeviceSummary();
     }
 
+    public void Stop()
+    {
+        bool shouldUnregister;
+        lock (_sync)
+        {
+            shouldUnregister = _isRegistered && !_disposed;
+            _isRegistered = false;
+            _lastPressByAddress.Clear();
+            _guideInputSuppressedUntilByAddress.Clear();
+            _seenRawHidInputByAddress.Clear();
+            _rawHidGuideButtonStateTracker.Clear();
+        }
+
+        if (!shouldUnregister)
+        {
+            return;
+        }
+
+        var devices = new[]
+        {
+            BuildRawInputRemovalDevice(UsagePageGenericDesktop, UsageMouse),
+            BuildRawInputRemovalDevice(UsagePageGenericDesktop, UsageJoystick),
+            BuildRawInputRemovalDevice(UsagePageGenericDesktop, UsageGamepad),
+            BuildRawInputRemovalDevice(UsagePageGenericDesktop, UsageKeyboard),
+            BuildRawInputPageRemovalDevice(UsagePageVendorSteam)
+        };
+
+        _ = RegisterRawInputDevices(
+            devices,
+            (uint)devices.Length,
+            (uint)Marshal.SizeOf<RawInputDevice>());
+
+        GuideButtonEventLog.Write(
+            "raw_input_paused",
+            "SteamController",
+            string.Empty,
+            "Steam Controller",
+            "Steam Controller raw input monitor paused for power idle.");
+    }
+
     public IntPtr HandleWindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (message != WmInput || lParam == IntPtr.Zero)
@@ -154,6 +212,8 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             _isRegistered = false;
             _knownDeviceProvider = static () => [];
             _lastPressByAddress.Clear();
+            _guideInputSuppressedUntilByAddress.Clear();
+            _seenRawHidInputByAddress.Clear();
             _rawHidGuideButtonStateTracker.Clear();
             _lastDiagnosticByKey.Clear();
         }
@@ -262,6 +322,19 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         for (var index = 0; index < reportCount; index++)
         {
             var report = rawData.AsSpan(index * reportSize, reportSize);
+            if (ShouldSuppressGuideInputReport(device, report))
+            {
+                continue;
+            }
+
+            InputReportReceived?.Invoke(
+                this,
+                new GuideButtonInputReportEventArgs(
+                    device.Address,
+                    string.IsNullOrWhiteSpace(device.DisplayName) ? "Steam Controller" : device.DisplayName,
+                    GuideButtonDeviceKind.SteamController,
+                    report));
+
             if (GuideButtonReportParser.TryParseGuideButton(
                     GuideButtonDeviceKind.SteamController,
                     report,
@@ -284,6 +357,98 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
                 device,
                 $"Steam raw HID input was seen but not recognized as the guide button. {FormatReportSample(report)}");
         }
+    }
+
+    private void SuppressGuideInput(string address, TimeSpan duration, string reason, string displayName)
+    {
+        address = AddressNormalizer.NormalizeAddress(address);
+        if (string.IsNullOrWhiteSpace(address) || duration <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.Now;
+        var suppressUntil = now + duration;
+        lock (_sync)
+        {
+            if (!_guideInputSuppressedUntilByAddress.TryGetValue(address, out var existingUntil) ||
+                suppressUntil > existingUntil)
+            {
+                _guideInputSuppressedUntilByAddress[address] = suppressUntil;
+            }
+
+            _lastPressByAddress.Remove(address);
+            _rawHidGuideButtonStateTracker.ClearActivity(address, now);
+        }
+
+        WriteDiagnostic(
+            $"raw_hid_input_guard_armed:{address}:{reason}",
+            "raw_hid_input_guard_armed",
+            new GuideButtonKnownDevice(address, displayName, GuideButtonDeviceKind.SteamController),
+            $"Steam Controller raw HID input guard armed. reason={reason}; durationMs={(int)duration.TotalMilliseconds}.");
+    }
+
+    private bool ShouldSuppressGuideInputReport(GuideButtonKnownDevice device, ReadOnlySpan<byte> report)
+    {
+        var address = AddressNormalizer.NormalizeAddress(device.Address);
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return false;
+        }
+
+        var now = DateTimeOffset.Now;
+        var firstInputForDevice = false;
+        DateTimeOffset suppressUntil;
+        lock (_sync)
+        {
+            firstInputForDevice = _seenRawHidInputByAddress.Add(address);
+            if (firstInputForDevice)
+            {
+                var firstInputSuppressUntil = now + RawHidFirstInputSettlingDuration;
+                if (!_guideInputSuppressedUntilByAddress.TryGetValue(address, out var existingUntil) ||
+                    firstInputSuppressUntil > existingUntil)
+                {
+                    _guideInputSuppressedUntilByAddress[address] = firstInputSuppressUntil;
+                }
+
+                _lastPressByAddress.Remove(address);
+                _rawHidGuideButtonStateTracker.ClearActivity(address, now);
+            }
+
+            if (!_guideInputSuppressedUntilByAddress.TryGetValue(address, out suppressUntil))
+            {
+                return false;
+            }
+
+            if (now >= suppressUntil)
+            {
+                _guideInputSuppressedUntilByAddress.Remove(address);
+                return false;
+            }
+
+            _lastPressByAddress.Remove(address);
+            _rawHidGuideButtonStateTracker.ClearActivity(address, now);
+        }
+
+        var knownDevice = new GuideButtonKnownDevice(
+            address,
+            string.IsNullOrWhiteSpace(device.DisplayName) ? "Steam Controller" : device.DisplayName,
+            GuideButtonDeviceKind.SteamController);
+        if (firstInputForDevice)
+        {
+            WriteDiagnostic(
+                $"raw_hid_input_guard_armed:{address}:first_raw_hid_input",
+                "raw_hid_input_guard_armed",
+                knownDevice,
+                $"Steam Controller raw HID input guard armed. reason=first_raw_hid_input; durationMs={(int)RawHidFirstInputSettlingDuration.TotalMilliseconds}.");
+        }
+
+        WriteDiagnostic(
+            $"raw_hid_input_guard_suppressed:{address}:{BuildReportSignature(report)}",
+            "raw_hid_input_guard_suppressed",
+            knownDevice,
+            $"Steam Controller raw HID input was ignored while the device settled after connection/refresh. remainingMs={(int)Math.Max(0, (suppressUntil - now).TotalMilliseconds)}; {FormatReportSample(report)}");
+        return true;
     }
 
     private bool TryApplyRawHidStatusReleaseHint(GuideButtonKnownDevice device, ReadOnlySpan<byte> report)
@@ -687,6 +852,28 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             Usage = 0,
             Flags = RidevInputSink | RidevPageOnly,
             Target = windowHandle
+        };
+    }
+
+    private static RawInputDevice BuildRawInputRemovalDevice(ushort usagePage, ushort usage)
+    {
+        return new RawInputDevice
+        {
+            UsagePage = usagePage,
+            Usage = usage,
+            Flags = RidevRemove,
+            Target = IntPtr.Zero
+        };
+    }
+
+    private static RawInputDevice BuildRawInputPageRemovalDevice(ushort usagePage)
+    {
+        return new RawInputDevice
+        {
+            UsagePage = usagePage,
+            Usage = 0,
+            Flags = RidevRemove,
+            Target = IntPtr.Zero
         };
     }
 

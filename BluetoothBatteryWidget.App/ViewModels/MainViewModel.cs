@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -131,6 +132,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public ObservableCollection<DeviceItemViewModel> Devices { get; }
 
+    public bool IsAnyProbeRunning => _isAnyProbeRunning;
+
+    public bool IsRefreshRunning => _isRefreshRunning;
+
     public WidgetSettings Settings
     {
         get => _settings;
@@ -145,7 +150,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(GuideSoundEnabled));
             OnPropertyChanged(nameof(GuideSoundId));
             OnPropertyChanged(nameof(CustomGuideSoundPath));
+            OnPropertyChanged(nameof(BatteryGuideTrigger));
+            OnPropertyChanged(nameof(BatteryGuideTriggerProfiles));
+            OnPropertyChanged(nameof(BatteryGuideTriggerProfileSummary));
+            OnPropertyChanged(nameof(HasCustomBatteryGuideTrigger));
+            OnPropertyChanged(nameof(BatteryAlertThresholds));
+            OnPropertyChanged(nameof(BatteryAlertThresholdsButtonText));
             OnPropertyChanged(nameof(LastDs5DongleFirmwareVersion));
+            OnPropertyChanged(nameof(LastSeenReleaseNotesVersion));
             OnPropertyChanged(nameof(VisualMode));
             OnPropertyChanged(nameof(IsLiteVisualMode));
             OnPropertyChanged(nameof(ColorPresetId));
@@ -163,6 +175,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(SettingsTextBold));
             OnPropertyChanged(nameof(ThirdPartyBatteryPolicy));
             OnPropertyChanged(nameof(IsAggressiveThirdPartyPolicy));
+            OnPropertyChanged(nameof(PowerIdlePauseMinutes));
+            OnPropertyChanged(nameof(PowerIdlePauseOptions));
+            OnPropertyChanged(nameof(WindowsDisplayOffOptions));
             OnPropertyChanged(nameof(LanguageOptions));
             RaiseLocalizedTextPropertyChanges();
         }
@@ -182,7 +197,27 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public string CustomGuideSoundPath => Settings.CustomGuideSoundPath;
 
+    public string BatteryGuideTrigger => Settings.BatteryGuideTrigger;
+
+    public IReadOnlyDictionary<string, string> BatteryGuideTriggerProfiles => Settings.BatteryGuideTriggerProfiles;
+
+    public bool HasCustomBatteryGuideTrigger =>
+        !string.IsNullOrWhiteSpace(Settings.BatteryGuideTrigger) ||
+        Settings.BatteryGuideTriggerProfiles.Count > 0;
+
+    public string BatteryGuideTriggerProfileSummary =>
+        BuildBatteryGuideTriggerProfileSummary(
+            Settings.Language,
+            Settings.BatteryGuideTriggerProfiles,
+            Settings.BatteryGuideTrigger);
+
+    public string BatteryAlertThresholds => Settings.BatteryAlertThresholds;
+
+    public string BatteryAlertThresholdsButtonText => UiLanguageCatalog.GetExtraText(Settings.Language, "BatteryAlertThresholdsButtonText");
+
     public string LastDs5DongleFirmwareVersion => Settings.LastDs5DongleFirmwareVersion;
+
+    public string LastSeenReleaseNotesVersion => Settings.LastSeenReleaseNotesVersion;
 
     public string VisualMode => Settings.VisualMode;
 
@@ -220,6 +255,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public bool IsAggressiveThirdPartyPolicy => Settings.ThirdPartyBatteryPolicy == ThirdPartyBatteryPolicy.Aggressive;
 
+    public int PowerIdlePauseMinutes => Settings.PowerIdlePauseMinutes;
+
+    public IReadOnlyList<PowerIdlePauseOption> PowerIdlePauseOptions => BuildPowerIdlePauseOptions(Settings.Language);
+
+    public IReadOnlyList<WindowsDisplayOffOption> WindowsDisplayOffOptions =>
+        BuildWindowsDisplayOffOptions(Settings.Language, GetCurrentWindowsDisplayOffMinutes());
+
     public string TextSettingsTitle => CurrentLanguageText.SettingsTitle;
 
     public string TextAutostart => CurrentLanguageText.AutostartLabel;
@@ -250,13 +292,25 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public string TextGuideSoundPreviewTooltip => CurrentLanguageText.GuideSoundPreviewTooltip;
 
+    public string TextPowerIdlePause => UiLanguageCatalog.GetExtraText(Settings.Language, "PowerIdlePause");
+
+    public string TextWindowsDisplayOff => UiLanguageCatalog.GetExtraText(Settings.Language, "WindowsDisplayOff");
+
+    public string TextBatteryGuideTrigger => UiLanguageCatalog.GetExtraText(Settings.Language, "BatteryGuideTriggerLabel");
+
+    public string TextBatteryGuideTriggerSelect => UiLanguageCatalog.GetExtraText(Settings.Language, "BatteryGuideTriggerSelect");
+
+    public string TextBatteryAlertThresholds => UiLanguageCatalog.GetExtraText(Settings.Language, "BatteryAlertThresholdsLabel");
+
+    public string TextBatteryAlertThresholdsTooltip => UiLanguageCatalog.GetExtraText(Settings.Language, "BatteryAlertThresholdsTooltip");
+
     public string TextUserFont => CurrentLanguageText.UserFontLabel;
 
     public string TextLoadCustomFont => CurrentLanguageText.LoadCustomFontButton;
 
     public string TextResetCustomFont => CurrentLanguageText.ResetCustomFontButton;
 
-    public string TextLanguage => "Language";
+    public string TextLanguage => CurrentLanguageText.LanguageLabel;
 
     public string TextCustomGuideSound => UiLanguageCatalog.GetExtraText(Settings.Language, "CustomGuideSoundLabel");
 
@@ -327,6 +381,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public string TextSettingsTooltip => CurrentLanguageText.SettingsTooltip;
 
     public string TextCloseTooltip => CurrentLanguageText.CloseTooltip;
+
+    public string TextResizeTooltip => UiLanguageCatalog.GetExtraText(Settings.Language, "ResizeTooltip");
 
     public string TextTrayOpenWidget => CurrentLanguageText.OpenWidgetTray;
 
@@ -426,13 +482,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         string? autoProbeTarget = null;
         var refreshTimedOut = false;
 
+        if (_initialized && ShouldPauseBackgroundPollingForPowerIdle())
+        {
+            StatusText = UiLanguageCatalog.GetExtraText(Settings.Language, "PowerIdlePauseActive");
+            return;
+        }
+
         if (!await _refreshLock.WaitAsync(0).ConfigureAwait(true))
         {
             return;
         }
 
         _isRefreshRunning = true;
-        MarkActivity();
 
         try
         {
@@ -441,6 +502,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             var refreshToken = refreshCts.Token;
 
             var connectedDevices = await _connectedDeviceProvider.GetConnectedDevicesAsync(refreshToken).ConfigureAwait(true);
+            if (FirmwareUpdateOverrideMigration.TryCopyPico2WOverridesToStableAddress(Settings, connectedDevices))
+            {
+                SaveSettings();
+            }
+
             IReadOnlyList<PnpBatteryReading> rawBatteryLevels = [];
             if (connectedDevices.Count > 0)
             {
@@ -763,7 +829,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         };
     }
 
-    public async Task ProbeUnsupportedGamepadAsync(string address)
+    public async Task ProbeUnsupportedGamepadAsync(string address, bool markUserActivity = true)
     {
         string? pendingFollowUpAddress = null;
         var normalizedAddress = AddressNormalizer.NormalizeAddress(address);
@@ -798,7 +864,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        MarkActivity();
+        MarkProbeActivityIfNeeded(markUserActivity);
+
         RegisterAutoProbeAttempt(normalizedAddress, DateTime.UtcNow);
         _isAnyProbeRunning = true;
         target.BeginProbe(CurrentLanguageText.ProbeStart);
@@ -813,13 +880,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 target.UpdateProbeProgress(0, guidedMessage);
                 SetProbeState(normalizedAddress, isRunning: true, progress: 0, status: guidedMessage, forceUiStamp: true);
                 await Task.Delay(TimeSpan.FromSeconds(2.3)).ConfigureAwait(true);
-                MarkActivity();
+                MarkProbeActivityIfNeeded(markUserActivity);
             }
 
             var result = await _gamepadProbeService
                 .ProbeAsync(
                     connectedDevice,
-                    progress => PostToUi(() => ApplyProbeProgress(normalizedAddress, progress)),
+                    progress => PostToUi(() => ApplyProbeProgress(normalizedAddress, progress, markUserActivity)),
                     CancellationToken.None)
                 .ConfigureAwait(true);
 
@@ -831,7 +898,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
                 SetProbeState(normalizedAddress, isRunning: false, progress: 100, status: successStatus, forceUiStamp: true);
                 target.CompleteProbe(successStatus, 100);
-                MarkActivity();
+                MarkProbeActivityIfNeeded(markUserActivity);
+
                 var nowUtc = DateTime.UtcNow;
                 if (result.IsPending)
                 {
@@ -914,7 +982,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         finally
         {
-            MarkActivity();
+            MarkProbeActivityIfNeeded(markUserActivity);
+
             _isAnyProbeRunning = false;
             ApplyProbeActionAvailability();
             _probeLock.Release();
@@ -1071,6 +1140,179 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(GuideSoundId));
     }
 
+    public void SetBatteryGuideTrigger(string trigger)
+    {
+        var normalized = WidgetSettings.NormalizeBatteryGuideTrigger(trigger);
+        if (BatteryGuideTriggerParser.TryParse(normalized, out var parsedTrigger))
+        {
+            SetBatteryGuideTriggerProfile(parsedTrigger.DeviceKind, normalized);
+            return;
+        }
+
+        if (string.Equals(Settings.BatteryGuideTrigger, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Settings.BatteryGuideTrigger = normalized;
+        SaveSettings();
+        NotifyBatteryGuideTriggerChanged();
+    }
+
+    internal void SetBatteryGuideTriggerProfile(GuideButtonDeviceKind deviceKind, string trigger)
+    {
+        var key = GetBatteryGuideTriggerProfileKey(deviceKind);
+        var normalized = WidgetSettings.NormalizeBatteryGuideTrigger(trigger);
+        if (string.IsNullOrWhiteSpace(key) ||
+            string.IsNullOrWhiteSpace(normalized) ||
+            !BatteryGuideTriggerParser.TryParse(normalized, out var parsedTrigger) ||
+            parsedTrigger.DeviceKind != deviceKind)
+        {
+            return;
+        }
+
+        Settings.BatteryGuideTriggerProfiles =
+            WidgetSettings.NormalizeBatteryGuideTriggerProfiles(Settings.BatteryGuideTriggerProfiles);
+
+        var alreadySaved =
+            Settings.BatteryGuideTriggerProfiles.TryGetValue(key, out var existing) &&
+            string.Equals(existing, normalized, StringComparison.Ordinal) &&
+            string.Equals(Settings.BatteryGuideTrigger, normalized, StringComparison.Ordinal);
+        if (alreadySaved)
+        {
+            return;
+        }
+
+        Settings.BatteryGuideTriggerProfiles[key] = normalized;
+        Settings.BatteryGuideTrigger = normalized;
+        SaveSettings();
+        NotifyBatteryGuideTriggerChanged();
+    }
+
+    public void ResetBatteryGuideTrigger()
+    {
+        if (string.IsNullOrWhiteSpace(Settings.BatteryGuideTrigger) &&
+            Settings.BatteryGuideTriggerProfiles.Count == 0)
+        {
+            return;
+        }
+
+        Settings.BatteryGuideTrigger = string.Empty;
+        Settings.BatteryGuideTriggerProfiles.Clear();
+        SaveSettings();
+        NotifyBatteryGuideTriggerChanged();
+    }
+
+    internal bool HasCustomBatteryGuideTriggerForDevice(GuideButtonDeviceKind deviceKind)
+    {
+        return TryGetBatteryGuideTriggerForDevice(deviceKind, out _);
+    }
+
+    internal bool TryGetBatteryGuideTriggerForDevice(GuideButtonDeviceKind deviceKind, out string trigger)
+    {
+        trigger = string.Empty;
+        var key = GetBatteryGuideTriggerProfileKey(deviceKind);
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
+        Settings.BatteryGuideTriggerProfiles =
+            WidgetSettings.NormalizeBatteryGuideTriggerProfiles(Settings.BatteryGuideTriggerProfiles);
+
+        if (Settings.BatteryGuideTriggerProfiles.TryGetValue(key, out var profileTrigger) &&
+            !string.IsNullOrWhiteSpace(profileTrigger))
+        {
+            trigger = profileTrigger;
+            return true;
+        }
+
+        var legacyTrigger = WidgetSettings.NormalizeBatteryGuideTrigger(Settings.BatteryGuideTrigger);
+        if (BatteryGuideTriggerParser.TryParse(legacyTrigger, out var parsedLegacyTrigger) &&
+            parsedLegacyTrigger.DeviceKind == deviceKind)
+        {
+            trigger = legacyTrigger;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void NotifyBatteryGuideTriggerChanged()
+    {
+        OnPropertyChanged(nameof(BatteryGuideTrigger));
+        OnPropertyChanged(nameof(BatteryGuideTriggerProfiles));
+        OnPropertyChanged(nameof(BatteryGuideTriggerProfileSummary));
+        OnPropertyChanged(nameof(HasCustomBatteryGuideTrigger));
+    }
+
+    private static string GetBatteryGuideTriggerProfileKey(GuideButtonDeviceKind deviceKind)
+    {
+        return WidgetSettings.NormalizeBatteryGuideTriggerProfileKey(deviceKind.ToString());
+    }
+
+    internal static string BuildBatteryGuideTriggerProfileSummary(
+        string language,
+        IReadOnlyDictionary<string, string>? profiles,
+        string legacyTrigger)
+    {
+        var profileNames = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (profiles is not null)
+        {
+            foreach (var pair in profiles)
+            {
+                var key = WidgetSettings.NormalizeBatteryGuideTriggerProfileKey(pair.Key);
+                var trigger = WidgetSettings.NormalizeBatteryGuideTrigger(pair.Value);
+                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(trigger))
+                {
+                    profileNames.Add(GetBatteryGuideTriggerProfileDisplayName(key));
+                }
+            }
+        }
+
+        if (profileNames.Count == 0 &&
+            BatteryGuideTriggerParser.TryParse(legacyTrigger, out var parsedLegacyTrigger))
+        {
+            var key = GetBatteryGuideTriggerProfileKey(parsedLegacyTrigger.DeviceKind);
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                profileNames.Add(GetBatteryGuideTriggerProfileDisplayName(key));
+            }
+        }
+
+        if (profileNames.Count == 0)
+        {
+            return UiLanguageCatalog.GetExtraText(language, "BatteryGuideTriggerProfileSummaryEmpty");
+        }
+
+        var format = UiLanguageCatalog.GetExtraText(language, "BatteryGuideTriggerProfileSummaryFormat");
+        return string.Format(CultureInfo.CurrentCulture, format, string.Join(", ", profileNames));
+    }
+
+    private static string GetBatteryGuideTriggerProfileDisplayName(string key)
+    {
+        return WidgetSettings.NormalizeBatteryGuideTriggerProfileKey(key) switch
+        {
+            WidgetSettings.DualSenseBatteryGuideProfileKey => "DualSense",
+            WidgetSettings.SteamControllerBatteryGuideProfileKey => "Steam Controller",
+            _ => key
+        };
+    }
+
+    public void SetBatteryAlertThresholds(string thresholds)
+    {
+        var normalized = WidgetSettings.NormalizeBatteryAlertThresholds(thresholds);
+        if (string.Equals(Settings.BatteryAlertThresholds, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Settings.BatteryAlertThresholds = normalized;
+        SaveSettings();
+        OnPropertyChanged(nameof(BatteryAlertThresholds));
+        OnPropertyChanged(nameof(BatteryAlertThresholdsButtonText));
+    }
+
     public void RememberDs5DongleFirmwareVersion(string? version)
     {
         var normalized = WidgetSettings.NormalizeFirmwareVersionText(version);
@@ -1083,6 +1325,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         Settings.LastDs5DongleFirmwareVersion = normalized;
         SaveSettings();
         OnPropertyChanged(nameof(LastDs5DongleFirmwareVersion));
+    }
+
+    public void MarkReleaseNotesSeen(string? version)
+    {
+        var normalized = WidgetSettings.NormalizeReleaseNotesVersion(version);
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            string.Equals(Settings.LastSeenReleaseNotesVersion, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Settings.LastSeenReleaseNotesVersion = normalized;
+        SaveSettings();
+        OnPropertyChanged(nameof(LastSeenReleaseNotesVersion));
     }
 
     public void SetStatusPanelCollapsed(bool collapsed)
@@ -1126,6 +1382,151 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         SaveSettings();
         OnPropertyChanged(nameof(ThirdPartyBatteryPolicy));
         OnPropertyChanged(nameof(IsAggressiveThirdPartyPolicy));
+    }
+
+    public void SetPowerIdlePauseMinutes(int minutes)
+    {
+        var normalized = WidgetSettings.NormalizePowerIdlePauseMinutes(minutes);
+        if (Settings.PowerIdlePauseMinutes == normalized)
+        {
+            return;
+        }
+
+        Settings.PowerIdlePauseMinutes = normalized;
+        SaveSettings();
+        OnPropertyChanged(nameof(PowerIdlePauseMinutes));
+    }
+
+    public TimeSpan? GetPowerIdlePauseDelay()
+    {
+        return PowerIdlePolicy.ResolveIdleDelay(
+            Settings.PowerIdlePauseMinutes,
+            SystemDisplayIdleTimeout.GetCurrentDisplayOrSleepTimeout());
+    }
+
+    public TimeSpan GetLocalIdleDuration()
+    {
+        return GetLocalIdleDuration(DateTime.UtcNow);
+    }
+
+    public void MarkUserActivity()
+    {
+        MarkActivity();
+    }
+
+    public int GetCurrentWindowsDisplayOffMinutes()
+    {
+        var timeout = SystemDisplayIdleTimeout.GetCurrentTimeout();
+        if (timeout is null || timeout.Value <= TimeSpan.Zero)
+        {
+            return 0;
+        }
+
+        return (int)Math.Round(timeout.Value.TotalMinutes, MidpointRounding.AwayFromZero);
+    }
+
+    public bool SetWindowsDisplayOffMinutes(int minutes)
+    {
+        var normalized = Math.Clamp(minutes, 0, WidgetSettings.MaximumPowerIdlePauseMinutes);
+        var timeout = normalized <= 0 ? (TimeSpan?)null : TimeSpan.FromMinutes(normalized);
+        if (!SystemDisplayIdleTimeout.TrySetCurrentTimeout(timeout))
+        {
+            StatusText = UiLanguageCatalog.GetExtraText(Settings.Language, "WindowsDisplayOffApplyFailed");
+            return false;
+        }
+
+        var label = normalized <= 0
+            ? UiLanguageCatalog.GetExtraText(Settings.Language, "WindowsDisplayOffNever")
+            : FormatPowerDurationLabel(
+                Settings.Language,
+                normalized,
+                "WindowsDisplayOffMinutesFormat",
+                "WindowsDisplayOffOneHour",
+                "WindowsDisplayOffHoursFormat");
+        StatusText = string.Format(
+            CultureInfo.InvariantCulture,
+            UiLanguageCatalog.GetExtraText(Settings.Language, "WindowsDisplayOffAppliedFormat"),
+            label);
+        OnPropertyChanged(nameof(WindowsDisplayOffOptions));
+        return true;
+    }
+
+    private static IReadOnlyList<PowerIdlePauseOption> BuildPowerIdlePauseOptions(string? language)
+    {
+        var autoLabel = UiLanguageCatalog.GetExtraText(language, "PowerIdlePauseAuto");
+        var offLabel = UiLanguageCatalog.GetExtraText(language, "PowerIdlePauseOff");
+        var standardMinutes = new[] { 1, 5, 10, 15, 30, 45, 60, 120, 180, 240, 300 };
+        return
+        [
+            new(WidgetSettings.AutoPowerIdlePauseMinutes, autoLabel),
+            new(0, offLabel),
+            .. standardMinutes.Select(minutes => new PowerIdlePauseOption(
+                minutes,
+                FormatPowerDurationLabel(
+                    language,
+                    minutes,
+                    "PowerIdlePauseMinutesFormat",
+                    "PowerIdlePauseOneHour",
+                    "PowerIdlePauseHoursFormat")))
+        ];
+    }
+
+    private static IReadOnlyList<WindowsDisplayOffOption> BuildWindowsDisplayOffOptions(string? language, int currentMinutes)
+    {
+        var standardMinutes = new[] { 1, 5, 10, 15, 30, 45, 60, 120, 180, 240, 300 };
+        var options = standardMinutes
+            .Select(minutes => new WindowsDisplayOffOption(
+                minutes,
+                FormatPowerDurationLabel(
+                    language,
+                    minutes,
+                    "WindowsDisplayOffMinutesFormat",
+                    "WindowsDisplayOffOneHour",
+                    "WindowsDisplayOffHoursFormat")))
+            .ToList();
+        if (currentMinutes > 0 && !standardMinutes.Contains(currentMinutes))
+        {
+            options.Add(new WindowsDisplayOffOption(
+                currentMinutes,
+                FormatPowerDurationLabel(
+                    language,
+                    currentMinutes,
+                    "WindowsDisplayOffMinutesFormat",
+                    "WindowsDisplayOffOneHour",
+                    "WindowsDisplayOffHoursFormat")));
+            options = options.OrderBy(option => option.Minutes).ToList();
+        }
+
+        options.Add(new WindowsDisplayOffOption(
+            0,
+            UiLanguageCatalog.GetExtraText(language, "WindowsDisplayOffNever")));
+        return options;
+    }
+
+    private static string FormatPowerDurationLabel(
+        string? language,
+        int minutes,
+        string minutesFormatKey,
+        string oneHourKey,
+        string hoursFormatKey)
+    {
+        if (minutes == 60)
+        {
+            return UiLanguageCatalog.GetExtraText(language, oneHourKey);
+        }
+
+        if (minutes > 60 && minutes % 60 == 0)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                UiLanguageCatalog.GetExtraText(language, hoursFormatKey),
+                minutes / 60);
+        }
+
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            UiLanguageCatalog.GetExtraText(language, minutesFormatKey),
+            minutes);
     }
 
     public void SetVisualMode(string mode)
@@ -1865,9 +2266,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             LastUiPushAtUtc: uiStamp);
     }
 
-    private void ApplyProbeProgress(string address, ProbeProgress progress)
+    private void ApplyProbeProgress(string address, ProbeProgress progress, bool markUserActivity = true)
     {
-        MarkActivity();
+        MarkProbeActivityIfNeeded(markUserActivity);
 
         var nowUtc = DateTime.UtcNow;
         var isTerminal = progress.Stage is ProbeStage.Completed or ProbeStage.Failed;
@@ -2009,6 +2410,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         return nowUtc - _lastActivityAtUtc >= IdleGracePeriod;
     }
 
+    private bool ShouldPauseBackgroundPollingForPowerIdle()
+    {
+        return PowerIdlePolicy.ShouldPauseBackgroundWork(
+            GetPowerIdlePauseDelay(),
+            SystemIdleMonitor.GetIdleDuration(),
+            GetLocalIdleDuration(),
+            _isAnyProbeRunning,
+            _isRefreshRunning);
+    }
+
     private void UpdatePerformanceSamplingInterval(bool idleMode)
     {
         var target = idleMode ? IdlePerfInterval : ActivePerfInterval;
@@ -2021,6 +2432,30 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void MarkActivity()
     {
         _lastActivityAtUtc = DateTime.UtcNow;
+    }
+
+    private void MarkProbeActivityIfNeeded(bool markUserActivity)
+    {
+        if (ShouldMarkProbeAsUserActivity(markUserActivity))
+        {
+            MarkActivity();
+        }
+    }
+
+    internal static bool ShouldMarkProbeAsUserActivity(bool markUserActivity)
+    {
+        return markUserActivity;
+    }
+
+    internal static bool ShouldStartBackgroundProbe(bool shouldPauseBackgroundPolling)
+    {
+        return !shouldPauseBackgroundPolling;
+    }
+
+    private TimeSpan GetLocalIdleDuration(DateTime nowUtc)
+    {
+        var duration = nowUtc - _lastActivityAtUtc;
+        return duration <= TimeSpan.Zero ? TimeSpan.Zero : duration;
     }
 
     private string? SelectAutoProbeTarget(DateTime nowUtc)
@@ -2067,8 +2502,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void StartAutoProbe(string address)
     {
+        if (!ShouldStartBackgroundProbe(ShouldPauseBackgroundPollingForPowerIdle()))
+        {
+            return;
+        }
+
         RegisterAutoProbeAttempt(address, DateTime.UtcNow);
-        _ = ProbeUnsupportedGamepadAsync(address);
+        _ = ProbeUnsupportedGamepadAsync(address, markUserActivity: false);
     }
 
     private void RegisterAutoProbeAttempt(string address, DateTime nowUtc)
@@ -2178,7 +2618,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            PostToUi(() => _ = ProbeUnsupportedGamepadAsync(normalized));
+            PostToUi(() =>
+            {
+                if (!ShouldStartBackgroundProbe(ShouldPauseBackgroundPollingForPowerIdle()))
+                {
+                    return;
+                }
+
+                _ = ProbeUnsupportedGamepadAsync(normalized, markUserActivity: false);
+            });
         });
     }
 
@@ -2355,6 +2803,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(TextColorCustomize));
         OnPropertyChanged(nameof(TextGuideSoundSelectorTooltip));
         OnPropertyChanged(nameof(TextGuideSoundPreviewTooltip));
+        OnPropertyChanged(nameof(TextPowerIdlePause));
+        OnPropertyChanged(nameof(PowerIdlePauseOptions));
+        OnPropertyChanged(nameof(TextWindowsDisplayOff));
+        OnPropertyChanged(nameof(WindowsDisplayOffOptions));
+        OnPropertyChanged(nameof(TextBatteryGuideTrigger));
+        OnPropertyChanged(nameof(TextBatteryGuideTriggerSelect));
+        OnPropertyChanged(nameof(BatteryGuideTriggerProfileSummary));
+        OnPropertyChanged(nameof(TextBatteryAlertThresholds));
+        OnPropertyChanged(nameof(BatteryAlertThresholdsButtonText));
+        OnPropertyChanged(nameof(TextBatteryAlertThresholdsTooltip));
         OnPropertyChanged(nameof(TextUserFont));
         OnPropertyChanged(nameof(TextLoadCustomFont));
         OnPropertyChanged(nameof(TextResetCustomFont));
@@ -2394,6 +2852,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(TextStatusPanelCollapseTooltip));
         OnPropertyChanged(nameof(TextSettingsTooltip));
         OnPropertyChanged(nameof(TextCloseTooltip));
+        OnPropertyChanged(nameof(TextResizeTooltip));
         OnPropertyChanged(nameof(TextTrayOpenWidget));
         OnPropertyChanged(nameof(TextTrayRefreshNow));
         OnPropertyChanged(nameof(TextTrayExit));
@@ -2504,3 +2963,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         int Confirmations,
         DateTimeOffset FirstObservedAt);
 }
+
+public sealed record PowerIdlePauseOption(int Minutes, string Label);
+
+public sealed record WindowsDisplayOffOption(int Minutes, string Label);

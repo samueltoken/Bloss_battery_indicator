@@ -5,6 +5,8 @@ namespace BluetoothBatteryWidget.Core.Services;
 public sealed class BatteryEvidenceResolver
 {
     private static readonly TimeSpan StabilityWindow = TimeSpan.FromDays(7);
+    private static readonly TimeSpan RecentThirdPartyFallbackWindow = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan StableThirdPartyFallbackWindow = TimeSpan.FromHours(12);
     private const int ConflictThreshold = 35;
     private const int GameInputFixedLowPercent = 10;
     private const int GameInputLowPercentThreshold = 20;
@@ -166,6 +168,12 @@ public sealed class BatteryEvidenceResolver
             return bestWithPercent.Reading;
         }
 
+        var recentThirdPartyFallback = TryResolveRecentThirdPartyFallback(candidates, now);
+        if (recentThirdPartyFallback is not null)
+        {
+            return recentThirdPartyFallback;
+        }
+
         var bestFallback = evaluated.First();
         return bestFallback.Reading with
         {
@@ -179,6 +187,153 @@ public sealed class BatteryEvidenceResolver
                 : bestFallback.Reading.ReasonCode,
             ReliabilityScore = Math.Clamp(bestFallback.Score, 0, 100)
         };
+    }
+
+    private PnpBatteryReading? TryResolveRecentThirdPartyFallback(
+        IReadOnlyList<PnpBatteryReading> candidates,
+        DateTimeOffset now)
+    {
+        if (candidates.Any(candidate =>
+                IsThirdPartyFallbackSource(candidate.SourceKind) &&
+                candidate.BatteryPercent is not null))
+        {
+            return null;
+        }
+
+        var address = candidates
+            .Select(candidate => AddressNormalizer.NormalizeAddress(candidate.Address))
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return null;
+        }
+
+        var recent = SelectThirdPartyFallbackEvidence(
+            _observationStore
+            .GetRecentForAddress(address, now)
+            .Where(IsThirdPartyFallbackEvidence)
+            .OrderBy(item => item.ObservedAt)
+            .ToList(),
+            now);
+        if (recent.Count == 0)
+        {
+            return null;
+        }
+
+        var latest = recent[^1];
+        if (IsGameInputScaledFullSuspect(latest))
+        {
+            return null;
+        }
+
+        var displayName = candidates
+            .Select(candidate => candidate.DisplayName)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? "Controller";
+        var reading = new PnpBatteryReading(
+            InstanceId: $"RECENT_{latest.SourceKind}_{address}",
+            Address: address,
+            DisplayName: displayName,
+            BatteryPercent: latest.DerivedPercent,
+            BatteryConfidence: BatteryConfidence.Estimated,
+            SourceKind: latest.SourceKind,
+            RawMetric: latest.RawMetric,
+            ModelKey: latest.ModelKey,
+            SuggestCalibration: latest.SourceKind == BatterySourceKind.GameInput,
+            ObservedAt: now,
+            IsBatterySuspect: latest.SourceKind == BatterySourceKind.GameInput ||
+                              latest.ReasonCode.Contains("suspect", StringComparison.OrdinalIgnoreCase),
+            ReasonCode: ResolveThirdPartyFallbackReason(latest, now));
+
+        var score = Math.Max(35, CalculateScore(reading) - 10);
+        return ApplyDisplayMetadata(reading, score, reading.ReasonCode);
+    }
+
+    private static List<BatteryEvidence> SelectThirdPartyFallbackEvidence(
+        IReadOnlyList<BatteryEvidence> observations,
+        DateTimeOffset now)
+    {
+        if (observations.Count == 0)
+        {
+            return [];
+        }
+
+        var recent = observations
+            .Where(item => now - item.ObservedAt <= RecentThirdPartyFallbackWindow)
+            .OrderBy(item => item.ObservedAt)
+            .ToList();
+        if (recent.Count > 0)
+        {
+            return recent;
+        }
+
+        var stableWindow = observations
+            .Where(item => now - item.ObservedAt <= StableThirdPartyFallbackWindow)
+            .OrderBy(item => item.ObservedAt)
+            .ToList();
+        if (stableWindow.Count == 0)
+        {
+            return [];
+        }
+
+        var latest = stableWindow[^1];
+        if (IsGameInputScaledFullSuspect(latest))
+        {
+            return [];
+        }
+
+        if (latest.SourceKind is BatterySourceKind.XInput or BatterySourceKind.HidFeature or BatterySourceKind.LearnedHid &&
+            HasStableSameSourceEvidence(latest, stableWindow))
+        {
+            return stableWindow;
+        }
+
+        return [];
+    }
+
+    private static bool HasStableSameSourceEvidence(BatteryEvidence latest, IReadOnlyList<BatteryEvidence> observations)
+    {
+        var sampled = observations
+            .Where(item =>
+                item.SourceKind == latest.SourceKind &&
+                string.Equals(item.ModelKey, latest.ModelKey, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => item.ObservedAt)
+            .TakeLast(3)
+            .Select(item => item.DerivedPercent)
+            .ToList();
+        if (sampled.Count < 2)
+        {
+            return false;
+        }
+
+        return sampled.Max() - sampled.Min() <= 10;
+    }
+
+    private static string ResolveThirdPartyFallbackReason(BatteryEvidence latest, DateTimeOffset now)
+    {
+        var source = latest.SourceKind.ToString().ToLowerInvariant();
+        return now - latest.ObservedAt <= RecentThirdPartyFallbackWindow
+            ? $"recent_{source}_fallback"
+            : $"stable_{source}_fallback";
+    }
+
+    private static bool IsThirdPartyFallbackEvidence(BatteryEvidence evidence)
+    {
+        return IsThirdPartyFallbackSource(evidence.SourceKind);
+    }
+
+    private static bool IsThirdPartyFallbackSource(BatterySourceKind sourceKind)
+    {
+        return sourceKind is BatterySourceKind.GameInput or
+                             BatterySourceKind.XInput or
+                             BatterySourceKind.HidFeature or
+                             BatterySourceKind.LearnedHid;
+    }
+
+    private static bool IsGameInputScaledFullSuspect(BatteryEvidence evidence)
+    {
+        return evidence.SourceKind == BatterySourceKind.GameInput &&
+               evidence.DerivedPercent >= GameInputHighPercentThreshold &&
+               evidence.ReasonCode.Contains("scaled_full_suspect", StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<PnpBatteryReading> ApplySteamTritonDockedFullGroupGuard(List<PnpBatteryReading> candidates)
@@ -280,10 +435,13 @@ public sealed class BatteryEvidenceResolver
                 return new EvaluatedCandidate(reading, blockedScore);
             }
 
-            var confirmed = IsStableEnough(recent);
+            var confirmed = (!reading.IsBatterySuspect || CanConfirmSteamControllerBluetoothGameInput(reading)) &&
+                            IsStableEnough(recent);
             if (confirmed)
             {
                 confidence = BatteryConfidence.Confirmed;
+                suggestCalibration = false;
+                isBatterySuspect = false;
             }
             else
             {
@@ -532,6 +690,13 @@ public sealed class BatteryEvidenceResolver
         return candidate.DisplayName.Contains("Steam Ctrl (BT)", StringComparison.OrdinalIgnoreCase) ||
                (candidate.DisplayName.Contains("Steam Controller", StringComparison.OrdinalIgnoreCase) &&
                 candidate.DisplayName.Contains("(BT)", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool CanConfirmSteamControllerBluetoothGameInput(PnpBatteryReading candidate)
+    {
+        return candidate.SourceKind == BatterySourceKind.GameInput &&
+               candidate.BatteryPercent is >= 0 and < GameInputHighPercentThreshold &&
+               IsSteamControllerBluetoothCandidate(candidate);
     }
 
     private static bool IsSteamControllerBluetoothSource(BatterySourceKind sourceKind)
@@ -845,14 +1010,14 @@ public sealed class BatteryEvidenceResolver
 
         var currentPercent = reading.BatteryPercent.Value;
         if (LooksLikeFixedLowPattern(currentPercent, recent) ||
+            LooksLikeFixedHighPattern(currentPercent, recent) ||
             LooksLikeSevereDrop(currentPercent, recent))
         {
             return GameInputReliability.Block;
         }
 
         if (isMarkedSuspect &&
-            (currentPercent >= GameInputHighPercentThreshold ||
-             LooksLikeFixedHighPattern(currentPercent, recent)))
+            currentPercent >= GameInputHighPercentThreshold)
         {
             return GameInputReliability.Hold;
         }
@@ -956,6 +1121,17 @@ public sealed class BatteryEvidenceResolver
         var rawMin = rawMetrics.Min();
         var rawMax = rawMetrics.Max();
         return rawMax - rawMin <= 1.5d;
+    }
+
+    private static bool HasRepeatedHighEvidence(int currentPercent, IReadOnlyList<BatteryEvidence> recent)
+    {
+        if (currentPercent < GameInputHighPercentThreshold)
+        {
+            return false;
+        }
+
+        // Repeated scaled 100% GameInput samples are still not proof of real HID battery.
+        return false;
     }
 
     private static PnpBatteryReading ApplyDisplayMetadata(PnpBatteryReading reading, int score, string reasonCode)

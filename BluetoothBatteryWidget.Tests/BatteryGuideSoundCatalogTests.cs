@@ -37,10 +37,20 @@ public sealed class BatteryGuideSoundCatalogTests
         {
             var options = BatteryGuideSoundCatalog.GetGuideOptions(tempPath);
             var custom = Assert.Single(options, option => option.Id == WidgetSettings.GuideSoundCustomFile);
+            var koreanCustom = Assert.Single(
+                BatteryGuideSoundCatalog.GetGuideOptions(tempPath, WidgetSettings.KoreanLanguage),
+                option => option.Id == WidgetSettings.GuideSoundCustomFile);
 
             Assert.Equal(tempPath, custom.ExternalPath);
             Assert.Equal("Custom sound", custom.DisplayName);
+            Assert.Equal("사용자 음원", koreanCustom.DisplayName);
             Assert.Equal(custom, BatteryGuideSoundCatalog.ResolveGuideSound(WidgetSettings.GuideSoundCustomFile, tempPath));
+            Assert.Equal(
+                koreanCustom,
+                BatteryGuideSoundCatalog.ResolveGuideSound(
+                    WidgetSettings.GuideSoundCustomFile,
+                    tempPath,
+                    WidgetSettings.KoreanLanguage));
             Assert.Equal(12, BatteryGuideSoundCatalog.LoadBytes(custom).Length);
         }
         finally

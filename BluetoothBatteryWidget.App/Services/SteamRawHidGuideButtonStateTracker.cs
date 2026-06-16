@@ -85,6 +85,23 @@ internal sealed class SteamRawHidGuideButtonStateTracker
             _states[address] = state;
         }
 
+        if (!state.HasSeenNeutralState)
+        {
+            state.LastStateAt = now;
+            state.PendingRelease = null;
+            if (pressed)
+            {
+                state.IsPressed = true;
+                state.SessionStartedAt = null;
+                return SteamRawHidGuideButtonDecision.None;
+            }
+
+            state.HasSeenNeutralState = true;
+            state.IsPressed = false;
+            state.SessionStartedAt = null;
+            return SteamRawHidGuideButtonDecision.None;
+        }
+
         if (pressed)
         {
             if (!state.IsPressed)
@@ -142,9 +159,18 @@ internal sealed class SteamRawHidGuideButtonStateTracker
     {
         if (string.IsNullOrWhiteSpace(address) ||
             !_states.TryGetValue(address, out var state) ||
-            !state.IsPressed ||
-            state.SessionStartedAt is not { } sessionStartedAt)
+            !state.IsPressed)
         {
+            return SteamRawHidGuideButtonDecision.None;
+        }
+
+        if (state.SessionStartedAt is not { } sessionStartedAt)
+        {
+            state.HasSeenNeutralState = true;
+            state.IsPressed = false;
+            state.SessionStartedAt = null;
+            state.PendingRelease = null;
+            state.LastStateAt = now;
             return SteamRawHidGuideButtonDecision.None;
         }
 
@@ -279,11 +305,14 @@ internal sealed class SteamRawHidGuideButtonStateTracker
             return SteamRawHidGuideButtonActivity.None;
         }
 
-        if (state.IsPressed && state.SessionStartedAt is { } sessionStartedAt)
+        if (state.IsPressed)
         {
+            var pressedDuration = state.SessionStartedAt is { } sessionStartedAt
+                ? now - sessionStartedAt
+                : TimeSpan.Zero;
             return new SteamRawHidGuideButtonActivity(
                 IsPressed: true,
-                PressedDuration: now - sessionStartedAt,
+                PressedDuration: pressedDuration,
                 LastStateAge: state.LastStateAt.HasValue ? now - state.LastStateAt.Value : TimeSpan.MaxValue,
                 HasPendingRelease: false,
                 PendingPressDuration: TimeSpan.Zero,
@@ -318,6 +347,7 @@ internal sealed class SteamRawHidGuideButtonStateTracker
         state.IsPressed = false;
         state.SessionStartedAt = null;
         state.PendingRelease = null;
+        state.HasSeenNeutralState = true;
         state.LastStateAt = now;
         return true;
     }
@@ -351,6 +381,8 @@ internal sealed class SteamRawHidGuideButtonStateTracker
     private sealed class State
     {
         public bool IsPressed { get; set; }
+
+        public bool HasSeenNeutralState { get; set; }
 
         public DateTimeOffset? SessionStartedAt { get; set; }
 

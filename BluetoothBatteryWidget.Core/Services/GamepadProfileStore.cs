@@ -13,6 +13,8 @@ public sealed class GamepadProfileStore
 
     private const int DecodeMismatchQuarantineThreshold = 2;
     private const int RecoverySuccessThreshold = 2;
+    public const string RepeatedExactHidValidationKind = "repeated_exact_hid";
+    public const int RepeatedExactHidValidationMinCount = 3;
 
     private readonly object _sync = new();
     private readonly string _storePath;
@@ -151,6 +153,7 @@ public sealed class GamepadProfileStore
 
             var afterState = beforeState;
             if (beforeState == GamepadProfileState.Quarantined &&
+                !ShouldQuarantineByPolicy(normalized) &&
                 nextHealth.ConsecutiveSuccessCount >= RecoverySuccessThreshold)
             {
                 _cachedQuarantine!.Remove(key);
@@ -282,19 +285,6 @@ public sealed class GamepadProfileStore
                 return true;
             }
 
-            var fallbackFromQuarantine = _cachedQuarantine!.Values
-                .Where(value =>
-                    string.Equals(value.IdentityKey, normalizedIdentity, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(value.VendorId, normalizedVendor, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(value.ProductId, normalizedProduct, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(value => value.Score)
-                .FirstOrDefault();
-            if (fallbackFromQuarantine is not null)
-            {
-                profile = fallbackFromQuarantine with { State = GamepadProfileState.Quarantined };
-                return true;
-            }
-
             profile = null!;
             return false;
         }
@@ -328,6 +318,8 @@ public sealed class GamepadProfileStore
             ProductId = product,
             Decoder = decoder,
             IdentityKey = NormalizeIdentityKey(profile.IdentityKey),
+            ValidationKind = NormalizeValidationKind(profile.ValidationKind),
+            ValidationCount = Math.Max(0, profile.ValidationCount),
             ReportLength = Math.Max(1, profile.ReportLength),
             Offset = Math.Max(0, profile.Offset),
             Score = Math.Max(0, profile.Score),
@@ -388,6 +380,16 @@ public sealed class GamepadProfileStore
         return identityKey.Trim().ToUpperInvariant();
     }
 
+    private static string NormalizeValidationKind(string? validationKind)
+    {
+        if (string.IsNullOrWhiteSpace(validationKind))
+        {
+            return string.Empty;
+        }
+
+        return validationKind.Trim().ToLowerInvariant();
+    }
+
     private GamepadProfileState ResolveProfileStateByKey(string key)
     {
         if (_cachedProfiles!.ContainsKey(key))
@@ -423,6 +425,7 @@ public sealed class GamepadProfileStore
                          ?? new Dictionary<string, GamepadBatteryProfile>(StringComparer.OrdinalIgnoreCase);
 
             _cachedProfiles = new Dictionary<string, GamepadBatteryProfile>(StringComparer.OrdinalIgnoreCase);
+            var movedToQuarantine = false;
             foreach (var entry in parsed)
             {
                 var normalized = Normalize(entry.Value);
@@ -431,10 +434,16 @@ public sealed class GamepadProfileStore
                 {
                     EnsureQuarantineLoaded();
                     _cachedQuarantine![key] = normalized with { State = GamepadProfileState.Quarantined };
+                    movedToQuarantine = true;
                     continue;
                 }
 
                 _cachedProfiles[key] = normalized with { State = GamepadProfileState.Active };
+            }
+
+            if (movedToQuarantine)
+            {
+                Persist();
             }
 
             PersistQuarantine();
@@ -529,7 +538,7 @@ public sealed class GamepadProfileStore
         var directory = Path.GetDirectoryName(_storePath)!;
         Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(_cachedProfiles, JsonOptions);
-        File.WriteAllText(_storePath, json);
+        AtomicFileWriter.WriteAllText(_storePath, json);
     }
 
     private void PersistQuarantine()
@@ -537,7 +546,7 @@ public sealed class GamepadProfileStore
         var directory = Path.GetDirectoryName(_quarantinePath)!;
         Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(_cachedQuarantine, JsonOptions);
-        File.WriteAllText(_quarantinePath, json);
+        AtomicFileWriter.WriteAllText(_quarantinePath, json);
     }
 
     private void PersistHealth()
@@ -545,7 +554,7 @@ public sealed class GamepadProfileStore
         var directory = Path.GetDirectoryName(_healthPath)!;
         Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(_cachedHealth, JsonOptions);
-        File.WriteAllText(_healthPath, json);
+        AtomicFileWriter.WriteAllText(_healthPath, json);
     }
 
     private void QuarantineInternal(GamepadBatteryProfile profile)
@@ -566,6 +575,14 @@ public sealed class GamepadProfileStore
 
     private static bool ShouldQuarantineByPolicy(GamepadBatteryProfile profile)
     {
+        if (string.Equals(
+                profile.Decoder,
+                GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         if (!string.Equals(profile.VendorId, "045E", StringComparison.OrdinalIgnoreCase))
         {
             return false;
@@ -580,6 +597,20 @@ public sealed class GamepadProfileStore
             return false;
         }
 
-        return string.IsNullOrWhiteSpace(profile.IdentityKey);
+        if (string.IsNullOrWhiteSpace(profile.IdentityKey))
+        {
+            return true;
+        }
+
+        return !HasRepeatedExactHidValidation(profile);
+    }
+
+    private static bool HasRepeatedExactHidValidation(GamepadBatteryProfile profile)
+    {
+        return string.Equals(
+                   profile.ValidationKind,
+                   RepeatedExactHidValidationKind,
+                   StringComparison.OrdinalIgnoreCase) &&
+               profile.ValidationCount >= RepeatedExactHidValidationMinCount;
     }
 }

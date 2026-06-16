@@ -144,7 +144,72 @@ public sealed class GamepadProfileStoreTests
     }
 
     [Fact]
-    public void TryGetBestForIdentity_DoesNotQuarantineXboxGenericProfile_WhenIdentityIsPresent()
+    public void Upsert_QuarantinesXboxBluetoothFlagsProfile_BecauseItIsCoarse()
+    {
+        var path = CreateTempFilePath();
+        var quarantinePath = Path.Combine(Path.GetDirectoryName(path)!, "gamepad-profiles-quarantine.json");
+        try
+        {
+            var store = new GamepadProfileStore(path, quarantinePath);
+            store.Upsert(new GamepadBatteryProfile(
+                "045E",
+                "02E0",
+                0x04,
+                16,
+                1,
+                GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags,
+                60,
+                BatteryConfidence.Estimated,
+                IdentityKey: "ID=VID_045E|PID_02E0|FP_TEST"));
+
+            Assert.Empty(store.LoadAll());
+            var quarantined = store.LoadQuarantined();
+            Assert.Single(quarantined);
+            Assert.Equal(GamepadProfileState.Quarantined, quarantined[0].State);
+        }
+        finally
+        {
+            SafeDelete(path);
+        }
+    }
+
+    [Fact]
+    public void RegisterRevalidationSuccess_DoesNotReactivateCoarseXboxFlagsProfile()
+    {
+        var path = CreateTempFilePath();
+        var quarantinePath = Path.Combine(Path.GetDirectoryName(path)!, "gamepad-profiles-quarantine.json");
+        var healthPath = Path.Combine(Path.GetDirectoryName(path)!, "gamepad-profile-health.json");
+        try
+        {
+            var profile = new GamepadBatteryProfile(
+                "045E",
+                "02E0",
+                0x04,
+                16,
+                1,
+                GamepadProbeCandidateEvaluator.DecoderXboxBluetoothFlags,
+                60,
+                BatteryConfidence.Estimated,
+                State: GamepadProfileState.Quarantined,
+                IdentityKey: "ID=VID_045E|PID_02E0|FP_TEST");
+            var store = new GamepadProfileStore(path, quarantinePath, healthPath);
+            store.Quarantine(profile);
+
+            store.RegisterRevalidationSuccess(profile, DateTimeOffset.UtcNow);
+            var transition = store.RegisterRevalidationSuccess(profile, DateTimeOffset.UtcNow.AddSeconds(1));
+
+            Assert.Equal(GamepadProfileState.Quarantined, transition.After);
+            Assert.Empty(store.LoadAll());
+            Assert.Single(store.LoadQuarantined());
+        }
+        finally
+        {
+            SafeDelete(path);
+        }
+    }
+
+    [Fact]
+    public void TryGetBestForIdentity_QuarantinesXboxGenericProfile_WhenRepeatedProofIsMissing()
     {
         var path = CreateTempFilePath();
         var quarantinePath = Path.Combine(Path.GetDirectoryName(path)!, "gamepad-profiles-quarantine.json");
@@ -168,8 +233,45 @@ public sealed class GamepadProfileStoreTests
                 "02E0",
                 out var profile);
 
+            Assert.False(found);
+            Assert.Single(store.LoadQuarantined());
+        }
+        finally
+        {
+            SafeDelete(path);
+        }
+    }
+
+    [Fact]
+    public void TryGetBestForIdentity_KeepsXboxGenericProfile_WhenRepeatedProofIsPresent()
+    {
+        var path = CreateTempFilePath();
+        var quarantinePath = Path.Combine(Path.GetDirectoryName(path)!, "gamepad-profiles-quarantine.json");
+        try
+        {
+            var store = new GamepadProfileStore(path, quarantinePath);
+            store.Upsert(new GamepadBatteryProfile(
+                "045E",
+                "02E0",
+                0x11,
+                16,
+                13,
+                GamepadProbeCandidateEvaluator.DecoderPercent100,
+                82,
+                BatteryConfidence.Estimated,
+                IdentityKey: "ID=VID_045E|PID_02E0|FP_TEST",
+                ValidationKind: GamepadProfileStore.RepeatedExactHidValidationKind,
+                ValidationCount: GamepadProfileStore.RepeatedExactHidValidationMinCount));
+
+            var found = store.TryGetBestForIdentity(
+                "ID=VID_045E|PID_02E0|FP_TEST",
+                "045E",
+                "02E0",
+                out var profile);
+
             Assert.True(found);
             Assert.Equal(GamepadProfileState.Active, profile.State);
+            Assert.Equal(GamepadProfileStore.RepeatedExactHidValidationKind, profile.ValidationKind);
             Assert.Empty(store.LoadQuarantined());
         }
         finally

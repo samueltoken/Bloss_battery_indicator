@@ -3,6 +3,7 @@ using BluetoothBatteryWidget.Core.Models;
 using BluetoothBatteryWidget.Core.Services;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 
 namespace BluetoothBatteryWidget.App.Services;
@@ -20,10 +21,16 @@ public sealed class CompositeBatteryLevelProvider : IBatteryLevelProvider
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Bloss",
         "steam-triton-traces.jsonl");
+    private static readonly string ThirdPartyGamepadTraceLogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Bloss",
+        "third-party-gamepad-battery-traces.jsonl");
     private static readonly string ProcessPath = Environment.ProcessPath ?? string.Empty;
     private static readonly string BuildStamp = ResolveBuildStamp();
     private static readonly object SteamTritonTraceStateSync = new();
+    private static readonly object ThirdPartyGamepadTraceStateSync = new();
     private static string? LastSteamTritonTraceFingerprint;
+    private static string? LastThirdPartyGamepadTraceFingerprint;
     private const string SteamTritonDockedFullPendingReason = "steam_triton_docked_full_pending";
     private const string SteamTritonRecentNonFullHoldReason = "steam_triton_recent_nonfull_hold";
     private const string SteamTritonVoltageEstimatedChargingReason = "steam_triton_voltage_estimated_charging";
@@ -169,6 +176,7 @@ public sealed class CompositeBatteryLevelProvider : IBatteryLevelProvider
         allCandidates.AddRange(gameInputReadings);
 
         var resolved = _evidenceResolver.ResolveAndRecord(allCandidates, DateTimeOffset.Now);
+        AppendThirdPartyGamepadTraceIfUseful(allCandidates, resolved);
         AppendSteamTritonTraceIfUseful(allCandidates, resolved);
         if (resolved.Count > 0)
         {
@@ -381,6 +389,126 @@ public sealed class CompositeBatteryLevelProvider : IBatteryLevelProvider
         }
     }
 
+    private static void AppendThirdPartyGamepadTraceIfUseful(
+        IReadOnlyList<PnpBatteryReading> rawCandidates,
+        IReadOnlyList<PnpBatteryReading> resolvedReadings)
+    {
+        var relevantAddresses = GetThirdPartyGamepadRelevantAddresses(rawCandidates, resolvedReadings);
+        if (relevantAddresses.Count == 0)
+        {
+            return;
+        }
+
+        var fingerprint = BuildGenericTraceFingerprint(rawCandidates, resolvedReadings, relevantAddresses);
+        lock (ThirdPartyGamepadTraceStateSync)
+        {
+            if (string.Equals(LastThirdPartyGamepadTraceFingerprint ?? string.Empty, fingerprint, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            LastThirdPartyGamepadTraceFingerprint = fingerprint;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(ThirdPartyGamepadTraceLogPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var payload = new
+            {
+                ts = DateTimeOffset.Now,
+                processPath = ProcessPath,
+                buildStamp = BuildStamp,
+                raw = rawCandidates
+                    .Where(reading => relevantAddresses.Contains(AddressNormalizer.NormalizeAddress(reading.Address)))
+                    .Select(ToTraceShape)
+                    .ToList(),
+                resolved = resolvedReadings
+                    .Where(reading => relevantAddresses.Contains(AddressNormalizer.NormalizeAddress(reading.Address)))
+                    .Select(ToTraceShape)
+                    .ToList()
+            };
+
+            File.AppendAllText(
+                ThirdPartyGamepadTraceLogPath,
+                JsonSerializer.Serialize(payload) + Environment.NewLine);
+        }
+        catch
+        {
+            // Ignore trace logging failures.
+        }
+    }
+
+    private static HashSet<string> GetThirdPartyGamepadRelevantAddresses(
+        IReadOnlyList<PnpBatteryReading> rawCandidates,
+        IReadOnlyList<PnpBatteryReading> resolvedReadings)
+    {
+        var thirdPartyAddresses = rawCandidates
+            .Concat(resolvedReadings)
+            .Where(IsThirdPartyGamepadTraceReading)
+            .Select(reading => AddressNormalizer.NormalizeAddress(reading.Address))
+            .Where(address => !string.IsNullOrWhiteSpace(address))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (thirdPartyAddresses.Count == 0)
+        {
+            return thirdPartyAddresses;
+        }
+
+        foreach (var reading in rawCandidates.Concat(resolvedReadings))
+        {
+            var address = AddressNormalizer.NormalizeAddress(reading.Address);
+            if (thirdPartyAddresses.Contains(address))
+            {
+                thirdPartyAddresses.Add(address);
+            }
+        }
+
+        return thirdPartyAddresses;
+    }
+
+    private static bool IsThirdPartyGamepadTraceReading(PnpBatteryReading reading)
+    {
+        if (IsSteamTritonTraceReading(reading) ||
+            reading.SourceKind == BatterySourceKind.SonyHid)
+        {
+            return false;
+        }
+
+        return reading.SourceKind is BatterySourceKind.GameInput or
+                                     BatterySourceKind.XInput or
+                                     BatterySourceKind.HidFeature or
+                                     BatterySourceKind.LearnedHid ||
+               reading.DisplayName.Contains("controller", StringComparison.OrdinalIgnoreCase) ||
+               reading.DisplayName.Contains("gamepad", StringComparison.OrdinalIgnoreCase) ||
+               reading.DisplayName.Contains("gulikit", StringComparison.OrdinalIgnoreCase) ||
+               reading.DisplayName.Contains("gamesir", StringComparison.OrdinalIgnoreCase) ||
+               reading.DisplayName.Contains("flydigi", StringComparison.OrdinalIgnoreCase) ||
+               reading.DisplayName.Contains("easysmx", StringComparison.OrdinalIgnoreCase) ||
+               reading.DisplayName.Contains("8bit", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildGenericTraceFingerprint(
+        IReadOnlyList<PnpBatteryReading> rawCandidates,
+        IReadOnlyList<PnpBatteryReading> resolvedReadings,
+        IReadOnlySet<string> relevantAddresses)
+    {
+        var rows = rawCandidates
+            .Where(reading => relevantAddresses.Contains(AddressNormalizer.NormalizeAddress(reading.Address)))
+            .Select(reading => ToTraceFingerprintRow("raw", reading))
+            .Concat(resolvedReadings
+                .Where(reading => relevantAddresses.Contains(AddressNormalizer.NormalizeAddress(reading.Address)))
+                .Select(reading => ToTraceFingerprintRow("resolved", reading)))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        return string.Join(Environment.NewLine, rows);
+    }
+
     private static HashSet<string> GetSteamTritonRelevantAddresses(
         IReadOnlyList<PnpBatteryReading> rawCandidates,
         IReadOnlyList<PnpBatteryReading> resolvedReadings)
@@ -466,6 +594,7 @@ public sealed class CompositeBatteryLevelProvider : IBatteryLevelProvider
             stage,
             AddressNormalizer.NormalizeAddress(reading.Address),
             reading.SourceKind.ToString(),
+            NormalizeTraceText(reading.DisplayName),
             reading.BatteryPercent?.ToString(CultureInfo.InvariantCulture) ?? "null",
             reading.RawMetric?.ToString("R", CultureInfo.InvariantCulture) ?? "null",
             reading.IsCharging.ToString(CultureInfo.InvariantCulture),
@@ -490,6 +619,7 @@ public sealed class CompositeBatteryLevelProvider : IBatteryLevelProvider
         return new
         {
             address = AddressNormalizer.NormalizeAddress(reading.Address),
+            displayName = reading.DisplayName,
             sourceKind = reading.SourceKind.ToString(),
             percent = reading.BatteryPercent,
             rawMetric = reading.RawMetric,
@@ -500,6 +630,7 @@ public sealed class CompositeBatteryLevelProvider : IBatteryLevelProvider
             reasonCode = reading.ReasonCode,
             activeSource = reading.ActiveSource,
             pathType = reading.PathType,
+            displayState = reading.DisplayState.ToString(),
             modelKey = reading.ModelKey
         };
     }
@@ -508,10 +639,18 @@ public sealed class CompositeBatteryLevelProvider : IBatteryLevelProvider
     {
         try
         {
-            var assemblyVersion = typeof(CompositeBatteryLevelProvider).Assembly.GetName().Version?.ToString();
-            if (!string.IsNullOrWhiteSpace(assemblyVersion))
+            var assembly = typeof(CompositeBatteryLevelProvider).Assembly;
+            var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(informational))
             {
-                return assemblyVersion;
+                var plusIndex = informational.IndexOf('+');
+                return plusIndex > 0 ? informational[..plusIndex] : informational;
+            }
+
+            var assemblyVersion = assembly.GetName().Version;
+            if (assemblyVersion is not null)
+            {
+                return $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{Math.Max(0, assemblyVersion.Build)}";
             }
         }
         catch

@@ -1,16 +1,40 @@
-param(
+﻿param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    [string]$AppVersion = "1.0.6"
+    [string]$AppVersion
 )
 
 $ErrorActionPreference = "Stop"
 
-$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$projectRoot = Split-Path -Parent $PSScriptRoot
 $appProject = Join-Path $projectRoot "BluetoothBatteryWidget.App\BluetoothBatteryWidget.App.csproj"
+$centralPropsPath = Join-Path $projectRoot "Directory.Build.props"
 $publishDir = Join-Path $projectRoot "artifacts\staging\installer-publish"
 $outputDir = Join-Path $projectRoot "release\installer"
-$issPath = Join-Path $projectRoot "build\installer\BluetoothBatteryWidget.iss"
+$issPath = Join-Path $projectRoot "installer\BluetoothBatteryWidget.iss"
+
+function Get-CentralAppVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PropsPath
+    )
+
+    if (-not (Test-Path -LiteralPath $PropsPath)) {
+        throw "Central version file not found: $PropsPath"
+    }
+
+    [xml]$props = Get-Content -LiteralPath $PropsPath -Raw
+    $version = $props.Project.PropertyGroup.Version | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw "Version was not found in $PropsPath"
+    }
+
+    return $version.Trim()
+}
+
+if ([string]::IsNullOrWhiteSpace($AppVersion)) {
+    $AppVersion = Get-CentralAppVersion -PropsPath $centralPropsPath
+}
 
 if (Test-Path $publishDir) {
     Remove-Item $publishDir -Recurse -Force
@@ -26,6 +50,13 @@ dotnet publish $appProject `
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
 $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+if (-not $iscc) {
+    $fallback = Join-Path $projectRoot ".tools\Inno Setup 6\ISCC.exe"
+    if (Test-Path $fallback) {
+        $iscc = $fallback
+    }
+}
+
 if (-not $iscc) {
     $fallback = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
     if (Test-Path $fallback) {

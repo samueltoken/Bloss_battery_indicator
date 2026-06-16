@@ -1,5 +1,6 @@
 using BluetoothBatteryWidget.App.Services;
 using BluetoothBatteryWidget.Core.Models;
+using BluetoothBatteryWidget.Core.Services;
 
 namespace BluetoothBatteryWidget.Tests;
 
@@ -61,6 +62,50 @@ public sealed class ProbeLearningDecisionTests
         Assert.True(persisted.Accepted);
         Assert.True(persisted.PersistProfile);
         Assert.False(persisted.IsPending);
+    }
+
+    [Fact]
+    public void ResolveLearningDecision_ConfirmedCandidateCanRequireRepeatedProof()
+    {
+        var pending = GamepadProbeService.ResolveLearningDecision(
+            bestScore: 82,
+            votes: 2,
+            requiredVotes: 3,
+            requireVotesForConfirmed: true);
+        var persisted = GamepadProbeService.ResolveLearningDecision(
+            bestScore: 82,
+            votes: 3,
+            requiredVotes: 3,
+            requireVotesForConfirmed: true);
+
+        Assert.True(pending.Accepted);
+        Assert.False(pending.PersistProfile);
+        Assert.True(pending.IsPending);
+
+        Assert.True(persisted.Accepted);
+        Assert.True(persisted.PersistProfile);
+        Assert.False(persisted.IsPending);
+        Assert.Equal(BatteryConfidence.Confirmed, persisted.Confidence);
+    }
+
+    [Fact]
+    public void HasRepeatedExactCandidateMovement_RequiresPercentRangeChange()
+    {
+        var flat = new PendingGamepadCandidate(
+            "VID_045E|PID_0B13",
+            "IDK_ID=VID_045E|RID_04|OFF_13|DEC_PERCENT100",
+            89,
+            3,
+            DateTimeOffset.Now,
+            DateTimeOffset.Now,
+            MinPercent: 9,
+            MaxPercent: 9);
+        var moved = flat with { MaxPercent = 12 };
+        var tooFewVotes = moved with { VoteCount = 2 };
+
+        Assert.False(GamepadProbeService.HasRepeatedExactCandidateMovement(flat));
+        Assert.False(GamepadProbeService.HasRepeatedExactCandidateMovement(tooFewVotes));
+        Assert.True(GamepadProbeService.HasRepeatedExactCandidateMovement(moved));
     }
 
     [Fact]

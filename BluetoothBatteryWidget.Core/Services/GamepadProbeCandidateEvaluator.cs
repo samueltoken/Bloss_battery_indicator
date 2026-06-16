@@ -29,7 +29,7 @@ public static class GamepadProbeCandidateEvaluator
             .Select(group => group
                 .OrderByDescending(candidate => candidate.Score)
                 .ThenByDescending(candidate => candidate.ReportLength)
-                .ThenBy(candidate => candidate.ReportId)
+                .ThenBy(GetCandidateReportPriority)
                 .First())
             .ToList();
 
@@ -40,11 +40,11 @@ public static class GamepadProbeCandidateEvaluator
                 group => group.Select(item => item.ReportId).Distinct().Count());
 
         var ordered = uniqueCandidates
-            .OrderByDescending(candidate => string.Equals(candidate.Decoder, DecoderXboxBluetoothFlags, StringComparison.Ordinal))
-            .ThenByDescending(candidate => candidate.Score)
+            .OrderByDescending(candidate => candidate.Score)
             .ThenByDescending(candidate => signatureFrequency.GetValueOrDefault((candidate.Offset, candidate.Decoder, candidate.BatteryPercent), 0))
+            .ThenBy(candidate => string.Equals(candidate.Decoder, DecoderXboxBluetoothFlags, StringComparison.Ordinal) ? 1 : 0)
             .ThenBy(candidate => candidate.Offset <= 1 ? 1 : 0)
-            .ThenBy(candidate => GetReportIdPriority(candidate.ReportId))
+            .ThenBy(GetCandidateReportPriority)
             .ThenByDescending(candidate => candidate.ReportLength)
             .ThenBy(candidate => candidate.Offset)
             .ThenBy(candidate => candidate.Decoder, StringComparer.Ordinal)
@@ -54,12 +54,44 @@ public static class GamepadProbeCandidateEvaluator
         return new GamepadCandidateSelection(ordered[0], IsTie: false, CandidateCount: uniqueCandidates.Count);
     }
 
+    public static IReadOnlyList<GamepadBatteryCandidate> EnumerateCandidates(IReadOnlyDictionary<byte, byte[]> reportsById)
+    {
+        if (reportsById.Count == 0)
+        {
+            return [];
+        }
+
+        return BuildCandidates(reportsById)
+            .GroupBy(candidate => new
+            {
+                candidate.ReportId,
+                candidate.Offset,
+                candidate.Decoder,
+                candidate.BatteryPercent
+            })
+            .Select(group => group
+                .OrderByDescending(candidate => candidate.Score)
+                .ThenByDescending(candidate => candidate.ReportLength)
+                .First())
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenBy(candidate => string.Equals(candidate.Decoder, DecoderXboxBluetoothFlags, StringComparison.Ordinal) ? 1 : 0)
+            .ThenBy(candidate => candidate.Offset <= 1 ? 1 : 0)
+            .ThenBy(GetCandidateReportPriority)
+            .ThenByDescending(candidate => candidate.ReportLength)
+            .ThenBy(candidate => candidate.Offset)
+            .ThenBy(candidate => candidate.Decoder, StringComparer.Ordinal)
+            .ThenByDescending(candidate => candidate.BatteryPercent)
+            .ToList();
+    }
+
     public static GamepadBatteryProfile ToProfile(
         string vendorId,
         string productId,
         GamepadBatteryCandidate candidate,
         string identityKey = "",
-        BatteryConfidence confidence = BatteryConfidence.Confirmed)
+        BatteryConfidence confidence = BatteryConfidence.Confirmed,
+        string validationKind = "",
+        int validationCount = 0)
     {
         return new GamepadBatteryProfile(
             VendorId: vendorId.ToUpperInvariant(),
@@ -70,7 +102,9 @@ public static class GamepadProbeCandidateEvaluator
             Decoder: candidate.Decoder,
             Score: candidate.Score,
             Confidence: confidence,
-            IdentityKey: identityKey);
+            IdentityKey: identityKey,
+            ValidationKind: validationKind,
+            ValidationCount: validationCount);
     }
 
     private static List<GamepadBatteryCandidate> BuildCandidates(IReadOnlyDictionary<byte, byte[]> reportsById)
@@ -86,16 +120,22 @@ public static class GamepadProbeCandidateEvaluator
                 continue;
             }
 
-            if (XboxBluetoothBatteryDecoder.TryDecode(reportId, report, out var xboxPercent, out var onUsb))
+            var hasXboxFlags = XboxBluetoothBatteryDecoder.TryDecode(reportId, report, out var xboxPercent, out var onUsb);
+            if (hasXboxFlags)
             {
-                // Favor dedicated Xbox Bluetooth flags over generic byte-decoder guesses.
-                rawCandidates.Add((reportId, report.Length, 1, DecoderXboxBluetoothFlags, xboxPercent, onUsb ? 80 : 94, onUsb));
+                rawCandidates.Add((reportId, report.Length, 1, DecoderXboxBluetoothFlags, xboxPercent, onUsb ? 58 : 64, onUsb));
             }
 
             for (var offset = 0; offset < report.Length; offset++)
             {
                 var raw = report[offset];
                 if (raw is 0x00 or 0xFF)
+                {
+                    continue;
+                }
+
+                if ((offset == 0 && raw == reportId) ||
+                    (hasXboxFlags && reportId == 0x04 && offset == 1))
                 {
                     continue;
                 }
@@ -178,6 +218,10 @@ public static class GamepadProbeCandidateEvaluator
             {
                 score += candidate.OnUsb ? -6 : 6;
             }
+            else if (IsGenericXboxStatusReportCandidate(candidate.ReportId))
+            {
+                score -= 6;
+            }
 
             result.Add(new GamepadBatteryCandidate(
                 ReportId: candidate.ReportId,
@@ -189,6 +233,22 @@ public static class GamepadProbeCandidateEvaluator
         }
 
         return result;
+    }
+
+    private static int GetCandidateReportPriority(GamepadBatteryCandidate candidate)
+    {
+        if (IsGenericXboxStatusReportCandidate(candidate.ReportId) &&
+            !string.Equals(candidate.Decoder, DecoderXboxBluetoothFlags, StringComparison.Ordinal))
+        {
+            return ReportIdPreference.Length + 0x100 + candidate.ReportId;
+        }
+
+        return GetReportIdPriority(candidate.ReportId);
+    }
+
+    private static bool IsGenericXboxStatusReportCandidate(byte reportId)
+    {
+        return reportId == 0x04;
     }
 
     private static int GetReportIdPriority(byte reportId)

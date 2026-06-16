@@ -1,0 +1,339 @@
+<Window x:Class="BluetoothBatteryWidget.App.ReleaseNotesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="760"
+        Height="520"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Title="Bloss 업데이트 안내">
+    <Window.Resources>
+        <Style x:Key="ReleaseNoteBulletTextStyle"
+               TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#F0FFFFFF" />
+        </Style>
+
+        <Style x:Key="ReleaseNoteConfirmButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#E4261B1B" />
+            <Setter Property="BorderBrush" Value="#FFFF4A4A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonChrome"
+                                CornerRadius="13"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="12,0">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="Background" Value="#F2352727" />
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#FFFF6868" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="Background" Value="#C81E1414" />
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#FFE43D3D" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ReleaseNoteCloseButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#FFFFFFFF" />
+            <Setter Property="Background" Value="#66181818" />
+            <Setter Property="BorderBrush" Value="#55FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonChrome"
+                                CornerRadius="10"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="Background" Value="#8A2A2020" />
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#88FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="Background" Value="#B7352424" />
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#CCFFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border CornerRadius="26"
+            BorderThickness="1"
+            BorderBrush="#A0FF4444"
+            Background="#F7060608"
+            SnapsToDevicePixels="True">
+        <Grid x:Name="RoundedContentRoot"
+              ClipToBounds="True">
+            <Grid x:Name="AbstractSignalBackdrop"
+                  IsHitTestVisible="False"
+                  Opacity="0.86"
+                  RenderTransformOrigin="0.5,0.5">
+                <Grid.CacheMode>
+                    <BitmapCache RenderAtScale="1" />
+                </Grid.CacheMode>
+                <Grid.RenderTransform>
+                    <ScaleTransform x:Name="HeroBackdropScale"
+                                    ScaleX="1"
+                                    ScaleY="1" />
+                </Grid.RenderTransform>
+
+                <Ellipse Width="470"
+                         Height="470"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         Stroke="#3A4939FF"
+                         StrokeThickness="54"
+                         Opacity="0.42">
+                    <Ellipse.Effect>
+                        <BlurEffect Radius="2.4" />
+                    </Ellipse.Effect>
+                </Ellipse>
+
+                <Ellipse Width="528"
+                         Height="528"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         Stroke="#343C32FF"
+                         StrokeThickness="1.4"
+                         StrokeDashArray="2 8"
+                         Opacity="0.75" />
+
+                <Ellipse Width="334"
+                         Height="334"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         Fill="#11000000"
+                         Stroke="#203F33FF"
+                         StrokeThickness="1.1"
+                         Opacity="0.72" />
+
+                <Rectangle Width="500"
+                           Height="220"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Opacity="0.24">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0.5"
+                                             EndPoint="1,0.5">
+                            <GradientStop Color="#004838FF"
+                                          Offset="0" />
+                            <GradientStop Color="#684838FF"
+                                          Offset="0.5" />
+                            <GradientStop Color="#004838FF"
+                                          Offset="1" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                    <Rectangle.Effect>
+                        <BlurEffect Radius="18" />
+                    </Rectangle.Effect>
+                </Rectangle>
+            </Grid>
+
+            <Grid x:Name="TileLayer"
+                  Opacity="0.34">
+                <Grid.CacheMode>
+                    <BitmapCache RenderAtScale="1" />
+                </Grid.CacheMode>
+            </Grid>
+
+            <Rectangle x:Name="SoftSweep"
+                       Width="220"
+                       HorizontalAlignment="Left"
+                       Opacity="0.16"
+                       IsHitTestVisible="False">
+                <Rectangle.CacheMode>
+                    <BitmapCache RenderAtScale="1" />
+                </Rectangle.CacheMode>
+                <Rectangle.RenderTransform>
+                    <TranslateTransform x:Name="SoftSweepTranslate"
+                                        X="-360" />
+                </Rectangle.RenderTransform>
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0.5"
+                                         EndPoint="1,0.5">
+                        <GradientStop Color="#00FF3737"
+                                      Offset="0" />
+                        <GradientStop Color="#46FF3737"
+                                      Offset="0.45" />
+                        <GradientStop Color="#28A95CFF"
+                                      Offset="0.62" />
+                        <GradientStop Color="#00FF3737"
+                                      Offset="1" />
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+                <Rectangle.Effect>
+                    <BlurEffect Radius="22" />
+                </Rectangle.Effect>
+            </Rectangle>
+
+            <Rectangle Fill="#A8060608" />
+
+            <Grid Margin="34">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="250" />
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0"
+                      VerticalAlignment="Center"
+                      Height="330">
+                    <Ellipse x:Name="BrandCoreGlow"
+                             Width="198"
+                             Height="198"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Fill="#E0181111"
+                             Stroke="#FFFF3434"
+                             StrokeThickness="2"
+                             Opacity="0.96">
+                        <Ellipse.Effect>
+                            <DropShadowEffect BlurRadius="32"
+                                              ShadowDepth="0"
+                                              Opacity="0.95"
+                                              Color="#FFFF3030" />
+                        </Ellipse.Effect>
+                    </Ellipse>
+
+                    <Ellipse x:Name="BrandRing"
+                             Width="236"
+                             Height="236"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Stroke="#44FF5858"
+                             StrokeThickness="1.2"
+                             StrokeDashArray="4 7"
+                             Opacity="0.46" />
+
+                    <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="BLoss"
+                                   FontSize="42"
+                                   FontWeight="Black"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center" />
+                        <Border Height="2"
+                                Width="96"
+                                Margin="0,10,0,0"
+                                Background="#FFFF3B3B"
+                                CornerRadius="1" />
+                    </StackPanel>
+                </Grid>
+
+                <Border Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Padding="28,26"
+                        CornerRadius="18"
+                        BorderThickness="1"
+                        BorderBrush="#66FF4747"
+                        Background="#D80B0B10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="18" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="22" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock x:Name="VersionText"
+                                       Text="Bloss 1.0.7"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Foreground="#FFFFB8B8" />
+                            <TextBlock x:Name="HeadingText"
+                                       Text="업데이트 내역"
+                                       Margin="0,8,0,0"
+                                       FontSize="34"
+                                       FontWeight="Black"
+                                       Foreground="White" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="2">
+                            <TextBlock x:Name="CleanupAutostartText"
+                                       Text="삭제 후 시작프로그램 찌꺼기 정리"
+                                       Style="{StaticResource ReleaseNoteBulletTextStyle}" />
+                            <TextBlock x:Name="SleepGuardText"
+                                       Text="모니터 자동꺼짐 방해 방지"
+                                       Style="{StaticResource ReleaseNoteBulletTextStyle}" />
+                            <TextBlock x:Name="CustomGuideTriggerText"
+                                       Text="배터리 알림 버튼 사용자 지정"
+                                       Style="{StaticResource ReleaseNoteBulletTextStyle}" />
+                            <TextBlock x:Name="InstallUpdateValidationText"
+                                       Text="설치/업데이트 검증 강화"
+                                       Style="{StaticResource ReleaseNoteBulletTextStyle}" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="FooterText"
+                                   Grid.Row="4"
+                                   Text="확인을 누르면 이 안내는 다시 뜨지 않습니다."
+                                   FontSize="12"
+                                   Foreground="#B8FFFFFF" />
+                    </Grid>
+                </Border>
+
+                <Button x:Name="ConfirmButton"
+                        Grid.Column="2"
+                        Width="92"
+                        Height="38"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,4,4"
+                        Style="{StaticResource ReleaseNoteConfirmButtonStyle}"
+                        Click="CloseButton_Click"
+                        Content="확인" />
+
+                <Button Grid.Column="2"
+                        Width="34"
+                        Height="34"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource ReleaseNoteCloseButtonStyle}"
+                        Click="CloseButton_Click"
+                        AutomationProperties.Name="Close release notes">
+                    <TextBlock FontFamily="Segoe MDL2 Assets"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               LineHeight="14"
+                               Text="&#xE711;"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Button>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

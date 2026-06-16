@@ -53,12 +53,31 @@ public sealed class WidgetSettings
     public const int LegacyDefaultGamepadDisconnectGraceSeconds = 70;
     public const int MinimumGamepadDisconnectGraceSeconds = 0;
     public const int MaximumGamepadDisconnectGraceSeconds = 180;
+    public const int AutoPowerIdlePauseMinutes = -1;
+    public const int LegacyDefaultPowerIdlePauseMinutes = 1;
+    public const int DefaultPowerIdlePauseMinutes = AutoPowerIdlePauseMinutes;
+    public const int MinimumPowerIdlePauseMinutes = 0;
+    public const int MaximumPowerIdlePauseMinutes = 300;
+    public const int CurrentSettingsSchemaVersion = 2;
+    public const int WindowsPowerIdleAutoSettingsSchemaVersion = 2;
+    public const int MaximumBatteryGuideTriggerLength = 512;
+    public const int MaximumBatteryGuideTriggerProfiles = 8;
+    public const string DualSenseBatteryGuideProfileKey = "DualSense";
+    public const string SteamControllerBatteryGuideProfileKey = "SteamController";
+    public const int ForcedBatteryAlertThresholdPercent = 15;
+    public const int MinimumCustomBatteryAlertThresholdPercent = 30;
+    public const int MaximumCustomBatteryAlertThresholdPercent = 80;
+    public const int MaximumBatteryAlertThresholdsLength = 64;
+    public const string DefaultBatteryAlertThresholds = "30";
     public const double DefaultSettingsTextFontSize = 13d;
     public const double MinimumSettingsTextFontSize = 11d;
     public const double MaximumSettingsTextFontSize = 18d;
     public const int MaximumFirmwareVersionTextLength = 64;
+    public const int MaximumReleaseNotesVersionLength = 32;
 
     public bool Autostart { get; set; } = true;
+
+    public int SettingsSchemaVersion { get; set; } = 0;
 
     public bool StartMinimizedToTray { get; set; } = false;
 
@@ -92,7 +111,15 @@ public sealed class WidgetSettings
 
     public string CustomGuideSoundPath { get; set; } = string.Empty;
 
+    public string BatteryGuideTrigger { get; set; } = string.Empty;
+
+    public Dictionary<string, string> BatteryGuideTriggerProfiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public string BatteryAlertThresholds { get; set; } = DefaultBatteryAlertThresholds;
+
     public string LastDs5DongleFirmwareVersion { get; set; } = string.Empty;
+
+    public string LastSeenReleaseNotesVersion { get; set; } = string.Empty;
 
     public bool StatusPanelCollapsed { get; set; } = false;
 
@@ -109,6 +136,8 @@ public sealed class WidgetSettings
     public int BatteryHoldSeconds { get; set; } = DefaultBatteryHoldSeconds;
 
     public int GamepadDisconnectGraceSeconds { get; set; } = DefaultGamepadDisconnectGraceSeconds;
+
+    public int PowerIdlePauseMinutes { get; set; } = DefaultPowerIdlePauseMinutes;
 
     public WindowBounds? WindowBounds { get; set; }
 
@@ -199,17 +228,51 @@ public sealed class WidgetSettings
 
     public static string NormalizeLanguage(string? language)
     {
-        return language switch
+        var normalized = language?.Trim();
+        if (string.Equals(normalized, KoreanLanguage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "ko", StringComparison.OrdinalIgnoreCase))
         {
-            KoreanLanguage => KoreanLanguage,
-            EnglishLanguage => EnglishLanguage,
-            JapaneseLanguage => JapaneseLanguage,
-            ChineseSimplifiedLanguage => ChineseSimplifiedLanguage,
-            ChineseTraditionalLanguage => ChineseTraditionalLanguage,
-            LatinLanguage => LatinLanguage,
-            FrenchLanguage => FrenchLanguage,
-            _ => KoreanLanguage
-        };
+            return KoreanLanguage;
+        }
+
+        if (string.Equals(normalized, EnglishLanguage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "en", StringComparison.OrdinalIgnoreCase))
+        {
+            return EnglishLanguage;
+        }
+
+        if (string.Equals(normalized, JapaneseLanguage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "ja", StringComparison.OrdinalIgnoreCase))
+        {
+            return JapaneseLanguage;
+        }
+
+        if (string.Equals(normalized, ChineseSimplifiedLanguage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "zh", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "zh-Hans", StringComparison.OrdinalIgnoreCase))
+        {
+            return ChineseSimplifiedLanguage;
+        }
+
+        if (string.Equals(normalized, ChineseTraditionalLanguage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "zh-Hant", StringComparison.OrdinalIgnoreCase))
+        {
+            return ChineseTraditionalLanguage;
+        }
+
+        if (string.Equals(normalized, LatinLanguage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "la", StringComparison.OrdinalIgnoreCase))
+        {
+            return LatinLanguage;
+        }
+
+        if (string.Equals(normalized, FrenchLanguage, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "fr", StringComparison.OrdinalIgnoreCase))
+        {
+            return FrenchLanguage;
+        }
+
+        return KoreanLanguage;
     }
 
     public static string NormalizeGuideSoundId(string? soundId)
@@ -238,6 +301,21 @@ public sealed class WidgetSettings
             .Trim()
             .Where(character => !char.IsControl(character))
             .Take(MaximumFirmwareVersionTextLength)
+            .ToArray());
+        return normalized.Trim();
+    }
+
+    public static string NormalizeReleaseNotesVersion(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return string.Empty;
+        }
+
+        var normalized = new string(version
+            .Trim()
+            .Where(character => !char.IsControl(character))
+            .Take(MaximumReleaseNotesVersionLength)
             .ToArray());
         return normalized.Trim();
     }
@@ -287,6 +365,108 @@ public sealed class WidgetSettings
             seconds,
             MinimumBatteryHoldSeconds,
             MaximumBatteryHoldSeconds);
+    }
+
+    public static int NormalizePowerIdlePauseMinutes(int minutes)
+    {
+        if (minutes == AutoPowerIdlePauseMinutes)
+        {
+            return AutoPowerIdlePauseMinutes;
+        }
+
+        return Math.Clamp(
+            minutes,
+            MinimumPowerIdlePauseMinutes,
+            MaximumPowerIdlePauseMinutes);
+    }
+
+    public static string NormalizeBatteryGuideTrigger(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = new string(value
+            .Trim()
+            .Where(character => !char.IsControl(character))
+            .Take(MaximumBatteryGuideTriggerLength)
+            .ToArray());
+        return normalized.Trim();
+    }
+
+    public static string NormalizeBatteryGuideTriggerProfileKey(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.Equals(normalized, DualSenseBatteryGuideProfileKey, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "DualSense Wireless Controller", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Sony DualSense", StringComparison.OrdinalIgnoreCase))
+        {
+            return DualSenseBatteryGuideProfileKey;
+        }
+
+        if (string.Equals(normalized, SteamControllerBatteryGuideProfileKey, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Steam Controller", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Steam", StringComparison.OrdinalIgnoreCase))
+        {
+            return SteamControllerBatteryGuideProfileKey;
+        }
+
+        return string.Empty;
+    }
+
+    public static Dictionary<string, string> NormalizeBatteryGuideTriggerProfiles(
+        IDictionary<string, string>? profiles)
+    {
+        var normalizedProfiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (profiles is null)
+        {
+            return normalizedProfiles;
+        }
+
+        foreach (var pair in profiles)
+        {
+            var key = NormalizeBatteryGuideTriggerProfileKey(pair.Key);
+            var value = NormalizeBatteryGuideTrigger(pair.Value);
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            normalizedProfiles[key] = value;
+            if (normalizedProfiles.Count >= MaximumBatteryGuideTriggerProfiles)
+            {
+                break;
+            }
+        }
+
+        return normalizedProfiles;
+    }
+
+    public static string NormalizeBatteryAlertThresholds(string? value)
+    {
+        var thresholds = GetBatteryAlertThresholdPercents(value);
+        return thresholds.Count == 0
+            ? string.Empty
+            : string.Join(", ", thresholds);
+    }
+
+    public static IReadOnlyList<int> GetBatteryAlertThresholdPercents(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        return value
+            .Split([',', ';', '/', '|', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(part => int.TryParse(part.TrimEnd('%'), out var percent) ? percent : (int?)null)
+            .Where(percent => percent is >= MinimumCustomBatteryAlertThresholdPercent and <= MaximumCustomBatteryAlertThresholdPercent)
+            .Select(percent => percent!.Value)
+            .Distinct()
+            .OrderBy(percent => percent)
+            .Take(8)
+            .ToArray();
     }
 }
 

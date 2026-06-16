@@ -6,79 +6,55 @@ internal static class BatteryGuideMessageBuilder
 {
     public static string Build(DeviceBatterySnapshot snapshot, string language)
     {
-        var isKorean = IsKorean(language);
         var name = string.IsNullOrWhiteSpace(snapshot.DisplayName)
-            ? (isKorean ? "연결된 기기" : "Connected device")
+            ? ExtraText(language, "BatteryGuideConnectedDevice")
             : snapshot.DisplayName.Trim();
 
         if (snapshot.BatteryPercent is null)
         {
-            return isKorean
-                ? $"{name}: 배터리 정보를 읽는 중입니다."
-                : $"{name}: reading battery.";
+            return ExtraFormat(language, "BatteryGuideReadingFormat", name);
         }
 
         var percent = Math.Clamp(snapshot.BatteryPercent.Value, 0, 100);
         if (snapshot.IsChargeComplete)
         {
-            return isKorean
-                ? $"{name}: 충전 완료 · {percent}%"
-                : $"{name}: charged · {percent}%";
+            return ExtraFormat(language, "BatteryGuideChargedFormat", name, percent);
         }
 
         if (snapshot.IsCharging)
         {
-            return isKorean
-                ? $"{name}: 충전 중 · {percent}%"
-                : $"{name}: charging · {percent}%";
+            return ExtraFormat(language, "BatteryGuideChargingFormat", name, percent);
         }
 
         var estimatedHours = EstimateRuntimeHours(snapshot, percent);
         if (estimatedHours is null)
         {
-            return isKorean
-                ? $"{name}: 현재 배터리 {percent}%"
-                : $"{name}: {percent}% battery.";
+            return ExtraFormat(language, "BatteryGuidePercentFormat", name, percent);
         }
 
-        return isKorean
-            ? $"{name}: {percent}% · 예상 {FormatDurationKorean(estimatedHours.Value)} 남음"
-            : $"{name}: {percent}% · about {FormatDurationEnglish(estimatedHours.Value)} left";
+        return ExtraFormat(language, "BatteryGuideEstimatedFormat", name, percent, FormatDuration(language, estimatedHours.Value));
     }
 
     public static string BuildToastSubtitle(DeviceBatterySnapshot snapshot, string language, bool automatic)
     {
-        var isKorean = IsKorean(language);
         if (snapshot.IsChargeComplete)
         {
-            return isKorean ? "충전 완료" : "Charged";
+            return ExtraText(language, "BatteryGuideSubtitleCharged");
         }
 
         if (snapshot.IsCharging)
         {
-            return isKorean ? "충전 중" : "Charging";
+            return ExtraText(language, "BatteryGuideSubtitleCharging");
         }
 
         var percent = Math.Clamp(snapshot.BatteryPercent ?? 0, 0, 100);
-        if (automatic || percent < 30)
+        return percent switch
         {
-            return isKorean ? "배터리 부족" : "Low Battery";
-        }
-
-        var estimatedHours = EstimateRuntimeHours(snapshot, percent);
-        if (estimatedHours is not null)
-        {
-            return isKorean
-                ? $"예상 {FormatDurationKorean(estimatedHours.Value)} 남음"
-                : $"About {FormatDurationEnglish(estimatedHours.Value)} left";
-        }
-
-        if (percent < 60)
-        {
-            return isKorean ? "배터리 확인 필요" : "Battery Notice";
-        }
-
-        return isKorean ? "배터리 양호" : "Battery OK";
+            >= 80 => ExtraText(language, "BatteryGuideSubtitleOk"),
+            >= 60 => ExtraText(language, "BatteryGuideSubtitleNotice"),
+            >= 30 => ExtraText(language, "BatteryGuideSubtitleCheck"),
+            _ => ExtraText(language, "BatteryGuideSubtitleLow")
+        };
     }
 
     private static double? EstimateRuntimeHours(DeviceBatterySnapshot snapshot, int percent)
@@ -113,31 +89,26 @@ internal static class BatteryGuideMessageBuilder
         return null;
     }
 
-    private static bool IsKorean(string language)
+    private static string ExtraText(string language, string key)
     {
-        return string.Equals(language, "ko", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(language, "ko-KR", StringComparison.OrdinalIgnoreCase);
+        return UiLanguageCatalog.GetExtraText(language, key);
     }
 
-    private static string FormatDurationKorean(double hours)
+    private static string ExtraFormat(string language, string key, params object[] args)
+    {
+        return string.Format(ExtraText(language, key), args);
+    }
+
+    private static string FormatDuration(string language, double hours)
     {
         if (hours < 0.75d)
         {
-            return "30분";
+            return ExtraText(language, "BatteryGuideDurationHalfHour");
         }
 
         var rounded = Math.Max(1, (int)Math.Round(hours, MidpointRounding.AwayFromZero));
-        return $"{rounded}시간";
-    }
-
-    private static string FormatDurationEnglish(double hours)
-    {
-        if (hours < 0.75d)
-        {
-            return "30 min";
-        }
-
-        var rounded = Math.Max(1, (int)Math.Round(hours, MidpointRounding.AwayFromZero));
-        return rounded == 1 ? "1 hour" : $"{rounded} hours";
+        return rounded == 1
+            ? ExtraText(language, "BatteryGuideDurationOneHour")
+            : ExtraFormat(language, "BatteryGuideDurationHoursFormat", rounded);
     }
 }

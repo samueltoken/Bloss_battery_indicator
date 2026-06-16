@@ -38,7 +38,8 @@ public sealed class PendingGamepadCandidateStore
         int score,
         DateTimeOffset timestamp,
         string evidenceType = "unknown",
-        string lastValidationStats = "")
+        string lastValidationStats = "",
+        int? candidatePercent = null)
     {
         lock (_sync)
         {
@@ -49,6 +50,7 @@ public sealed class PendingGamepadCandidateStore
             var normalizedCandidate = NormalizeVoteCandidateKey(candidateKey, normalizedModel);
             var scopedModel = ResolveModelScopeKey(normalizedModel, normalizedCandidate);
             var voteKey = BuildVoteKey(scopedModel, normalizedCandidate);
+            var normalizedPercent = NormalizeCandidatePercent(candidatePercent);
 
             if (_cached!.Votes.TryGetValue(voteKey, out var existing))
             {
@@ -61,7 +63,9 @@ public sealed class PendingGamepadCandidateStore
                     EvidenceType = mergedEvidenceType,
                     LastValidationStats = string.IsNullOrWhiteSpace(lastValidationStats)
                         ? existing.LastValidationStats
-                        : lastValidationStats.Trim()
+                        : lastValidationStats.Trim(),
+                    MinPercent = MergeMinPercent(existing.MinPercent, normalizedPercent),
+                    MaxPercent = MergeMaxPercent(existing.MaxPercent, normalizedPercent)
                 };
             }
             else
@@ -74,11 +78,26 @@ public sealed class PendingGamepadCandidateStore
                     FirstSeenAt: timestamp,
                     LastSeenAt: timestamp,
                     EvidenceType: NormalizeEvidenceType(evidenceType),
-                    LastValidationStats: NormalizeValidationStats(lastValidationStats));
+                    LastValidationStats: NormalizeValidationStats(lastValidationStats),
+                    MinPercent: normalizedPercent,
+                    MaxPercent: normalizedPercent);
             }
 
             Persist();
             return _cached.Votes[voteKey].VoteCount;
+        }
+    }
+
+    public bool TryGetVote(string modelKey, string candidateKey, out PendingGamepadCandidate candidate)
+    {
+        lock (_sync)
+        {
+            EnsureLoaded();
+            var normalizedModel = NormalizeKey(modelKey);
+            var normalizedCandidate = NormalizeVoteCandidateKey(candidateKey, normalizedModel);
+            var scopedModel = ResolveModelScopeKey(normalizedModel, normalizedCandidate);
+            var voteKey = BuildVoteKey(scopedModel, normalizedCandidate);
+            return _cached!.Votes.TryGetValue(voteKey, out candidate!);
         }
     }
 
@@ -327,6 +346,35 @@ public sealed class PendingGamepadCandidateStore
             : stats.Trim();
     }
 
+    private static int? NormalizeCandidatePercent(int? percent)
+    {
+        return percent is >= 0 and <= 100
+            ? percent.Value
+            : null;
+    }
+
+    private static int? MergeMinPercent(int? existing, int? incoming)
+    {
+        return (existing, incoming) switch
+        {
+            (null, null) => null,
+            (int value, null) => value,
+            (null, int value) => value,
+            (int left, int right) => Math.Min(left, right)
+        };
+    }
+
+    private static int? MergeMaxPercent(int? existing, int? incoming)
+    {
+        return (existing, incoming) switch
+        {
+            (null, null) => null,
+            (int value, null) => value,
+            (null, int value) => value,
+            (int left, int right) => Math.Max(left, right)
+        };
+    }
+
     private static string MergeEvidenceType(string existing, string incoming)
     {
         var normalizedExisting = NormalizeEvidenceType(existing);
@@ -422,7 +470,9 @@ public sealed class PendingGamepadCandidateStore
                 FirstSeenAt = vote.FirstSeenAt == default ? vote.LastSeenAt : vote.FirstSeenAt,
                 LastSeenAt = vote.LastSeenAt == default ? vote.FirstSeenAt : vote.LastSeenAt,
                 EvidenceType = NormalizeEvidenceType(vote.EvidenceType),
-                LastValidationStats = NormalizeValidationStats(vote.LastValidationStats)
+                LastValidationStats = NormalizeValidationStats(vote.LastValidationStats),
+                MinPercent = NormalizeCandidatePercent(vote.MinPercent),
+                MaxPercent = NormalizeCandidatePercent(vote.MaxPercent)
             };
 
             if (normalizedVote.LastSeenAt < normalizedVote.FirstSeenAt)
@@ -445,7 +495,9 @@ public sealed class PendingGamepadCandidateStore
                     EvidenceType = MergeEvidenceType(existing.EvidenceType, normalizedVote.EvidenceType),
                     LastValidationStats = string.IsNullOrWhiteSpace(normalizedVote.LastValidationStats)
                         ? existing.LastValidationStats
-                        : normalizedVote.LastValidationStats
+                        : normalizedVote.LastValidationStats,
+                    MinPercent = MergeMinPercent(existing.MinPercent, normalizedVote.MinPercent),
+                    MaxPercent = MergeMaxPercent(existing.MaxPercent, normalizedVote.MaxPercent)
                 };
                 mergedVotes[mergedKey] = merged;
                 changed = true;
@@ -550,7 +602,9 @@ public sealed class PendingGamepadCandidateStore
                     EvidenceType = MergeEvidenceType(existingIdentityVote.EvidenceType, modelVote.EvidenceType),
                     LastValidationStats = string.IsNullOrWhiteSpace(modelVote.LastValidationStats)
                         ? existingIdentityVote.LastValidationStats
-                        : modelVote.LastValidationStats
+                        : modelVote.LastValidationStats,
+                    MinPercent = MergeMinPercent(existingIdentityVote.MinPercent, modelVote.MinPercent),
+                    MaxPercent = MergeMaxPercent(existingIdentityVote.MaxPercent, modelVote.MaxPercent)
                 };
 
                 votes[identityTarget.Key] = merged;
@@ -575,6 +629,6 @@ public sealed class PendingGamepadCandidateStore
         var directory = Path.GetDirectoryName(_storePath)!;
         Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(_cached, JsonOptions);
-        File.WriteAllText(_storePath, json);
+        AtomicFileWriter.WriteAllText(_storePath, json);
     }
 }

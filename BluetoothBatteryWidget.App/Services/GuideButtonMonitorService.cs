@@ -26,6 +26,29 @@ internal sealed class GuideButtonPressedEventArgs : EventArgs
     public GuideButtonGesture Gesture { get; }
 }
 
+internal sealed class GuideButtonInputReportEventArgs : EventArgs
+{
+    public GuideButtonInputReportEventArgs(
+        string address,
+        string displayName,
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report)
+    {
+        Address = AddressNormalizer.NormalizeAddress(address);
+        DisplayName = displayName;
+        DeviceKind = deviceKind;
+        Report = report.ToArray();
+    }
+
+    public string Address { get; }
+
+    public string DisplayName { get; }
+
+    public GuideButtonDeviceKind DeviceKind { get; }
+
+    public byte[] Report { get; }
+}
+
 internal sealed record GuideButtonKnownDevice(
     string Address,
     string DisplayName,
@@ -60,6 +83,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
     private string _lastDiscoveryLogKey = string.Empty;
 
     public event EventHandler<GuideButtonPressedEventArgs>? GuideButtonPressed;
+    public event EventHandler<GuideButtonInputReportEventArgs>? InputReportReceived;
 
     public void SetKnownDeviceProvider(Func<IReadOnlyList<GuideButtonKnownDevice>> provider)
     {
@@ -89,6 +113,37 @@ internal sealed class GuideButtonMonitorService : IDisposable
         }
     }
 
+    public void Stop()
+    {
+        CancellationTokenSource? cts;
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            cts = _cts;
+            _cts = null;
+            _supervisorTask = null;
+            _endpointTasks.Clear();
+            _lastPressByAddress.Clear();
+        }
+
+        try
+        {
+            cts?.Cancel();
+        }
+        catch
+        {
+            // Ignore pause races.
+        }
+        finally
+        {
+            cts?.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         CancellationTokenSource? cts;
@@ -102,6 +157,8 @@ internal sealed class GuideButtonMonitorService : IDisposable
             _disposed = true;
             cts = _cts;
             _cts = null;
+            _supervisorTask = null;
+            _endpointTasks.Clear();
         }
 
         try
@@ -207,6 +264,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
         var minimumReportSize = endpoint.DeviceKind == GuideButtonDeviceKind.DualSense
             ? DualSenseMinimumReportSize
             : SteamMinimumReportSize;
+        var hasSeenNeutralState = endpoint.DeviceKind != GuideButtonDeviceKind.SteamController;
         var lastPressed = false;
         DateTimeOffset? pressedAt = null;
         var emptyReadCount = 0;
@@ -245,7 +303,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
                         "Steam Controller latest input-state polling is active.");
                 }
 
-                HandleGuideButtonState(endpoint, polledPressed, ref lastPressed, ref pressedAt);
+                HandleGuideButtonState(endpoint, polledPressed, ref hasSeenNeutralState, ref lastPressed, ref pressedAt);
             }
             else if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
                      !string.IsNullOrWhiteSpace(snapshotDiagnostic) &&
@@ -278,7 +336,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
                             "Steam Controller stream was quiet; polling the latest input state instead.");
                     }
 
-                    HandleGuideButtonState(endpoint, snapshotPressed, ref lastPressed, ref pressedAt);
+                    HandleGuideButtonState(endpoint, snapshotPressed, ref hasSeenNeutralState, ref lastPressed, ref pressedAt);
                     continue;
                 }
 
@@ -303,13 +361,14 @@ internal sealed class GuideButtonMonitorService : IDisposable
             }
 
             emptyReadCount = 0;
+            RaiseInputReportReceived(endpoint, frame.Data);
             if (!GuideButtonReportParser.TryParseGuideButton(endpoint.DeviceKind, frame.Data, out var pressed))
             {
                 if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
                     lastPressed &&
                     GuideButtonReportParser.IsSteamControllerStatusReport(frame.Data))
                 {
-                    HandleGuideButtonState(endpoint, pressed: false, ref lastPressed, ref pressedAt);
+                    HandleGuideButtonState(endpoint, pressed: false, ref hasSeenNeutralState, ref lastPressed, ref pressedAt);
                     continue;
                 }
 
@@ -326,16 +385,32 @@ internal sealed class GuideButtonMonitorService : IDisposable
                 continue;
             }
 
-            HandleGuideButtonState(endpoint, pressed, ref lastPressed, ref pressedAt);
+            HandleGuideButtonState(endpoint, pressed, ref hasSeenNeutralState, ref lastPressed, ref pressedAt);
         }
     }
 
     private void HandleGuideButtonState(
         GuideButtonEndpoint endpoint,
         bool pressed,
+        ref bool hasSeenNeutralState,
         ref bool lastPressed,
         ref DateTimeOffset? pressedAt)
     {
+        if (!hasSeenNeutralState)
+        {
+            if (pressed)
+            {
+                lastPressed = true;
+                pressedAt = null;
+                return;
+            }
+
+            hasSeenNeutralState = true;
+            lastPressed = false;
+            pressedAt = null;
+            return;
+        }
+
         var now = DateTimeOffset.Now;
         if (pressed && !lastPressed)
         {
@@ -353,6 +428,17 @@ internal sealed class GuideButtonMonitorService : IDisposable
         }
 
         lastPressed = pressed;
+    }
+
+    private void RaiseInputReportReceived(GuideButtonEndpoint endpoint, ReadOnlySpan<byte> report)
+    {
+        InputReportReceived?.Invoke(
+            this,
+            new GuideButtonInputReportEventArgs(
+                endpoint.Address,
+                endpoint.DisplayName,
+                endpoint.DeviceKind,
+                report));
     }
 
     private static bool TryReadSteamGuideSnapshot(
@@ -579,7 +665,10 @@ internal sealed class GuideButtonMonitorService : IDisposable
             var address = AddressNormalizer.NormalizeAddress(endpoint.Address);
             if (string.IsNullOrWhiteSpace(address))
             {
-                address = PlayStationUsbBridgeSupport.BuildSyntheticAddress(endpoint.InstanceId, endpoint.DevicePath);
+                address = PlayStationUsbBridgeSupport.BuildSyntheticAddress(
+                    endpoint.InstanceId,
+                    endpoint.DevicePath,
+                    endpoint.ProductId);
             }
 
             if (!string.IsNullOrWhiteSpace(address))

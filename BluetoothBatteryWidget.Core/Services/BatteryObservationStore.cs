@@ -79,6 +79,32 @@ public sealed class BatteryObservationStore
         }
     }
 
+    public IReadOnlyList<BatteryEvidence> GetRecentForAddress(
+        string address,
+        DateTimeOffset now)
+    {
+        lock (_sync)
+        {
+            EnsureLoaded();
+            Prune(now);
+            TryPersist(now);
+
+            var normalizedAddress = AddressNormalizer.NormalizeAddress(address);
+            if (string.IsNullOrWhiteSpace(normalizedAddress))
+            {
+                return [];
+            }
+
+            return _cached!
+                .Where(item => string.Equals(
+                    AddressNormalizer.NormalizeAddress(item.Address),
+                    normalizedAddress,
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.ObservedAt)
+                .ToList();
+        }
+    }
+
     private static bool IsValid(BatteryEvidence evidence)
     {
         if (string.IsNullOrWhiteSpace(evidence.ModelKey))

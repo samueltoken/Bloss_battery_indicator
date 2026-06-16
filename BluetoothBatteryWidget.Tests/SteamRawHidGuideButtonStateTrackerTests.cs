@@ -1,4 +1,4 @@
-using BluetoothBatteryWidget.App.Services;
+﻿using BluetoothBatteryWidget.App.Services;
 
 namespace BluetoothBatteryWidget.Tests;
 
@@ -17,6 +17,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var completed = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(120));
 
@@ -32,6 +33,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var completed = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(520));
 
@@ -47,6 +49,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var completed = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(1800));
 
@@ -61,6 +64,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var first = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(120));
         tracker.RegisterState(address, pressed: true, start.AddMilliseconds(1000));
@@ -77,6 +81,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var firstRelease = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(520));
         tracker.RegisterState(address, pressed: true, start.AddMilliseconds(1000));
@@ -95,6 +100,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         tracker.RegisterState(address, pressed: true, start.AddSeconds(5));
         var completed = tracker.RegisterState(address, pressed: false, start.AddSeconds(5).AddMilliseconds(120));
@@ -110,6 +116,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var cleared = tracker.ClearStalePressedSession(address, start.AddSeconds(4));
         var release = tracker.RegisterState(address, pressed: false, start.AddSeconds(4).AddMilliseconds(100));
@@ -125,6 +132,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         tracker.RegisterState(address, pressed: true, start.AddMilliseconds(600));
         tracker.RegisterState(address, pressed: true, start.AddMilliseconds(1200));
@@ -141,6 +149,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var completed = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(3200));
 
@@ -154,6 +163,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         tracker.RegisterState(address, pressed: true, start.AddMilliseconds(3000));
         var completed = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(3120));
@@ -169,6 +179,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         tracker.RegisterState(address, pressed: true, start.AddMilliseconds(500));
         tracker.RegisterState(address, pressed: true, start.AddMilliseconds(1000));
@@ -189,6 +200,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var completed = tracker.RegisterStatusReleaseHint(address, start.AddMilliseconds(180));
 
@@ -203,6 +215,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var first = tracker.RegisterStatusReleaseHint(address, start.AddMilliseconds(180));
         tracker.RegisterState(address, pressed: true, start.AddSeconds(8));
@@ -220,6 +233,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var activity = tracker.GetActivity(address, start.AddMilliseconds(700));
 
@@ -236,6 +250,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var completed = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(120));
         var activity = tracker.GetActivity(address, start.AddMilliseconds(220));
@@ -252,6 +267,7 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         var address = "AABBCCDDEEFF";
         var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
 
+        PrimeNeutral(tracker, address, start);
         tracker.RegisterState(address, pressed: true, start);
         var cleared = tracker.ClearActivity(address, start.AddSeconds(4));
         var activity = tracker.GetActivity(address, start.AddSeconds(4).AddMilliseconds(1));
@@ -259,6 +275,36 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
         Assert.True(cleared);
         Assert.False(activity.IsPressed);
         Assert.False(activity.HasPendingRelease);
+    }
+
+    [Fact]
+    public void InitialPressedStateFromReconnect_DoesNotBecomeShortPressOnRelease()
+    {
+        var tracker = CreateTracker();
+        var address = "AABBCCDDEEFF";
+        var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
+
+        var firstPressed = tracker.RegisterState(address, pressed: true, start);
+        var release = tracker.RegisterState(address, pressed: false, start.AddMilliseconds(180));
+
+        Assert.Equal(SteamRawHidGuideButtonDecisionKind.None, firstPressed.Kind);
+        Assert.Equal(SteamRawHidGuideButtonDecisionKind.None, release.Kind);
+    }
+
+    [Fact]
+    public void InitialPressedStateClearedByStatusReport_DoesNotBecomeShortPress()
+    {
+        var tracker = CreateTracker();
+        var address = "AABBCCDDEEFF";
+        var start = DateTimeOffset.Parse("2026-05-26T00:00:00+09:00");
+
+        tracker.RegisterState(address, pressed: true, start);
+        var activity = tracker.GetActivity(address, start.AddMilliseconds(100));
+        var release = tracker.RegisterStatusReleaseHint(address, start.AddMilliseconds(180));
+
+        Assert.True(activity.IsPressed);
+        Assert.Equal(TimeSpan.Zero, activity.PressedDuration);
+        Assert.Equal(SteamRawHidGuideButtonDecisionKind.None, release.Kind);
     }
 
     private static SteamRawHidGuideButtonStateTracker CreateTracker()
@@ -272,4 +318,14 @@ public sealed class SteamRawHidGuideButtonStateTrackerTests
             TimeSpan.FromMilliseconds(1800),
             TimeSpan.FromMilliseconds(700));
     }
+
+    private static void PrimeNeutral(
+        SteamRawHidGuideButtonStateTracker tracker,
+        string address,
+        DateTimeOffset start)
+    {
+        tracker.RegisterState(address, pressed: false, start.AddMilliseconds(-20));
+    }
 }
+
+

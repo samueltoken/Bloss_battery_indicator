@@ -1,0 +1,254 @@
+<Window x:Class="BluetoothBatteryWidget.App.BatteryAlertThresholdsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="자동 알림 설정"
+        Width="500"
+        Height="430"
+        WindowStartupLocation="Manual"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="NoResize"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        Loaded="Window_Loaded">
+    <Window.Resources>
+        <DropShadowEffect x:Key="AlertWindowShadow"
+                          Color="#7A000000"
+                          BlurRadius="24"
+                          ShadowDepth="8"
+                          Opacity="0.38" />
+
+        <Style x:Key="AlertActionButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="MinWidth" Value="88" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Foreground" Value="#F7FFFFFF" />
+            <Setter Property="Background" Value="#1DFFFFFF" />
+            <Setter Property="BorderBrush" Value="#54FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ButtonChrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="Background" Value="#2DFFFFFF" />
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#88FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="Background" Value="#166FAFE7" />
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#BFE7FFFF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AlertPrimaryButtonStyle"
+               TargetType="{x:Type Button}"
+               BasedOn="{StaticResource AlertActionButtonStyle}">
+            <Setter Property="Background" Value="#DDEAF7FF" />
+            <Setter Property="BorderBrush" Value="#BFE7FFFF" />
+            <Setter Property="Foreground" Value="#10263D" />
+        </Style>
+
+        <Style x:Key="AlertChipToggleButtonStyle" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Width" Value="126" />
+            <Setter Property="Height" Value="50" />
+            <Setter Property="Margin" Value="6" />
+            <Setter Property="Foreground" Value="#E8F7FFFF" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Grid x:Name="ChipRoot"
+                              ClipToBounds="False"
+                              SnapsToDevicePixels="True"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="ChipRootScale"
+                                                ScaleX="1"
+                                                ScaleY="1" />
+                            </Grid.RenderTransform>
+                            <Border x:Name="ChipGlow"
+                                    Margin="0"
+                                    CornerRadius="18"
+                                    Background="#00000000"
+                                    Opacity="0" />
+                            <Border x:Name="Chip"
+                                    Margin="2"
+                                    CornerRadius="16"
+                                    Background="#1018222C"
+                                    BorderBrush="#1018222C"
+                                    BorderThickness="1"
+                                    Padding="14,0" />
+                            <Border x:Name="ChipClickPulse"
+                                    Margin="2"
+                                    CornerRadius="16"
+                                    Background="#4F95FF"
+                                    BorderBrush="#4F95FF"
+                                    BorderThickness="1"
+                                    Opacity="0"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#4F95FF"
+                                                      BlurRadius="30"
+                                                      ShadowDepth="6"
+                                                      Opacity="1" />
+                                </Border.Effect>
+                                <Border.RenderTransform>
+                                    <ScaleTransform x:Name="ChipClickPulseScale"
+                                                    ScaleX="0.92"
+                                                    ScaleY="0.92" />
+                                </Border.RenderTransform>
+                            </Border>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="False" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chip" Property="Background" Value="#2434434E" />
+                                <Setter TargetName="Chip" Property="BorderBrush" Value="#2434434E" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chip" Property="Background" Value="#BFE7FF" />
+                                <Setter TargetName="Chip" Property="BorderBrush" Value="#BFE7FF" />
+                                <Setter TargetName="ChipGlow" Property="Background" Value="#665DA7FF" />
+                                <Setter TargetName="ChipGlow" Property="Opacity" Value="0.72" />
+                                <Setter Property="Foreground" Value="#0B243B" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chip" Property="Opacity" Value="0.95" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="WindowSurface"
+            Margin="10"
+            CornerRadius="18"
+            Background="#F20A111A"
+            BorderBrush="#4DFFFFFF"
+            BorderThickness="1"
+            Effect="{StaticResource AlertWindowShadow}"
+            RenderTransformOrigin="0.5,0.5">
+        <Border.RenderTransform>
+            <TransformGroup>
+                <ScaleTransform x:Name="WindowSurfaceScale"
+                                ScaleX="1"
+                                ScaleY="1" />
+                <SkewTransform x:Name="WindowSurfaceSkew"
+                               AngleX="0"
+                               AngleY="0" />
+                <TranslateTransform x:Name="WindowSurfaceTranslate"
+                                    X="0"
+                                    Y="0" />
+            </TransformGroup>
+        </Border.RenderTransform>
+        <Grid Margin="18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border x:Name="HeaderDragArea"
+                    Grid.Row="0"
+                    Margin="-6,-6,-6,8"
+                    Padding="6"
+                    Background="#01000000"
+                    Cursor="SizeAll"
+                    MouseLeftButtonDown="HeaderDragArea_MouseLeftButtonDown">
+                <Grid>
+                    <TextBlock x:Name="HeadingTextBlock"
+                               Text="배터리 자동 알림"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="#FAFFFFFF" />
+                    <TextBlock HorizontalAlignment="Right"
+                               VerticalAlignment="Center"
+                               Text="Bloss"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#8FDDF3FF" />
+                </Grid>
+            </Border>
+
+            <TextBlock Grid.Row="1"
+                       Margin="0,0,0,16"
+                       TextWrapping="Wrap"
+                       FontSize="13"
+                       Foreground="#BBD2E4F5">
+                <Run x:Name="DescriptionLine1Run" Text="15%는 항상 울립니다." />
+                <LineBreak />
+                <Run x:Name="DescriptionLine2Run" Text="추가 알림은 30~80% 사이에서 여러 개 선택할 수 있습니다." />
+            </TextBlock>
+
+            <ToggleButton x:Name="ForcedThresholdCheckBox"
+                      Grid.Row="2"
+                      HorizontalAlignment="Left"
+                      Style="{StaticResource AlertChipToggleButtonStyle}"
+                      Content="15% 필수"
+                      IsChecked="True"
+                      IsEnabled="False" />
+
+            <Border Grid.Row="3"
+                    Margin="0,8,0,12"
+                    Padding="10"
+                    CornerRadius="16"
+                    Background="#101C2836"
+                    BorderBrush="#26FFFFFF"
+                    BorderThickness="1">
+                <WrapPanel x:Name="ThresholdPanel"
+                           HorizontalAlignment="Center"
+                           Orientation="Horizontal" />
+            </Border>
+
+            <StackPanel Grid.Row="4"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <Button x:Name="ClearButton"
+                        Style="{StaticResource AlertActionButtonStyle}"
+                        Click="ClearButton_Click"
+                        Content="추가 해제" />
+                <Button x:Name="SaveButton"
+                        Style="{StaticResource AlertPrimaryButtonStyle}"
+                        Click="SaveButton_Click"
+                        Content="저장하기" />
+                <Button x:Name="CancelButton"
+                        Style="{StaticResource AlertActionButtonStyle}"
+                        Click="CancelButton_Click"
+                        Content="취소" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

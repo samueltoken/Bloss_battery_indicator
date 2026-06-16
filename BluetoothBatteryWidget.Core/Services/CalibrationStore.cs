@@ -114,6 +114,6 @@ public sealed class CalibrationStore
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_storePath)!);
         var json = JsonSerializer.Serialize(_cached, JsonOptions);
-        File.WriteAllText(_storePath, json);
+        AtomicFileWriter.WriteAllText(_storePath, json);
     }
 }

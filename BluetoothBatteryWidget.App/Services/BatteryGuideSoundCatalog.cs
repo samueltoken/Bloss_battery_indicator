@@ -63,7 +63,14 @@ internal static class BatteryGuideSoundCatalog
         "labs-outer-space.mp3",
         false);
 
-    public static IReadOnlyList<BatteryGuideSoundOption> GetGuideOptions(string? customPath)
+    public static BatteryGuideSoundOption Version107DigitalCitySound { get; } = new(
+        "version-107-digital-city",
+        "Version 1.0.7 Digital City",
+        ResourcePrefix + "version-107-digital-city.mp3",
+        "version-107-digital-city.mp3",
+        false);
+
+    public static IReadOnlyList<BatteryGuideSoundOption> GetGuideOptions(string? customPath, string? language = null)
     {
         var normalizedCustomPath = WidgetSettings.NormalizeOptionalAudioPath(customPath);
         if (string.IsNullOrWhiteSpace(normalizedCustomPath) || !File.Exists(normalizedCustomPath))
@@ -72,16 +79,16 @@ internal static class BatteryGuideSoundCatalog
         }
 
         return GuideOptions
-            .Append(CreateCustomOption(normalizedCustomPath))
+            .Append(CreateCustomOption(normalizedCustomPath, language))
             .ToArray();
     }
 
-    public static BatteryGuideSoundOption ResolveGuideSound(string? soundId, string? customPath = null)
+    public static BatteryGuideSoundOption ResolveGuideSound(string? soundId, string? customPath = null, string? language = null)
     {
         var normalized = WidgetSettings.NormalizeGuideSoundId(soundId);
         if (string.Equals(normalized, WidgetSettings.GuideSoundCustomFile, StringComparison.Ordinal))
         {
-            return TryCreateCustomOption(customPath, out var customOption)
+            return TryCreateCustomOption(customPath, language, out var customOption)
                 ? customOption
                 : GuideOptions.First(option => string.Equals(option.Id, WidgetSettings.DefaultGuideSoundId, StringComparison.Ordinal));
         }
@@ -138,12 +145,12 @@ internal static class BatteryGuideSoundCatalog
         return path;
     }
 
-    private static bool TryCreateCustomOption(string? path, out BatteryGuideSoundOption option)
+    private static bool TryCreateCustomOption(string? path, string? language, out BatteryGuideSoundOption option)
     {
         var normalizedPath = WidgetSettings.NormalizeOptionalAudioPath(path);
         if (!string.IsNullOrWhiteSpace(normalizedPath) && File.Exists(normalizedPath))
         {
-            option = CreateCustomOption(normalizedPath);
+            option = CreateCustomOption(normalizedPath, language);
             return true;
         }
 
@@ -151,13 +158,13 @@ internal static class BatteryGuideSoundCatalog
         return false;
     }
 
-    private static BatteryGuideSoundOption CreateCustomOption(string path)
+    private static BatteryGuideSoundOption CreateCustomOption(string path, string? language)
     {
         var extension = Path.GetExtension(path);
         var isWave = string.Equals(extension, ".wav", StringComparison.OrdinalIgnoreCase);
         return new BatteryGuideSoundOption(
             WidgetSettings.GuideSoundCustomFile,
-            "Custom sound",
+            UiLanguageCatalog.GetExtraText(language ?? WidgetSettings.EnglishLanguage, "GuideSoundCustomOption"),
             string.Empty,
             Path.GetFileName(path),
             isWave,

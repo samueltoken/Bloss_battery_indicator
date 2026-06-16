@@ -1,20 +1,25 @@
 ﻿using BluetoothBatteryWidget.App;
 using BluetoothBatteryWidget.App.Services;
+using BluetoothBatteryWidget.Core.Models;
 using System.Text.RegularExpressions;
+using System.Windows.Media.Imaging;
 
 namespace BluetoothBatteryWidget.Tests;
 
 public sealed class MainWindowXamlBindingTests
 {
+    private static string ProjectRoot => Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..",
+        "..",
+        "..",
+        ".."));
+
     [Fact]
     public void MainWindowXaml_HexBrushTokensUseValidWpfLengths()
     {
         var xaml = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
+            ProjectRoot,
             "BluetoothBatteryWidget.App",
             "MainWindow.xaml"));
 
@@ -30,6 +35,361 @@ public sealed class MainWindowXamlBindingTests
             .ToArray();
 
         Assert.Empty(invalidTokens);
+    }
+
+    [Fact]
+    public void ReleaseNotesWindow_UsesCustomAnimatedBackgroundAndBlossUpdateText()
+    {
+        var xaml = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "ReleaseNotesWindow.xaml"));
+        var code = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "ReleaseNotesWindow.xaml.cs"));
+        Assert.Contains("Title=\"Bloss 업데이트 안내\"", xaml);
+        Assert.Contains("RoundedContentRoot", xaml);
+        Assert.Contains("RectangleGeometry", code);
+        Assert.Contains("AbstractSignalBackdrop", xaml);
+        Assert.Contains("HeroBackdropScale", xaml);
+        Assert.Contains("TileLayer", xaml);
+        Assert.Contains("SoftSweepTranslate", xaml);
+        Assert.Contains("BitmapCache", xaml);
+        Assert.Contains("BrandCoreGlow", xaml);
+        Assert.Contains("BrandRing", xaml);
+        Assert.Contains("BLoss", xaml);
+        Assert.Contains("업데이트 내역", xaml);
+        Assert.DoesNotContain("이번 업데이트", xaml);
+        Assert.Contains("삭제 후 시작프로그램 찌꺼기 정리", xaml);
+        Assert.Contains("모니터 자동꺼짐 방해 방지", xaml);
+        Assert.Contains("배터리 알림 버튼 사용자 지정", xaml);
+        Assert.Contains("ReleaseNoteConfirmButtonStyle", xaml);
+        Assert.Contains("ReleaseNoteCloseButtonStyle", xaml);
+        Assert.Contains("CornerRadius=\"13\"", xaml);
+        Assert.Contains("CornerRadius=\"10\"", xaml);
+        Assert.Contains("FontFamily=\"Segoe MDL2 Assets\"", xaml);
+        Assert.Contains("Text=\"&#xE711;\"", xaml);
+        Assert.Contains("UiLanguageCatalog.GetExtraText(language, \"ReleaseNotesHeading\")", code);
+        Assert.Contains("ReleaseNotesWindow(string version, string? language = null)", code);
+        Assert.Equal("Update details", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesHeading"));
+        Assert.Equal("업데이트 내역", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesHeading"));
+        Assert.Contains("BuildQuietTiles", code);
+        Assert.Contains("BeginAmbientAnimations", code);
+        Assert.Contains("SoftSweepTranslate.BeginAnimation", code);
+        Assert.Contains("CreateBreathingDoubleAnimation", code);
+        Assert.Contains("RepeatBehavior.Forever", code);
+        Assert.Contains("AutomationProperties.SetName", code);
+        Assert.DoesNotContain("HeroBackdropScale.BeginAnimation", code);
+        Assert.DoesNotContain("TileLayer.BeginAnimation", code);
+        Assert.DoesNotContain("BrandPulseScale", xaml);
+        Assert.DoesNotContain("BrandRingRotate", xaml);
+        Assert.DoesNotContain("BeginTilePulse", code);
+        Assert.DoesNotContain("DoubleAnimationUsingKeyFrames", code);
+        Assert.DoesNotContain("release-notes-oracus", xaml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ORACUS", xaml, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "Assets",
+            "release-notes-oracus.png")));
+    }
+
+    [Fact]
+    public void SettingsComboBoxes_ScrollLongSelectedTitlesOnHover()
+    {
+        var xaml = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml"));
+        var code = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+
+        Assert.Contains("x:Key=\"GlassScrollingComboBoxStyle\"", xaml);
+        Assert.Contains("x:Name=\"ComboMarqueeViewport\"", xaml);
+        Assert.Contains("x:Name=\"ComboMarqueeText\"", xaml);
+        Assert.Contains("Text=\"{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}\"", xaml);
+        Assert.Contains("Tag=\"{Binding SelectedItem.Label, RelativeSource={RelativeSource Self}}\"", xaml);
+        Assert.Contains("Tag=\"{Binding SelectedItem.DisplayName, RelativeSource={RelativeSource Self}}\"", xaml);
+        Assert.Contains("Padding\" Value=\"8,4,2,4\"", xaml);
+        Assert.DoesNotContain("Padding\" Value=\"10,4,30,4\"", xaml);
+        Assert.Contains("x:Name=\"PowerIdlePauseComboBox\"", xaml);
+        Assert.Contains("x:Name=\"WindowsDisplayOffComboBox\"", xaml);
+        Assert.Contains("x:Name=\"GuideSoundComboBox\"", xaml);
+        Assert.Contains("x:Name=\"LanguageComboBox\"", xaml);
+        Assert.Contains("HorizontalContentAlignment=\"Center\"", xaml);
+        Assert.Equal(4, Regex.Matches(xaml, "Style=\"\\{StaticResource GlassScrollingComboBoxStyle\\}\"").Count);
+        Assert.Equal(4, Regex.Matches(xaml, "MouseEnter=\"ComboBoxMarquee_MouseEnter\"").Count);
+        Assert.Equal(4, Regex.Matches(xaml, "MouseLeave=\"ComboBoxMarquee_MouseLeave\"").Count);
+        Assert.Contains("private void ComboBoxMarquee_MouseEnter", code);
+        Assert.Contains("private void ComboBoxMarquee_MouseLeave", code);
+        Assert.Contains("ComboMarqueeViewport", code);
+        Assert.Contains("ComboMarqueeText", code);
+        Assert.Contains("GetMarqueeRestingX", code);
+        Assert.Contains("HorizontalContentAlignment == System.Windows.HorizontalAlignment.Center", code);
+        Assert.Contains("Math.Max(", code);
+        Assert.DoesNotContain("8.0d);", code);
+    }
+
+    [Fact]
+    public void BatteryGuideProfileTabs_ShowConfiguredStateAndSavedButtonHighlight()
+    {
+        var xaml = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "BatteryGuideTriggerCaptureWindow.xaml"));
+        var code = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "BatteryGuideTriggerCaptureWindow.xaml.cs"));
+
+        Assert.Contains("x:Name=\"ConfiguredFillLayer\"", xaml);
+        Assert.Contains("CornerRadius=\"10\"", xaml);
+        Assert.Contains("x:Name=\"TabPressScale\"", xaml);
+        Assert.Contains("x:Name=\"WindowSurfaceBackgroundBrush\"", xaml);
+        Assert.Contains("CornerRadius=\"14\"", xaml);
+        Assert.Contains("SizeChanged=\"WindowSurface_SizeChanged\"", xaml);
+        Assert.Contains("x:Name=\"WindowSurfaceRoot\"", xaml);
+        Assert.Contains("x:Name=\"CaptureContentLayer\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeLayer\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeBaseTint\"", xaml);
+        Assert.Contains("x:Name=\"BlueprintImageLineLayer\"", xaml);
+        Assert.Contains("x:Name=\"BlueprintThemeWash\"", xaml);
+        Assert.Contains("x:Name=\"BlueprintThemeWashBrush\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeRipple\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeRippleScale\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeSurfaceRippleCanvas\"", xaml);
+        Assert.Contains("HorizontalAlignment=\"Stretch\"", xaml);
+        Assert.Contains("VerticalAlignment=\"Stretch\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeFloodWash\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeFloodWashBrush\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeSurfaceRipple\"", xaml);
+        Assert.Contains("x:Name=\"CaptureThemeSurfaceRippleScale\"", xaml);
+        Assert.Contains("PreviewMouseLeftButtonDown=\"CaptureTabControl_PreviewMouseLeftButtonDown\"", xaml);
+        Assert.Contains("RoutedEvent=\"UIElement.PreviewMouseLeftButtonDown\"", xaml);
+        Assert.Contains("RoutedEvent=\"UIElement.PreviewMouseLeftButtonUp\"", xaml);
+        Assert.Contains("<Trigger Property=\"Tag\" Value=\"Configured\">", xaml);
+        Assert.Contains("<Trigger Property=\"Tag\" Value=\"Steam\">", xaml);
+        Assert.Contains("<Trigger Property=\"Tag\" Value=\"SteamConfigured\">", xaml);
+        Assert.Contains("TargetName=\"WaterPulse\" Property=\"Fill\" Value=\"#A820D67A\"", xaml);
+        Assert.Contains("TargetName=\"ConfiguredFillLayer\" Property=\"Opacity\" Value=\"1\"", xaml);
+        Assert.Contains("TargetName=\"WaterPulse\" Property=\"Fill\" Value=\"#99FF4054\"", xaml);
+        Assert.Contains("<MultiTrigger>", xaml);
+        Assert.Contains("TargetName=\"TabChrome\" Property=\"Background\" Value=\"#A52258C8\"", xaml);
+        Assert.Contains("TargetName=\"ConfiguredFillLayer\" Property=\"Background\" Value=\"#F0631426\"", xaml);
+        Assert.DoesNotContain("x:Name=\"ConfiguredGlow\"", xaml);
+        Assert.Contains("ConfiguredProfileTabTag", code);
+        Assert.Contains("SteamProfileTabTag", code);
+        Assert.Contains("SteamConfiguredProfileTabTag", code);
+        Assert.Contains("CaptureBlueThemeColor", code);
+        Assert.Contains("CaptureRedThemeColor", code);
+        Assert.Contains("CaptureGreenThemeColor", code);
+        Assert.Contains("BeginCaptureThemeWaterEffect", code);
+        Assert.Contains("BeginCaptureThemeFloodWash", code);
+        Assert.Contains("BeginCaptureThemeRipple", code);
+        Assert.Contains("ApplyCaptureThemeTint", code);
+        Assert.Contains("CreateCaptureThemeRippleBrush", code);
+        Assert.Contains("CreateCaptureSurfaceBaseColor", code);
+        Assert.Contains("CreateCaptureBlueprintLineColor", code);
+        Assert.Contains("ClipWindowSurfaceCorners", code);
+        Assert.Contains("RectangleGeometry", code);
+        Assert.Contains("IsGreenCaptureTheme", code);
+        Assert.Contains("UseOriginalBlueprintImage", code);
+        Assert.Contains("ApplyBlueprintLineTheme", code);
+        Assert.Contains("CreateTransparentBlueprintLineBitmap", code);
+        Assert.Contains("WpfPixelFormats.Bgra32", code);
+        Assert.Contains("0.38d", code);
+        Assert.Contains("0.62d", code);
+        Assert.Contains("4.65d", code);
+        Assert.Contains("FindAncestorTabItem", code);
+        Assert.Contains("UpdateConfiguredProfileTabTags", code);
+        Assert.Contains("ApplyConfiguredProfileTabTag", code);
+        Assert.Contains("TryResolveProfileTrigger", code);
+        Assert.Contains("ApplyTriggerHighlight", code);
+        Assert.Contains("CaptureNeutralThemeColor", code);
+        Assert.Contains("ReferenceEquals(tabItem, CustomTabItem)", code);
+        Assert.Contains("IsNeutralCaptureTheme", code);
+        Assert.Contains("WpfColor.FromRgb(0x0B, 0x0E, 0x12)", code);
+    }
+
+    [Fact]
+    public void SettingsLanguageSelection_LocalizesLabelsAndSecondaryIconWindows()
+    {
+        var appRoot = Path.Combine(ProjectRoot, "BluetoothBatteryWidget.App");
+        var mainWindowXaml = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml"));
+        var mainWindowCode = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+        var viewModelCode = File.ReadAllText(Path.Combine(appRoot, "ViewModels", "MainViewModel.cs"));
+        var languageCatalogCode = File.ReadAllText(Path.Combine(appRoot, "Services", "UiLanguageCatalog.cs"));
+        var iconOverrideXaml = File.ReadAllText(Path.Combine(appRoot, "IconOverrideWindow.xaml"));
+        var iconOverrideCode = File.ReadAllText(Path.Combine(appRoot, "IconOverrideWindow.xaml.cs"));
+        var iconImageAdjustXaml = File.ReadAllText(Path.Combine(appRoot, "IconImageAdjustWindow.xaml"));
+        var iconImageAdjustCode = File.ReadAllText(Path.Combine(appRoot, "IconImageAdjustWindow.xaml.cs"));
+
+        Assert.Contains("TextLanguage => CurrentLanguageText.LanguageLabel", viewModelCode);
+        Assert.Contains("TextResizeTooltip => UiLanguageCatalog.GetExtraText(Settings.Language, \"ResizeTooltip\")", viewModelCode);
+        Assert.Contains("OnPropertyChanged(nameof(TextResizeTooltip))", viewModelCode);
+        Assert.Contains("Text=\"{Binding TextLanguage}\"", mainWindowXaml);
+        Assert.Contains("ToolTip=\"{Binding TextResizeTooltip}\"", mainWindowXaml);
+        Assert.DoesNotContain("Text=\"Language\"", mainWindowXaml);
+        Assert.DoesNotContain("ToolTip=\"Resize\"", mainWindowXaml);
+
+        Assert.Contains("new IconOverrideWindow(snapshots, existingOverrides, existingImageOverrides, _viewModel.Language)", mainWindowCode);
+        Assert.Contains("ExtraText(\"BatteryGuideTriggerSavedToast\")", mainWindowCode);
+        Assert.Contains("Filter = ExtraText(\"CustomGuideSoundFilter\")", mainWindowCode);
+        Assert.Contains("Filter = ExtraText(\"CustomFontFilter\")", mainWindowCode);
+        Assert.Contains("ExtraText(\"MissingGuideDeviceFallbackName\")", mainWindowCode);
+        Assert.Contains("ExtraFormat(\"MissingGuideDeviceMessageFormat\", name)", mainWindowCode);
+        Assert.DoesNotContain("알림버튼 사용자 키가 저장되었습니다.", mainWindowCode);
+        Assert.DoesNotContain("Audio files (*.wav;*.mp3;*.wma;*.m4a)", mainWindowCode);
+        Assert.DoesNotContain("Font files (*.ttf;*.otf)", mainWindowCode);
+        Assert.Contains("string? language = null", iconOverrideCode);
+        Assert.Contains("ApplyLocalizedText(_language)", iconOverrideCode);
+        Assert.Contains("BuildIconChoices(_language)", iconOverrideCode);
+        Assert.Contains("UiLanguageCatalog.GetExtraText(_language, \"IconOverrideImageSelectTitle\")", iconOverrideCode);
+        Assert.Contains("new IconImageAdjustWindow(dialog.FileName, _language)", iconOverrideCode);
+        Assert.Contains("Content=\"{Binding DataContext.TextIconOverrideChooseImage", iconOverrideXaml);
+        Assert.Contains("Content=\"{Binding DataContext.TextIconOverrideClearImage", iconOverrideXaml);
+        Assert.DoesNotContain("Title = \"아이콘 이미지 선택\"", iconOverrideCode);
+        Assert.DoesNotContain("new IconImageAdjustWindow(dialog.FileName)", iconOverrideCode);
+
+        Assert.Contains("IconImageAdjustWindow(string sourceImagePath, string? language = null)", iconImageAdjustCode);
+        Assert.Contains("ApplyLocalizedText(_language)", iconImageAdjustCode);
+        Assert.Contains("IconImageAdjustZoomFormat", iconImageAdjustCode);
+        Assert.Contains("BuildZoomText()", iconImageAdjustCode);
+        Assert.Contains("x:Name=\"HeadingTextBlock\"", iconImageAdjustXaml);
+        Assert.Contains("x:Name=\"HintTextBlock\"", iconImageAdjustXaml);
+        Assert.Contains("x:Name=\"GuideThicknessLabelTextBlock\"", iconImageAdjustXaml);
+        Assert.Contains("x:Name=\"WarningTextBlock\"", iconImageAdjustXaml);
+
+        Assert.Contains("\"IconOverrideWindowTitle\"", languageCatalogCode);
+        Assert.Contains("\"IconImageAdjustWindowTitle\"", languageCatalogCode);
+        Assert.Equal("언어", UiLanguageCatalog.Get(WidgetSettings.KoreanLanguage).LanguageLabel);
+        Assert.Equal("Language", UiLanguageCatalog.Get(WidgetSettings.EnglishLanguage).LanguageLabel);
+        Assert.Equal("크기 조절", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ResizeTooltip"));
+        Assert.Equal("Resize", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ResizeTooltip"));
+        Assert.Equal("スリープ保護", UiLanguageCatalog.GetExtraText(WidgetSettings.JapaneseLanguage, "PowerIdlePause"));
+        Assert.Equal("設定文字", UiLanguageCatalog.GetExtraText(WidgetSettings.JapaneseLanguage, "ColorSettingsText"));
+        Assert.Equal("Pico2W ファームウェア更新", UiLanguageCatalog.GetExtraText(WidgetSettings.JapaneseLanguage, "PicoFirmwareButton"));
+        Assert.Equal("環境設定", UiLanguageCatalog.Get(WidgetSettings.JapaneseLanguage).EnvironmentSettingsGroup);
+        Assert.Equal("通知音", UiLanguageCatalog.Get(WidgetSettings.JapaneseLanguage).GuideSoundLabel);
+        Assert.Equal("更新", UiLanguageCatalog.Get(WidgetSettings.JapaneseLanguage).UpdateButton);
+        Assert.Equal("自定义颜色", UiLanguageCatalog.Get(WidgetSettings.ChineseSimplifiedLanguage).ColorCustomizeButton);
+        Assert.Equal("Son de notification", UiLanguageCatalog.Get(WidgetSettings.FrenchLanguage).GuideSoundLabel);
+        Assert.Equal("Préécouter", UiLanguageCatalog.Get(WidgetSettings.FrenchLanguage).GuideSoundPreviewTooltip);
+        Assert.Contains("音声ファイル", UiLanguageCatalog.GetExtraText(WidgetSettings.JapaneseLanguage, "CustomGuideSoundFilter"));
+        Assert.Contains("Fichiers de police", UiLanguageCatalog.GetExtraText(WidgetSettings.FrenchLanguage, "CustomFontFilter"));
+        Assert.Equal(
+            "通知ボタンのユーザーキーを保存しました。",
+            UiLanguageCatalog.GetExtraText(WidgetSettings.JapaneseLanguage, "BatteryGuideTriggerSavedToast"));
+        Assert.Equal("Adjust icon image", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "IconImageAdjustWindowTitle"));
+        Assert.Equal("아이콘 이미지 맞춤", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "IconImageAdjustWindowTitle"));
+    }
+
+    [Fact]
+    public void ReleaseNotes_ShowOnceForReleaseButEveryRunForTestExe()
+    {
+        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.0.7", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.0.7", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.6", "1.0.7", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.7", "1.0.7", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.0.7\r\n", "1.0.7", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.7", "", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.7", "1.0.7", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.7", "", forceEveryRun: true));
+        Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\test.exe"));
+        Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\TEST.EXE"));
+        Assert.False(MainWindow.IsPortableTestExecutablePath(@"C:\temp\Bloss.exe"));
+        Assert.True(AutostartService.IsPortableTestExecutablePath(@"C:\temp\test.exe"));
+        Assert.True(AutostartService.IsPortableTestExecutablePath(@"C:\temp\TEST.EXE"));
+        Assert.False(AutostartService.IsPortableTestExecutablePath(@"C:\temp\Bloss.exe"));
+
+        var mainWindowCode = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+        var releaseNotesBlock = Regex.Match(
+            mainWindowCode,
+            @"var releaseNotesWindow = new ReleaseNotesWindow\(version, _viewModel\.Language\);[\s\S]*?releaseNotesWindow\.ShowDialog\(\);",
+            RegexOptions.CultureInvariant);
+
+        Assert.True(releaseNotesBlock.Success);
+        Assert.Contains("_viewModel.Language", releaseNotesBlock.Value);
+        Assert.DoesNotContain("CenterOwner", releaseNotesBlock.Value);
+    }
+
+    [Fact]
+    public void SecondaryWindows_UseSmoothPopInAnimationWithoutReferenceImage()
+    {
+        var animator = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "WindowPopInAnimator.cs"));
+        var releaseNotesCode = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "ReleaseNotesWindow.xaml.cs"));
+        var iconOverrideCode = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "IconOverrideWindow.xaml.cs"));
+        var iconImageAdjustCode = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "IconImageAdjustWindow.xaml.cs"));
+        var batteryAlertCode = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "BatteryAlertThresholdsWindow.xaml.cs"));
+        var batteryAlertXaml = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "BatteryAlertThresholdsWindow.xaml"));
+        var guideCaptureCode = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "BatteryGuideTriggerCaptureWindow.xaml.cs"));
+        var guideCaptureXaml = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "BatteryGuideTriggerCaptureWindow.xaml"));
+        var mainWindowCode = File.ReadAllText(Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+
+        Assert.Contains("GenieStartScaleX = 0.42d", animator);
+        Assert.Contains("GenieStartScaleY = 0.24d", animator);
+        Assert.Contains("SettleDuration = TimeSpan.FromMilliseconds(700)", animator);
+        Assert.Contains("BeginClose(", animator);
+        Assert.Contains("BeginCloseCentered(", animator);
+        Assert.Contains("QuinticEase", animator);
+        Assert.DoesNotContain("DoubleAnimationUsingKeyFrames", animator);
+        Assert.DoesNotContain("AttachCentered", releaseNotesCode);
+        Assert.Contains("AttachCentered", iconOverrideCode);
+        Assert.Contains("CloseWithPopOutAsCancel", iconOverrideCode);
+        Assert.Contains("AttachCentered", iconImageAdjustCode);
+        Assert.Contains("WindowPopInAnimator.Begin(", batteryAlertCode);
+        Assert.Contains("CloseWithPopOut", batteryAlertCode);
+        Assert.Contains("WindowPopInAnimator.BeginClose(", batteryAlertCode);
+        Assert.Contains("WindowPopInAnimator.Begin(", guideCaptureCode);
+        Assert.Contains("CloseWithPopOut", guideCaptureCode);
+        Assert.Contains("WindowPopInAnimator.BeginClose(", guideCaptureCode);
+        Assert.Contains("_batteryAlertThresholdsWindow.CloseWithPopOut();", mainWindowCode);
+        Assert.Contains("CancelBatteryGuideTriggerCapture(closeWindow: true, animateClose: true);", mainWindowCode);
+        Assert.Contains("_iconOverrideWindow.CloseWithPopOutAsCancel();", mainWindowCode);
+        Assert.DoesNotContain("dialog.ShowDialog() != true", mainWindowCode);
+        Assert.Contains("Loaded=\"Window_Loaded\"", batteryAlertXaml);
+        Assert.Contains("Loaded=\"Window_Loaded\"", guideCaptureXaml);
+        foreach (var xaml in new[] { batteryAlertXaml, guideCaptureXaml })
+        {
+            Assert.Contains("x:Name=\"WindowSurface\"", xaml);
+            Assert.Contains("x:Name=\"WindowSurfaceScale\"", xaml);
+            Assert.Contains("x:Name=\"WindowSurfaceSkew\"", xaml);
+            Assert.Contains("x:Name=\"WindowSurfaceTranslate\"", xaml);
+            Assert.Contains("RenderTransformOrigin=\"0.5,0.5\"", xaml);
+        }
     }
 
     [Fact]
@@ -138,28 +498,6 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
-    public void SettingsPopupAutoClose_ProtectsCursorInsidePopupSurfacesByScreenBounds()
-    {
-        var source = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
-            "BluetoothBatteryWidget.App",
-            "MainWindow.xaml.cs"));
-
-        Assert.Contains("SettingsAutoCloseProtectedScreenMargin", source);
-        Assert.Contains("Forms.Cursor.Position", source);
-        Assert.Contains("PointToScreen", source);
-        Assert.Contains("IsCursorWithinElementScreenBounds(SettingsPopupChrome", source);
-        Assert.Contains("IsCursorWithinElementScreenBounds(ColorPopupChrome", source);
-        Assert.Contains("IsCursorWithinElementScreenBounds(SettingsButton", source);
-        Assert.Contains("IsCursorWithinElementScreenBounds(ColorCustomizeButton", source);
-        Assert.Contains("ColorCustomPopup.IsOpen && IsCursorWithinElementScreenBounds(ColorPopupChrome", source);
-    }
-
-    [Fact]
     public void TrayMenu_ProvidesPositionResetAndStartupTrayArgument()
     {
         var mainWindowSource = File.ReadAllText(Path.Combine(
@@ -196,6 +534,8 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("PrepareStartHiddenInTray", mainWindowSource);
         Assert.Contains("--start-in-tray", appSource);
         Assert.Contains("--start-in-tray", autostartSource);
+        Assert.Contains("IsPortableTestExecutablePath(Environment.ProcessPath)", autostartSource);
+        Assert.Contains("return null;", autostartSource);
     }
 
     [Fact]
@@ -428,7 +768,7 @@ public sealed class MainWindowXamlBindingTests
             "Services",
             "Ds5DongleFirmwareVersionReader.cs")));
         Assert.Contains("IsDs5DongleFirmwareUpdateNeeded", source);
-        Assert.Contains("DualSense가 Pico2W를 통해 연결된 상태", source);
+        Assert.Contains("ExtraText(\"PicoReadHintNoUsbDs5Dongle\")", source);
         Assert.Contains("PicoUpdateAvailableMessageFormat", source);
         Assert.Contains("FlashDs5DongleFirmwareAsync", source);
         Assert.Contains("File.Copy(tempPath, destinationPath, overwrite: true)", source);
@@ -442,6 +782,8 @@ public sealed class MainWindowXamlBindingTests
             "BluetoothBatteryWidget.App",
             "Services",
             "UiLanguageCatalog.cs"));
+        Assert.Contains("DualSense가 Pico2W를 통해 연결된 상태", languageSource);
+        Assert.Contains("PicoReadHintNoUsbDs5Dongle", languageSource);
         Assert.DoesNotContain("copies the latest firmware automatically", languageSource);
     }
 
@@ -546,30 +888,30 @@ public sealed class MainWindowXamlBindingTests
             "BluetoothBatteryWidget.App",
             "LabsWindow.cs"));
 
-        Assert.Contains("Red Shift", source);
-        Assert.Contains("BatteryGuideSoundCatalog.OuterSpaceSound", source);
-        Assert.Contains("HyperspacePortalView", source);
+        Assert.Contains("CodeCityDuration", source);
+        Assert.Contains("BatteryGuideSoundCatalog.Version107DigitalCitySound", source);
+        Assert.Contains("CodeCityView", source);
         Assert.Contains("CompositionTarget.Rendering", source);
-        Assert.Contains("DrawHyperspaceStreaks", source);
-        Assert.Contains("DrawPortalRings", source);
-        Assert.Contains("DrawSpiralRibbons", source);
-        Assert.Contains("DrawThermalShockwaves", source);
+        Assert.Contains("DrawTunnel", source);
+        Assert.Contains("DrawSeedAndScan", source);
+        Assert.Contains("DrawSpeedLines", source);
+        Assert.Contains("DrawCityDrive", source);
+        Assert.Contains("DrawFarCity", source);
+        Assert.Contains("DrawRoad", source);
+        Assert.Contains("DrawBuildingCanyon", source);
         Assert.Contains("DrawFinalBlackout", source);
         Assert.Contains("ApplyFullScreenBounds", source);
         Assert.Contains("SystemParameters.VirtualScreenWidth", source);
-        Assert.Contains("OuterSpaceDuration", source);
         Assert.Contains("BeginAnimation", source);
-        Assert.Contains("HyperspaceStreakCount", source);
-        Assert.Contains("PortalRingCount", source);
-        Assert.Contains("CreateVignetteBrush", source);
-        Assert.Contains("brush.Freeze()", source);
-        Assert.Contains("CreateCoreBrush", source);
-        Assert.Contains("CenterPullRadius", source);
-        Assert.Contains("RedHotPalette", source);
-        Assert.Contains("GlobalHeat", source);
-        Assert.Contains("EndEngulf", source);
-        Assert.Contains("HeatColor", source);
-        Assert.DoesNotContain("EnergyPalette", source);
+        Assert.Contains("TargetFrameMilliseconds", source);
+        Assert.Contains("BuildCodeMarks", source);
+        Assert.Contains("BuildSpeedLines", source);
+        Assert.Contains("TunnelGreen", source);
+        Assert.Contains("CityTeal", source);
+        Assert.Contains("CityAmber", source);
+        Assert.Contains("RoadBlue", source);
+        Assert.Contains("SmoothSeconds", source);
+        Assert.DoesNotContain("HyperspacePortalView", source);
         Assert.DoesNotContain("DrawAccretionDisk", source);
         Assert.DoesNotContain("BuildPaintStrokeLayer", source);
         Assert.DoesNotContain("DropShadowEffect", source);
@@ -700,6 +1042,9 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("raw_hid_status_release_skipped", source);
         Assert.Contains("raw_hid_guide_state", source);
         Assert.Contains("raw_hid_stale_state_cleared", source);
+        Assert.Contains("raw_hid_input_guard_armed", source);
+        Assert.Contains("raw_hid_input_guard_suppressed", source);
+        Assert.Contains("SuppressGuideInputForKnownDevices(TimeSpan duration, string reason)", source);
         Assert.Contains("activity.IsPressed", source);
         Assert.Contains("IsSteamControllerStatusReport(report)", source);
         Assert.DoesNotContain("raw_hid_battery_release_hint", source);
@@ -707,7 +1052,646 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
-    public void UpdateInstallerScript_RunsElevatedWaitsLogsAndChecksInstalledVersion()
+    public void SteamGuideMonitorWaitsForNeutralStateBeforeShortPress()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "Services",
+            "GuideButtonMonitorService.cs"));
+
+        Assert.Contains("var hasSeenNeutralState = endpoint.DeviceKind != GuideButtonDeviceKind.SteamController;", source);
+        Assert.Contains("ref bool hasSeenNeutralState", source);
+        Assert.Contains("if (!hasSeenNeutralState)", source);
+        Assert.Contains("pressedAt = null;", source);
+    }
+
+    [Fact]
+    public void BatteryGuideTriggerCapture_UsesCenteredOverlayAndConfirmedSave()
+    {
+        var appRoot = Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App");
+        var captureXaml = File.ReadAllText(Path.Combine(appRoot, "BatteryGuideTriggerCaptureWindow.xaml"));
+        var captureSource = File.ReadAllText(Path.Combine(appRoot, "BatteryGuideTriggerCaptureWindow.xaml.cs"));
+        var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+        var mainWindowXaml = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml"));
+
+        Assert.Contains("x:Class=\"BluetoothBatteryWidget.App.BatteryGuideTriggerCaptureWindow\"", captureXaml);
+        Assert.Contains("Topmost=\"True\"", captureXaml);
+        Assert.Contains("Width=\"1448\"", captureXaml);
+        Assert.Contains("Height=\"1086\"", captureXaml);
+        Assert.Contains("Loaded=\"Window_Loaded\"", captureXaml);
+        Assert.Contains("x:Name=\"WindowSurface\"", captureXaml);
+        Assert.Contains("x:Name=\"WindowSurfaceScale\"", captureXaml);
+        Assert.Contains("x:Name=\"WindowSurfaceSkew\"", captureXaml);
+        Assert.Contains("x:Name=\"WindowSurfaceTranslate\"", captureXaml);
+        Assert.Contains("RenderTransformOrigin=\"0.5,0.5\"", captureXaml);
+        Assert.Contains("x:Name=\"PromptTextBlock\"", captureXaml);
+        Assert.Contains("조합할 2개의 버튼을 눌러주세요", captureXaml);
+        Assert.DoesNotContain("알림 버튼 또는 조합을 눌러주세요", captureXaml);
+        Assert.Contains("BlueprintLine", captureXaml);
+        Assert.Contains("Canvas Width=\"1448\"", captureXaml);
+        Assert.Contains("Height=\"1086\"", captureXaml);
+        Assert.Contains("OriginalBlueprintImage", captureXaml);
+        Assert.Contains("VectorBlueprintLayer", captureXaml);
+        Assert.Contains("x:Name=\"VectorBlueprintLayer\"", captureXaml);
+        Assert.Contains("Visibility=\"Collapsed\"", captureXaml);
+        Assert.Contains("RenderOptions.BitmapScalingMode=\"HighQuality\"", captureXaml);
+        Assert.Contains("HotspotSurfaceStyle", captureXaml);
+        Assert.Contains("Cursor=\"SizeAll\"", captureXaml);
+        Assert.Contains("MouseLeftButtonDown=\"HeaderDragArea_MouseLeftButtonDown\"", captureXaml);
+        Assert.Contains("PreviewKeyDown=\"Window_PreviewKeyDown\"", captureXaml);
+        Assert.DoesNotContain("KeyDown=\"Window_KeyDown\"", captureXaml);
+        Assert.Contains("<Setter Property=\"Focusable\" Value=\"False\" />", captureXaml);
+        Assert.Contains("<Setter Property=\"IsTabStop\" Value=\"False\" />", captureXaml);
+        Assert.Contains("LTKey", captureXaml);
+        Assert.Contains("RBKey", captureXaml);
+        Assert.Contains("AKey", captureXaml);
+        Assert.Contains("GuideKey", captureXaml);
+        Assert.Contains("QuickAccessKey", captureXaml);
+        Assert.Contains("Canvas.Left=\"696\" Canvas.Top=\"602\" Width=\"58\" Height=\"58\"", captureXaml);
+        Assert.Contains("[\"QuickAccess\"] = QuickAccessKey", captureSource);
+        Assert.Contains("[\"Mic\"] = QuickAccessKey", captureSource);
+        Assert.Contains("x:Name=\"LeftKey\" Canvas.Left=\"268\" Canvas.Top=\"416\" Width=\"75\" Height=\"83\"", captureXaml);
+        Assert.Contains("x:Name=\"RightKey\" Canvas.Left=\"424\" Canvas.Top=\"416\" Width=\"74\" Height=\"83\"", captureXaml);
+        Assert.Contains("x:Name=\"UpKey\" Canvas.Left=\"341\" Canvas.Top=\"343\" Width=\"83\" Height=\"73\"", captureXaml);
+        Assert.Contains("x:Name=\"DownKey\" Canvas.Left=\"341\" Canvas.Top=\"499\" Width=\"83\" Height=\"75\"", captureXaml);
+        Assert.Contains("Content=\"저장하기\"", captureXaml);
+        Assert.Contains("Content=\"다시 설정하기\"", captureXaml);
+        Assert.Contains("ApplyLocalizedText", captureSource);
+        Assert.Contains("BatteryGuideCapturePrompt", captureSource);
+        Assert.Contains("BatteryGuideCaptureWaiting", captureSource);
+        Assert.Contains("BatteryGuideTriggerCaptureWindow(_viewModel.Language)", mainWindowSource);
+        Assert.Contains("PopInOriginScreenPoint = TryGetElementCenterScreenPoint(BatteryGuideTriggerSelectButton)", mainWindowSource);
+        Assert.Contains("SetCandidate(BatteryGuideTrigger? trigger)", captureSource);
+        Assert.Contains("TryLoadOriginalBlueprintImage", captureSource);
+        Assert.Contains("TryLoadEmbeddedOriginalBlueprintImage", captureSource);
+        Assert.Contains("VectorBlueprintLayer.Visibility = Visibility.Visible", captureSource);
+        Assert.Contains("typeof(BatteryGuideTriggerCaptureWindow).Assembly.GetName().Name", captureSource);
+        Assert.Contains("component/Assets/controller-guide-blueprint.png", captureSource);
+        Assert.Contains("controller-guide-blueprint.png", captureSource);
+        Assert.Contains("controller-guide-blueprint.jpg", captureSource);
+        Assert.Contains("BatteryGuideTriggerParser.GetVisualButtonKeys(trigger)", captureSource);
+        Assert.Contains("HeaderDragArea_MouseLeftButtonDown", captureSource);
+        Assert.Contains("DragMove()", captureSource);
+        Assert.Contains("Window_PreviewKeyDown", captureSource);
+        Assert.Contains("e.Handled = true;", captureSource);
+        Assert.Contains("WmClose", captureSource);
+        Assert.Contains("WmSysCommand", captureSource);
+        Assert.Contains("ScClose", captureSource);
+        Assert.Contains("_allowClose", captureSource);
+        Assert.Contains("OnClosing(CancelEventArgs e)", captureSource);
+        Assert.Contains("e.Cancel = true;", captureSource);
+        Assert.Contains("CloseFromOwner()", captureSource);
+        Assert.Contains("_allowClose = true;", captureSource);
+        Assert.Contains("WindowMessageHook", captureSource);
+        Assert.Contains("HwndSource.FromHwnd", captureSource);
+        Assert.Contains("AddHook(WindowMessageHook)", captureSource);
+        Assert.Contains("RemoveHook(WindowMessageHook)", captureSource);
+        Assert.Contains("handled = true;", captureSource);
+        Assert.Contains("msg == WmClose", captureSource);
+        Assert.Contains("CloseFromOwner);", captureSource);
+        Assert.Contains("PopInOriginScreenPoint", captureSource);
+        Assert.Contains("WindowSurfaceSkew", captureSource);
+        Assert.Contains("WindowPopInAnimator.Begin(", captureSource);
+        Assert.Contains("WindowSurfaceScale,", captureSource);
+        Assert.Contains("WindowSurfaceSkew,", captureSource);
+        Assert.Contains("WindowSurfaceTranslate,", captureSource);
+        Assert.DoesNotContain("private void Window_KeyDown", captureSource);
+        Assert.Contains("_pendingBatteryGuideTriggerCapture", mainWindowSource);
+        Assert.Contains("BatteryGuideTriggerCaptureDesignWidth = 1448d", mainWindowSource);
+        Assert.Contains("BatteryGuideTriggerCaptureDesignHeight = 1086d", mainWindowSource);
+        Assert.Contains("BatteryGuideTriggerCaptureMaxWorkAreaRatio = 0.78d", mainWindowSource);
+        Assert.Contains("BatteryGuideTriggerCaptureMaxScale = 0.88d", mainWindowSource);
+        Assert.Contains("TryUpdateBatteryGuideTriggerCapture", mainWindowSource);
+        Assert.Contains("BatteryGuideTriggerCaptureWindow_SaveRequested", mainWindowSource);
+        Assert.Contains("_batteryGuideTriggerCaptureWindow?.CloseFromOwner();", mainWindowSource);
+        Assert.DoesNotContain("_batteryGuideTriggerCaptureWindow?.Close();", mainWindowSource);
+        Assert.Contains("PositionBatteryGuideTriggerCaptureWindow", mainWindowSource);
+        Assert.Contains("GetWorkingAreaForOwnerWindow", mainWindowSource);
+        Assert.Contains("GetWorkingAreaFromScreen", mainWindowSource);
+        Assert.Contains("TransformFromDevice", mainWindowSource);
+        Assert.DoesNotContain("TrySaveBatteryGuideTriggerCapture", mainWindowSource);
+        Assert.DoesNotContain("Content=\"↺\"", mainWindowXaml);
+        Assert.Contains("BatteryGuideTriggerResetButtonStyle", mainWindowXaml);
+        Assert.Contains("reset-button-blue.png", mainWindowXaml);
+        Assert.Contains("ResetCircleImage", mainWindowXaml);
+        Assert.Contains("ResetWhiteCircle", mainWindowXaml);
+        Assert.Contains("ResetInnerPulseScale", mainWindowXaml);
+        Assert.Contains("ResetCircleScale", mainWindowXaml);
+        Assert.Contains("ClipToBounds=\"True\"", mainWindowXaml);
+        Assert.Contains("HasCustomBatteryGuideTrigger", mainWindowXaml);
+        Assert.DoesNotContain("BatteryGuideTriggerProfileSummaryTextBlock", mainWindowXaml);
+        Assert.DoesNotContain("Text=\"{Binding BatteryGuideTriggerProfileSummary}\"", mainWindowXaml);
+        Assert.Contains("CustomTabItem", captureXaml);
+        Assert.Contains("PlayStationTabItem", captureXaml);
+        Assert.Contains("SteamControllerTabItem", captureXaml);
+        Assert.Contains("CaptureTopTabItemStyle", captureXaml);
+        Assert.Contains("WaterPulse", captureXaml);
+        Assert.Contains("ContentSource=\"Header\"", captureXaml);
+        Assert.Contains("TextElement.Foreground=\"{TemplateBinding Foreground}\"", captureXaml);
+        Assert.Contains("TextElement.FontSize=\"{TemplateBinding FontSize}\"", captureXaml);
+        Assert.Contains("TextElement.FontWeight=\"{TemplateBinding FontWeight}\"", captureXaml);
+        Assert.Contains("Margin=\"{TemplateBinding Padding}\"", captureXaml);
+        Assert.Contains("ClipToBounds=\"False\"", captureXaml);
+        Assert.Contains("ProfileDetailTextBlock", captureXaml);
+        Assert.Contains("SetProfiles(IReadOnlyDictionary<string, string>? profiles, string? legacyTrigger)", captureSource);
+        Assert.Contains("GetLocalizedCustomTabText", captureSource);
+        Assert.Contains("BuildProfileLine(", captureSource);
+        Assert.Contains("GuideButtonDeviceKind.DualSense", captureSource);
+        Assert.DoesNotContain("ProfilesTabItem", captureXaml);
+        Assert.DoesNotContain("ProfileSummaryTextBlock", captureXaml);
+        Assert.Contains("<Setter Property=\"Foreground\" Value=\"#10243C\" />", mainWindowXaml);
+        Assert.Contains("<Setter Property=\"Foreground\" Value=\"#FFFFFFFF\" />", mainWindowXaml);
+        Assert.Contains("RoutedEvent=\"Button.Click\"", mainWindowXaml);
+        Assert.Contains("BatteryGuideTriggerResetPath", mainWindowXaml);
+        Assert.Contains("BatteryGuideTriggerResetRotate", mainWindowXaml);
+        Assert.Contains("ToolTip=\"{Binding TextRestoreDefault}\"", mainWindowXaml);
+        Assert.DoesNotContain("ToolTip=\"기본 알림 버튼으로 되돌리기\"", mainWindowXaml);
+        Assert.Contains("Padding=\"0\"", mainWindowXaml);
+        Assert.Contains("Width=\"18\"", mainWindowXaml);
+        Assert.Contains("Height=\"18\"", mainWindowXaml);
+        Assert.Contains("Canvas Width=\"24\"", mainWindowXaml);
+        Assert.Contains("CenterX=\"12\"", mainWindowXaml);
+        Assert.Contains("M17.65,6.35C16.2,4.9", mainWindowXaml);
+        Assert.DoesNotContain("BatteryGuideTriggerResetArrowHeadPath", mainWindowXaml);
+        Assert.Contains("BatteryGuideTriggerSelectButtonStyle", mainWindowXaml);
+        Assert.Contains("Focusable=\"False\"", mainWindowXaml);
+        Assert.Contains("IsTabStop=\"False\"", mainWindowXaml);
+        Assert.Contains("PreviewMouseLeftButtonDown=\"BatteryGuideTriggerSelectButton_PreviewMouseLeftButtonDown\"", mainWindowXaml);
+        Assert.Contains("HasCustomBatteryGuideTrigger", mainWindowXaml);
+        Assert.Contains("ActiveGuideTriggerBorder", mainWindowXaml);
+        Assert.Contains("GuideActiveStopA", mainWindowXaml);
+        Assert.DoesNotContain("Burgundy", mainWindowXaml);
+        Assert.Contains("BatteryGuideTriggerActivePulse", mainWindowXaml);
+        Assert.Contains("BeginBatteryGuideTriggerCapture();", mainWindowSource);
+        Assert.Contains("_batteryGuideTriggerSelectMouseToggleRequested", mainWindowSource);
+        Assert.Contains("BatteryGuideTriggerSelectButton_PreviewMouseLeftButtonDown", mainWindowSource);
+        Assert.Contains("_batteryGuideTriggerCaptureWindow.Activate();", mainWindowSource);
+        Assert.DoesNotContain(
+            "_viewModel.ResetBatteryGuideTrigger();",
+            mainWindowSource[
+                mainWindowSource.IndexOf("private void BatteryGuideTriggerSelectButton_Click", StringComparison.Ordinal)..
+                mainWindowSource.IndexOf("private void BatteryGuideTriggerResetButton_Click", StringComparison.Ordinal)]);
+        Assert.Contains("SpinBatteryGuideTriggerResetIcon", mainWindowSource);
+        Assert.Contains("BeginAnimation(RotateTransform.AngleProperty", mainWindowSource);
+        var resetSpinMethod = mainWindowSource[
+            mainWindowSource.IndexOf("private void SpinBatteryGuideTriggerResetIcon", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("private void BeginBatteryGuideTriggerCapture", StringComparison.Ordinal)];
+        Assert.Contains("new DoubleAnimation(0, 360", resetSpinMethod);
+        Assert.DoesNotContain("EasingFunction", resetSpinMethod);
+    }
+
+    [Fact]
+    public void PowerIdlePause_UsesLocalizedSleepGuardText()
+    {
+        var appRoot = Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App");
+        var viewModelSource = File.ReadAllText(Path.Combine(appRoot, "ViewModels", "MainViewModel.cs"));
+        var languageCatalogSource = File.ReadAllText(Path.Combine(appRoot, "Services", "UiLanguageCatalog.cs"));
+        var systemDisplayIdleTimeoutSource = File.ReadAllText(Path.Combine(appRoot, "Services", "SystemDisplayIdleTimeout.cs"));
+        var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+
+        Assert.Contains("TextPowerIdlePause => UiLanguageCatalog.GetExtraText(Settings.Language, \"PowerIdlePause\")", viewModelSource);
+        Assert.Contains("TextWindowsDisplayOff => UiLanguageCatalog.GetExtraText(Settings.Language, \"WindowsDisplayOff\")", viewModelSource);
+        Assert.Contains("StatusText = UiLanguageCatalog.GetExtraText(Settings.Language, \"PowerIdlePauseActive\")", viewModelSource);
+        Assert.Contains("\"PowerIdlePause\" => \"절전 보호\"", languageCatalogSource);
+        Assert.Contains("\"PowerIdlePauseActive\" => \"절전 보호 활성화\"", languageCatalogSource);
+        Assert.Contains("\"PowerIdlePauseAuto\" => \"자동(Windows 설정)\"", languageCatalogSource);
+        Assert.Contains("\"PowerIdlePauseOff\" => \"끔\"", languageCatalogSource);
+        Assert.Contains("\"PowerIdlePauseMinutesFormat\" => \"{0}분\"", languageCatalogSource);
+        Assert.Contains("\"PowerIdlePauseOneHour\" => \"1시간\"", languageCatalogSource);
+        Assert.Contains("\"PowerIdlePauseHoursFormat\" => \"{0}시간\"", languageCatalogSource);
+        Assert.Contains("\"WindowsDisplayOff\" => \"Windows 화면 꺼짐\"", languageCatalogSource);
+        Assert.Contains("\"WindowsDisplayOffNever\" => \"안 끔\"", languageCatalogSource);
+        Assert.Contains("\"WindowsDisplayOffOneHour\" => \"1시간\"", languageCatalogSource);
+        Assert.Contains("\"WindowsDisplayOffHoursFormat\" => \"{0}시간\"", languageCatalogSource);
+        Assert.Contains("\"PowerIdlePause\" => \"Sleep guard\"", languageCatalogSource);
+        Assert.Contains("\"WindowsDisplayOff\" => \"Windows display off\"", languageCatalogSource);
+        Assert.Contains("PowerIdlePauseOptions => BuildPowerIdlePauseOptions(Settings.Language)", viewModelSource);
+        Assert.Contains("BuildWindowsDisplayOffOptions(Settings.Language, GetCurrentWindowsDisplayOffMinutes())", viewModelSource);
+        Assert.Contains("new[] { 1, 5, 10, 15, 30, 45, 60, 120, 180, 240, 300 }", viewModelSource);
+        Assert.Contains("FormatPowerDurationLabel", viewModelSource);
+        Assert.Contains("GetLocalIdleDuration()", viewModelSource);
+        Assert.Contains("public void MarkUserActivity()", viewModelSource);
+        Assert.Contains("ProbeUnsupportedGamepadAsync(string address, bool markUserActivity = true)", viewModelSource);
+        Assert.Contains("ApplyProbeProgress(string address, ProbeProgress progress, bool markUserActivity = true)", viewModelSource);
+        Assert.Contains("ApplyProbeProgress(normalizedAddress, progress, markUserActivity)", viewModelSource);
+        Assert.Contains("MarkProbeActivityIfNeeded(markUserActivity)", viewModelSource);
+        Assert.Contains("ShouldMarkProbeAsUserActivity(markUserActivity)", viewModelSource);
+        Assert.Contains("ShouldStartBackgroundProbe(ShouldPauseBackgroundPollingForPowerIdle())", viewModelSource);
+        Assert.Contains("_ = ProbeUnsupportedGamepadAsync(address, markUserActivity: false);", viewModelSource);
+        Assert.Contains("_ = ProbeUnsupportedGamepadAsync(normalized, markUserActivity: false);", viewModelSource);
+        Assert.Contains("SystemDisplayIdleTimeout.GetCurrentDisplayOrSleepTimeout()", viewModelSource);
+        Assert.Contains("OnPropertyChanged(nameof(PowerIdlePauseOptions))", viewModelSource);
+        Assert.Contains("OnPropertyChanged(nameof(WindowsDisplayOffOptions))", viewModelSource);
+        Assert.Contains("RefreshPowerIdlePauseOptions", mainWindowSource);
+        Assert.Contains("WindowsDisplayOffComboBox_SelectionChanged", mainWindowSource);
+        Assert.Contains("RefreshWindowsDisplayOffOptions", mainWindowSource);
+        Assert.Contains("public bool IsAnyProbeRunning => _isAnyProbeRunning;", viewModelSource);
+        Assert.Contains("public bool IsRefreshRunning => _isRefreshRunning;", viewModelSource);
+        Assert.Contains("_viewModel.IsAnyProbeRunning || _isBatteryGuideTriggerCaptureActive", mainWindowSource);
+        Assert.Contains("_viewModel.IsRefreshRunning", mainWindowSource);
+        Assert.Contains("_viewModel.GetLocalIdleDuration()", mainWindowSource);
+        Assert.Contains("_viewModel.MarkUserActivity();", mainWindowSource);
+        Assert.Contains("GetCurrentSleepTimeout", systemDisplayIdleTimeoutSource);
+        Assert.Contains("GetCurrentDisplayOrSleepTimeout", systemDisplayIdleTimeoutSource);
+        Assert.Contains("PowerWriteACValueIndex", systemDisplayIdleTimeoutSource);
+        Assert.Contains("PowerWriteDCValueIndex", systemDisplayIdleTimeoutSource);
+        Assert.Contains("PowerSetActiveScheme", systemDisplayIdleTimeoutSource);
+        Assert.DoesNotContain(
+            "SystemIdleMonitor.GetIdleDuration(),\r\n            isProbeRunning: false,\r\n            isRefreshRunning: false",
+            mainWindowSource);
+    }
+
+    [Fact]
+    public void BatteryGuideTriggerCapture_OptionallyLoadsOriginalBlueprintImageAsset()
+    {
+        var appRoot = Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App");
+        var projectFile = File.ReadAllText(Path.Combine(appRoot, "BluetoothBatteryWidget.App.csproj"));
+        var assetPath = Path.Combine(appRoot, "Assets", "controller-guide-blueprint.png");
+        var resetButtonAssetPath = Path.Combine(appRoot, "Assets", "reset-button-blue.png");
+
+        Assert.Contains("<Resource Include=\"Assets\\controller-guide-blueprint.png\"", projectFile);
+        Assert.Contains("<Resource Include=\"Assets\\reset-button-blue.png\"", projectFile);
+        Assert.Contains("Assets\\controller-guide-blueprint.jpg", projectFile);
+        Assert.Contains("Assets\\controller-guide-blueprint.jpeg", projectFile);
+        Assert.Contains("CopyToOutputDirectory=\"PreserveNewest\"", projectFile);
+        Assert.Contains("Condition=\"Exists('Assets\\controller-guide-blueprint.png')\"", projectFile);
+        Assert.Contains(
+            Path.Combine(AppContext.BaseDirectory, "Assets", "controller-guide-blueprint.png"),
+            BatteryGuideTriggerCaptureWindow.GetOriginalBlueprintImageCandidatePaths());
+        Assert.Contains(
+            Path.Combine(AppContext.BaseDirectory, "Assets", "controller-guide-blueprint.jpg"),
+            BatteryGuideTriggerCaptureWindow.GetOriginalBlueprintImageCandidatePaths());
+
+        Assert.True(File.Exists(assetPath));
+        using var stream = File.OpenRead(assetPath);
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        Assert.Equal(1448, decoder.Frames[0].PixelWidth);
+        Assert.Equal(1086, decoder.Frames[0].PixelHeight);
+
+        Assert.True(File.Exists(resetButtonAssetPath));
+        using var resetStream = File.OpenRead(resetButtonAssetPath);
+        var resetDecoder = BitmapDecoder.Create(resetStream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        Assert.Equal(220, resetDecoder.Frames[0].PixelWidth);
+        Assert.Equal(220, resetDecoder.Frames[0].PixelHeight);
+    }
+
+    [Fact]
+    public void BatteryGuideTriggerCaptureWindow_LoadsOriginalBlueprintAndHighlightsCombo()
+    {
+        Exception? threadException = null;
+        var imageLoaded = false;
+        var imageHiddenAsRawBitmap = false;
+        var transparentLineLayerVisible = false;
+        var transparentLineSourceLoaded = false;
+        var vectorHidden = false;
+        var candidateText = string.Empty;
+        var saveEnabled = false;
+        var rbHighlight = string.Empty;
+        var guideHighlight = string.Empty;
+        var quickAccessHighlight = string.Empty;
+        var rtHighlight = string.Empty;
+        var rightPadAfterRt = string.Empty;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new BatteryGuideTriggerCaptureWindow();
+                try
+                {
+                    imageLoaded =
+                        window.OriginalBlueprintImage.Visibility == System.Windows.Visibility.Visible &&
+                        window.OriginalBlueprintImage.Source is BitmapSource { PixelWidth: 1448, PixelHeight: 1086 };
+                    imageHiddenAsRawBitmap = window.OriginalBlueprintImage.Opacity == 0d;
+                    transparentLineLayerVisible = window.BlueprintImageLineLayer.Visibility == System.Windows.Visibility.Visible;
+                    transparentLineSourceLoaded = window.BlueprintImageLineLayer.Source is BitmapSource
+                    {
+                        PixelWidth: 1448,
+                        PixelHeight: 1086
+                    };
+                    vectorHidden = window.VectorBlueprintLayer.Visibility == System.Windows.Visibility.Collapsed;
+
+                    var trigger = new BatteryGuideTrigger(
+                        GuideButtonDeviceKind.SteamController,
+                        0x45,
+                        [new BatteryGuideTriggerBit(3, 0x02), new BatteryGuideTriggerBit(4, 0x01)],
+                        "RB + Guide");
+                    window.SetCandidate(trigger);
+
+                    candidateText = window.CandidateTextBlock.Text;
+                    saveEnabled = window.SaveButton.IsEnabled;
+                    rbHighlight = window.RBKey.Background.ToString();
+                    guideHighlight = window.GuideKey.Background.ToString();
+                    quickAccessHighlight = window.QuickAccessKey.Background.ToString();
+
+                    var rtTrigger = new BatteryGuideTrigger(
+                        GuideButtonDeviceKind.SteamController,
+                        0x45,
+                        [new BatteryGuideTriggerBit(4, 0x80)],
+                        "RT");
+                    window.SetCandidate(rtTrigger);
+
+                    rtHighlight = window.RTKey.Background.ToString();
+                    rightPadAfterRt = window.RightPadKey.Background.ToString();
+                }
+                finally
+                {
+                    window.Close();
+                    window.Dispatcher.InvokeShutdown();
+                }
+            }
+            catch (Exception ex)
+            {
+                threadException = ex;
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (threadException is not null)
+        {
+            throw threadException;
+        }
+
+        Assert.True(imageLoaded);
+        Assert.True(imageHiddenAsRawBitmap);
+        Assert.True(transparentLineLayerVisible);
+        Assert.True(transparentLineSourceLoaded);
+        Assert.True(vectorHidden);
+        Assert.Equal("RB + Guide", candidateText);
+        Assert.True(saveEnabled);
+        Assert.Equal("#E61E78FF", rbHighlight);
+        Assert.Equal("#E61E78FF", guideHighlight);
+        Assert.Equal("#00000000", quickAccessHighlight);
+        Assert.Equal("#E61E78FF", rtHighlight);
+        Assert.Equal("#00000000", rightPadAfterRt);
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_DebouncesSameSavedCombo()
+    {
+        var now = DateTimeOffset.Parse("2026-06-01T12:00:00+09:00");
+
+        Assert.Equal(TimeSpan.FromMilliseconds(1500), MainWindow.GetCustomBatteryGuideTriggerToastCooldown(GuideButtonDeviceKind.DualSense));
+        Assert.Equal(TimeSpan.FromMilliseconds(3000), MainWindow.GetCustomBatteryGuideTriggerToastCooldown(GuideButtonDeviceKind.SteamController));
+        Assert.False(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(null, now));
+        Assert.True(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(now, now.AddMilliseconds(500)));
+        Assert.True(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(now, now.AddMilliseconds(1000)));
+        Assert.False(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(now, now.AddMilliseconds(1501)));
+        Assert.True(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(
+            now,
+            now.AddMilliseconds(2500),
+            GuideButtonDeviceKind.SteamController));
+        Assert.False(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(
+            now,
+            now.AddMilliseconds(3001),
+            GuideButtonDeviceKind.SteamController));
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_OnlyShowsOnceWhileSameSavedComboIsHeldAcrossInputPaths()
+    {
+        const string bindingKey = "SteamController:45:03:02,04:01";
+        var pressedReportKeysByBinding = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            "SteamController:RAW:RID_45",
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            "SteamController:HID:RID_45",
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            "SteamController:RAW:RID_45",
+            isPressed: false,
+            hasAnyTriggerBitPressed: false,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            "SteamController:HID:RID_45",
+            isPressed: false,
+            hasAnyTriggerBitPressed: false,
+            pressedReportKeysByBinding));
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            "SteamController:RAW:RID_45",
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_OnlyShowsOnceWhileSameSavedComboIsHeldOnSameInputPath()
+    {
+        const string bindingKey = "SteamController:45:03:02,04:01";
+        const string reportKey = "SteamController:RAW:RID_45";
+        var pressedReportKeysByBinding = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: false,
+            hasAnyTriggerBitPressed: false,
+            pressedReportKeysByBinding));
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_PartialComboReportDoesNotResetHeldSteamCombo()
+    {
+        const string bindingKey = "SteamController:45:03:40,04:80";
+        const string reportKey = "SteamController:STEAMCON:RID_45";
+        var pressedReportKeysByBinding = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: false,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: false,
+            hasAnyTriggerBitPressed: false,
+            pressedReportKeysByBinding));
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            reportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_SteamRbGuideReportSequenceShowsOncePerPhysicalPress()
+    {
+        var neutral = new byte[54];
+        neutral[0] = 0x45;
+        var pressed = neutral.ToArray();
+        pressed[3] = 0x02;
+        pressed[4] = 0x01;
+
+        Assert.True(BatteryGuideTriggerParser.TryCapture(
+            GuideButtonDeviceKind.SteamController,
+            neutral,
+            pressed,
+            out var trigger));
+        Assert.Equal("RB + Guide", trigger.DisplayName);
+
+        const string bindingKey = "SteamController:45:03:02,04:01";
+        const string rawReportKey = "SteamController:RAW:RID_45";
+        const string hidReportKey = "SteamController:HID:RID_45";
+        var pressedReportKeysByBinding = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(BatteryGuideTriggerParser.IsMatch(trigger, GuideButtonDeviceKind.SteamController, pressed));
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            rawReportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            rawReportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            hidReportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+
+        Assert.False(BatteryGuideTriggerParser.IsMatch(trigger, GuideButtonDeviceKind.SteamController, neutral));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            rawReportKey,
+            isPressed: false,
+            hasAnyTriggerBitPressed: false,
+            pressedReportKeysByBinding));
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            hidReportKey,
+            isPressed: false,
+            hasAnyTriggerBitPressed: false,
+            pressedReportKeysByBinding));
+
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            rawReportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_CooldownSuppressesLateSecondInputPathAfterEarlyRelease()
+    {
+        const string bindingKey = "SteamController:45:03:02,04:01";
+        const string rawReportKey = "SteamController:RAW:RID_45";
+        const string hidReportKey = "SteamController:HID:RID_45";
+        var pressedReportKeysByBinding = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var firstShownAt = DateTimeOffset.Parse("2026-06-01T12:00:00+09:00");
+
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            rawReportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+
+        Assert.False(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            rawReportKey,
+            isPressed: false,
+            hasAnyTriggerBitPressed: false,
+            pressedReportKeysByBinding));
+
+        Assert.True(MainWindow.ShouldShowCustomBatteryGuideTriggerOnStateChange(
+            bindingKey,
+            hidReportKey,
+            isPressed: true,
+            hasAnyTriggerBitPressed: true,
+            pressedReportKeysByBinding));
+        Assert.True(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(
+            firstShownAt,
+            firstShownAt.AddMilliseconds(500),
+            GuideButtonDeviceKind.SteamController));
+        Assert.True(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(
+            firstShownAt,
+            firstShownAt.AddMilliseconds(2500),
+            GuideButtonDeviceKind.SteamController));
+
+        Assert.False(MainWindow.ShouldSuppressCustomBatteryGuideTriggerToast(
+            firstShownAt,
+            firstShownAt.AddMilliseconds(3001),
+            GuideButtonDeviceKind.SteamController));
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_CustomBindingOwnsDefaultGuidePressPath()
     {
         var source = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
@@ -718,21 +1702,35 @@ public sealed class MainWindowXamlBindingTests
             "BluetoothBatteryWidget.App",
             "MainWindow.xaml.cs"));
 
-        Assert.Contains("StartInstallerUpdateAndRestart(setupPath, releaseInfo.Version)", source);
-        Assert.Contains("Start-Process -FilePath $setupPath -ArgumentList $installArgs -Verb RunAs -Wait -PassThru", source);
-        Assert.Contains("('/LOG=\\\"' + $logPath + '\\\"')", source);
-        Assert.DoesNotContain("'/CLOSEAPPLICATIONS'", source);
-        Assert.DoesNotContain("'/NORESTARTAPPLICATIONS'", source);
-        Assert.Contains("installer_exit_code=", source);
-        Assert.Contains("installer_launch_error=", source);
-        Assert.Contains("Test-BlossInstalledVersion", source);
-        Assert.Contains("ProductVersion -like ($versionPrefix + '*')", source);
-        Assert.Contains("Bloss.dll", source);
-        Assert.Contains("installed_target_version=", source);
+        var guidePressedMethod = source[
+            source.IndexOf("private void GuideButtonMonitor_GuideButtonPressed", StringComparison.Ordinal)..
+            source.IndexOf("private void GuideButtonMonitor_InputReportReceived", StringComparison.Ordinal)];
+
+        Assert.Contains("if (_viewModel.HasCustomBatteryGuideTriggerForDevice(e.DeviceKind))", guidePressedMethod);
+        Assert.Contains("return;", guidePressedMethod);
+        Assert.DoesNotContain("ShowBatteryGuide(e)", guidePressedMethod[
+            guidePressedMethod.IndexOf("if (_viewModel.HasCustomBatteryGuideTriggerForDevice(e.DeviceKind))", StringComparison.Ordinal)..
+            guidePressedMethod.IndexOf("if (ShouldSuppressSecondarySteamGuideButtonPath", StringComparison.Ordinal)]);
+
+        var secondaryFallbackMethod = source[
+            source.IndexOf("private async Task CompleteSteamSecondaryGuideFallbackAsync", StringComparison.Ordinal)..
+            source.IndexOf("private void CancelPendingSteamSecondaryGuideFallbackLocked", StringComparison.Ordinal)];
+
+        var suppressionIndex = secondaryFallbackMethod.IndexOf("ShouldSuppressSteamSecondaryFallbackForCustomBatteryGuideTrigger(e)", StringComparison.Ordinal);
+        var acceptedIndex = secondaryFallbackMethod.IndexOf("\"secondary_fallback_accepted\"", StringComparison.Ordinal);
+
+        Assert.True(suppressionIndex >= 0);
+        Assert.True(acceptedIndex >= 0);
+        Assert.True(suppressionIndex < acceptedIndex);
+        Assert.Contains("secondary_fallback_custom_trigger_suppressed", source);
+        Assert.Contains("TryGetBatteryGuideTriggerForDevice(e.DeviceKind", source);
+        Assert.Contains("SetBatteryGuideTriggerProfile(", source);
+        Assert.True(MainWindow.ShouldCustomBatteryGuideTriggerOwnSteamSecondaryFallback(true));
+        Assert.False(MainWindow.ShouldCustomBatteryGuideTriggerOwnSteamSecondaryFallback(false));
     }
 
     [Fact]
-    public void Installer_DisablesRestartManagerPreCloseCheckForSilentUpdates()
+    public void SteamControllerGuideToast_SuppressesConnectionAndRefreshCarryoverSignals()
     {
         var source = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
@@ -740,13 +1738,342 @@ public sealed class MainWindowXamlBindingTests
             "..",
             "..",
             "..",
-            "build",
-            "installer",
-            "BluetoothBatteryWidget.iss"));
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
 
-        Assert.Contains("CloseApplications=no", source);
-        Assert.Contains("RestartApplications=no", source);
-        Assert.Contains("CloseApplicationsFilterExcludes=*.exe,*.dll,*.chm", source);
+        Assert.Contains("SteamGuideToastConnectionSuppressDuration", source);
+        Assert.Contains("SteamGuideToastRefreshSuppressDuration", source);
+        Assert.Contains("RefreshFromUserCommandAsync()", source);
+        Assert.Contains("SuppressSteamGuideToasts(SteamGuideToastRefreshSuppressDuration, \"manual_refresh_started\")", source);
+        Assert.Contains("SuppressSteamGuideToasts(SteamGuideToastRefreshSuppressDuration, \"manual_refresh_completed\")", source);
+        Assert.Contains("SuppressGuideInputForKnownDevices(duration, reason)", source);
+        Assert.Contains("steam_battery_toast_refresh_suppressed", source);
+        Assert.Contains("_trayRefreshMenuItem.Click += (_, _) => Dispatcher.Invoke(() => _ = RefreshFromUserCommandAsync())", source);
+        Assert.Contains("UpdateSteamGuideConnectionSuppressState(item, \"steam_device_added\")", source);
+        Assert.Contains("ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, \"guide_button_press\")", source);
+        Assert.Contains("ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, \"custom_trigger_input\")", source);
+        Assert.Contains("ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, \"secondary_fallback\")", source);
+        Assert.Contains("steam_guide_toast_refresh_suppressed", source);
+        Assert.Contains("steam_guide_toast_startup_suppressed", source);
+    }
+
+    [Fact]
+    public void BatteryGuideTrigger_CustomBindingLogsCaptureAndToastWithoutAddress()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+
+        var captureLogIndex = source.IndexOf("\"custom_trigger_capture_candidate\"", StringComparison.Ordinal);
+        var toastLogIndex = source.IndexOf("\"custom_trigger_toast_shown\"", StringComparison.Ordinal);
+
+        Assert.True(captureLogIndex >= 0);
+        Assert.True(toastLogIndex >= 0);
+
+        var captureLogBlock = source[captureLogIndex..Math.Min(source.Length, captureLogIndex + 520)];
+        var toastLogBlock = source[toastLogIndex..Math.Min(source.Length, toastLogIndex + 420)];
+
+        Assert.Contains("string.Empty", captureLogBlock);
+        Assert.Contains("captured.DisplayName", captureLogBlock);
+        Assert.Contains("FormatBatteryGuideTriggerBits(captured)", captureLogBlock);
+        Assert.DoesNotContain("e.Address", captureLogBlock);
+        Assert.Contains("string.Empty", toastLogBlock);
+        Assert.Contains("trigger.DisplayName", toastLogBlock);
+        Assert.DoesNotContain("e.Address", toastLogBlock);
+    }
+
+    [Fact]
+    public void BatteryGuideTriggerCapture_KeepsLargerComboWhenReportsArriveOutOfOrder()
+    {
+        var combo = new BatteryGuideTrigger(
+            GuideButtonDeviceKind.SteamController,
+            0x45,
+            [new BatteryGuideTriggerBit(3, 0x02), new BatteryGuideTriggerBit(4, 0x01)],
+            "RB + Guide");
+        var single = new BatteryGuideTrigger(
+            GuideButtonDeviceKind.SteamController,
+            0x45,
+            [new BatteryGuideTriggerBit(4, 0x01)],
+            "Guide");
+
+        Assert.True(MainWindow.ShouldReplacePendingBatteryGuideTriggerCapture(null, single));
+        Assert.True(MainWindow.ShouldReplacePendingBatteryGuideTriggerCapture(single, combo));
+        Assert.False(MainWindow.ShouldReplacePendingBatteryGuideTriggerCapture(combo, single));
+    }
+
+    [Fact]
+    public void BatteryAlertThresholdSettings_OpenSelectionWindowAndKeepForcedFifteenPercentAlert()
+    {
+        var appRoot = Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App");
+        var coreRoot = Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.Core");
+        var mainWindowXaml = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml"));
+        var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+        var thresholdWindowXaml = File.ReadAllText(Path.Combine(appRoot, "BatteryAlertThresholdsWindow.xaml"));
+        var thresholdWindowSource = File.ReadAllText(Path.Combine(appRoot, "BatteryAlertThresholdsWindow.xaml.cs"));
+        var popInAnimatorSource = File.ReadAllText(Path.Combine(appRoot, "WindowPopInAnimator.cs"));
+        var viewModelSource = File.ReadAllText(Path.Combine(appRoot, "ViewModels", "MainViewModel.cs"));
+        var settingsSource = File.ReadAllText(Path.Combine(coreRoot, "Models", "WidgetSettings.cs"));
+
+        Assert.Contains("BatteryAlertThresholdsRowGrid", mainWindowXaml);
+        Assert.Contains("BatteryAlertThresholdsButton", mainWindowXaml);
+        Assert.Contains("BatteryAlertThresholdsButton_Click", mainWindowXaml);
+        Assert.DoesNotContain("BatteryAlertThresholdsTextBox", mainWindowXaml);
+        Assert.DoesNotContain("BatteryAlertThresholdsTextBox_LostFocus", mainWindowSource);
+        Assert.Contains("new BatteryAlertThresholdsWindow(_viewModel.BatteryAlertThresholds, _viewModel.Language)", mainWindowSource);
+        Assert.Contains("ForcedThresholdCheckBox", thresholdWindowXaml);
+        Assert.Contains("HeadingTextBlock", thresholdWindowXaml);
+        Assert.Contains("DescriptionLine1Run", thresholdWindowXaml);
+        Assert.Contains("DescriptionLine2Run", thresholdWindowXaml);
+        Assert.Contains("Title=\"자동 알림 설정\"", thresholdWindowXaml);
+        Assert.Contains("WindowStartupLocation=\"Manual\"", thresholdWindowXaml);
+        Assert.Contains("WindowStyle=\"None\"", thresholdWindowXaml);
+        Assert.Contains("AllowsTransparency=\"True\"", thresholdWindowXaml);
+        Assert.Contains("Loaded=\"Window_Loaded\"", thresholdWindowXaml);
+        Assert.Contains("x:Name=\"WindowSurface\"", thresholdWindowXaml);
+        Assert.Contains("x:Name=\"WindowSurfaceScale\"", thresholdWindowXaml);
+        Assert.Contains("x:Name=\"WindowSurfaceSkew\"", thresholdWindowXaml);
+        Assert.Contains("x:Name=\"WindowSurfaceTranslate\"", thresholdWindowXaml);
+        Assert.Contains("RenderTransformOrigin=\"0.5,0.5\"", thresholdWindowXaml);
+        Assert.Contains("AlertChipToggleButtonStyle", thresholdWindowXaml);
+        Assert.Contains("AlertPrimaryButtonStyle", thresholdWindowXaml);
+        Assert.Contains("15%는 항상 울립니다.", thresholdWindowXaml);
+        Assert.Contains("<LineBreak />", thresholdWindowXaml);
+        Assert.Contains("추가 알림은 30~80% 사이에서 여러 개 선택할 수 있습니다.", thresholdWindowXaml);
+        Assert.Contains("ApplyLocalizedText", thresholdWindowSource);
+        Assert.Contains("BatteryAlertThresholdsWindowTitle", thresholdWindowSource);
+        Assert.Contains("BatteryAlertThresholdsDescriptionLine1", thresholdWindowSource);
+        Assert.Contains("BatteryAlertThresholdsDescriptionLine2", thresholdWindowSource);
+        Assert.Contains("ChipRootScale", thresholdWindowXaml);
+        Assert.Contains("ChipClickPulse", thresholdWindowXaml);
+        Assert.Contains("ChipClickPulseScale", thresholdWindowXaml);
+        Assert.DoesNotContain("ChipCirclePulse", thresholdWindowXaml);
+        Assert.DoesNotContain("ChipClickSpark", thresholdWindowXaml);
+        Assert.DoesNotContain("ChipCirclePulseLoop", thresholdWindowXaml);
+        Assert.DoesNotContain("RepeatBehavior=\"Forever\"", thresholdWindowXaml);
+        Assert.DoesNotContain("AutoReverse=\"True\"", thresholdWindowXaml);
+        Assert.Contains("Background=\"#4F95FF\"", thresholdWindowXaml);
+        Assert.Contains("Color=\"#4F95FF\"", thresholdWindowXaml);
+        Assert.Contains("BorderBrush=\"#1018222C\"", thresholdWindowXaml);
+        Assert.Contains("Property=\"Background\" Value=\"#BFE7FF\"", thresholdWindowXaml);
+        Assert.Contains("Property=\"BorderBrush\" Value=\"#BFE7FF\"", thresholdWindowXaml);
+        Assert.Contains("Property=\"Foreground\" Value=\"#0B243B\"", thresholdWindowXaml);
+        Assert.DoesNotContain("Value=\"#2941606F\"", thresholdWindowXaml);
+        Assert.DoesNotContain("BorderBrush=\"#CDE7FFFF\"", thresholdWindowXaml);
+        Assert.DoesNotContain("Value=\"#CDE7FFFF\"", thresholdWindowXaml);
+        Assert.DoesNotContain("Value=\"#7FDDF3FF\"", thresholdWindowXaml);
+        Assert.DoesNotContain("ChipWaterFill", thresholdWindowXaml);
+        Assert.DoesNotContain("ThresholdWaterFillHeight", thresholdWindowSource);
+        Assert.Contains("ThresholdToggle_Click", thresholdWindowSource);
+        Assert.Contains("checkBox.Click += ThresholdToggle_Click", thresholdWindowSource);
+        Assert.DoesNotContain("ThresholdToggle_CheckedChanged", thresholdWindowSource);
+        Assert.DoesNotContain("checkBox.Checked += ThresholdToggle_CheckedChanged", thresholdWindowSource);
+        Assert.Contains("PopInOriginScreenPoint", thresholdWindowSource);
+        Assert.Contains("WindowSurfaceSkew", thresholdWindowSource);
+        Assert.Contains("WindowPopInAnimator.Begin(", thresholdWindowSource);
+        Assert.Contains("WindowSurfaceScale,", thresholdWindowSource);
+        Assert.Contains("WindowSurfaceSkew,", thresholdWindowSource);
+        Assert.Contains("WindowSurfaceTranslate,", thresholdWindowSource);
+        Assert.Contains("ChipClickPulse", thresholdWindowSource);
+        Assert.Contains("CubicEase", thresholdWindowSource);
+        Assert.Contains("isChecked ? 0.96d : 0.72d", thresholdWindowSource);
+        Assert.Contains("isChecked ? 1.24d : 1.12d", thresholdWindowSource);
+        Assert.Contains("pulse.BeginAnimation(OpacityProperty", thresholdWindowSource);
+        Assert.Contains("ScaleTransform.ScaleXProperty", thresholdWindowSource);
+        Assert.Contains("HeaderDragArea_MouseLeftButtonDown", thresholdWindowXaml);
+        Assert.Contains("IsEnabled=\"False\"", thresholdWindowXaml);
+        Assert.Contains("ThresholdPanel", thresholdWindowXaml);
+        Assert.DoesNotContain("ThresholdGrid", thresholdWindowXaml);
+        Assert.Contains("WrapPanel", thresholdWindowXaml);
+        Assert.Contains("SelectableThresholds", thresholdWindowSource);
+        Assert.DoesNotContain("PreviewTextBlock", thresholdWindowXaml);
+        Assert.DoesNotContain("배터리가 내려갈 때 알림 순서", thresholdWindowSource);
+        Assert.Contains("DragMove();", thresholdWindowSource);
+        Assert.Contains("TextBatteryAlertThresholds", viewModelSource);
+        Assert.Contains("BatteryAlertThresholdsButtonText", viewModelSource);
+        Assert.Contains("BatteryGuideTriggerLabel", viewModelSource);
+        Assert.Contains("BatteryGuideTriggerSelect", viewModelSource);
+        Assert.Contains("BatteryAlertThresholdsLabel", viewModelSource);
+        Assert.Contains("BatteryAlertThresholdsButtonText", viewModelSource);
+        Assert.Contains("BatteryAlertThresholdsTooltip", viewModelSource);
+        var localizedTextBlock = viewModelSource[
+            viewModelSource.IndexOf("private void RaiseLocalizedTextPropertyChanges()", StringComparison.Ordinal)..
+            viewModelSource.IndexOf("internal static string BuildProbeFailureStatus", StringComparison.Ordinal)];
+        Assert.Contains("OnPropertyChanged(nameof(BatteryAlertThresholdsButtonText))", localizedTextBlock);
+        Assert.DoesNotContain("public string TextBatteryGuideTrigger => \"알림 버튼\"", viewModelSource);
+        Assert.DoesNotContain("public string TextBatteryGuideTriggerSelect => \"사용자 키 선택\"", viewModelSource);
+        Assert.DoesNotContain("public string TextBatteryAlertThresholds => \"자동 알림 설정\"", viewModelSource);
+        Assert.Contains("ForcedBatteryAlertThresholdPercent = 15", settingsSource);
+        Assert.Contains("MinimumCustomBatteryAlertThresholdPercent = 30", settingsSource);
+        Assert.Contains("MaximumCustomBatteryAlertThresholdPercent = 80", settingsSource);
+        Assert.Contains("PositionBatteryAlertThresholdsWindow(dialog);", mainWindowSource);
+        Assert.Contains("private void PositionBatteryAlertThresholdsWindow(Window dialog)", mainWindowSource);
+        Assert.Contains("PopInOriginScreenPoint = TryGetElementCenterScreenPoint(BatteryAlertThresholdsButton)", mainWindowSource);
+        Assert.Contains("private static System.Windows.Point? TryGetElementCenterScreenPoint(FrameworkElement element)", mainWindowSource);
+        Assert.Contains("TransformFromDevice", mainWindowSource);
+        Assert.Contains("GetWorkingAreaForOwnerWindow();", mainWindowSource);
+        Assert.Contains("TranslateTransform", popInAnimatorSource);
+        Assert.Contains("SkewTransform", popInAnimatorSource);
+        Assert.Contains("originScreenPoint", popInAnimatorSource);
+        Assert.Contains("CalculateStartOffset", popInAnimatorSource);
+        Assert.Contains("GenieStartScaleX = 0.42d", popInAnimatorSource);
+        Assert.Contains("GenieStartScaleY = 0.24d", popInAnimatorSource);
+        Assert.Contains("SettleDuration = TimeSpan.FromMilliseconds(700)", popInAnimatorSource);
+        Assert.Contains("QuinticEase", popInAnimatorSource);
+        Assert.Contains("BuildGenieScaleAnimation", popInAnimatorSource);
+        Assert.Contains("BuildGenieDoubleAnimation", popInAnimatorSource);
+        Assert.Contains("CalculateTransformOrigin", popInAnimatorSource);
+        Assert.Contains("CalculateStartSkewX", popInAnimatorSource);
+        Assert.Contains("CalculateStartSkewY", popInAnimatorSource);
+        Assert.Contains("HandoffBehavior.SnapshotAndReplace", popInAnimatorSource);
+        Assert.Contains("scale.ScaleX = 1d;", popInAnimatorSource);
+        Assert.Contains("skew.AngleX = 0d;", popInAnimatorSource);
+        Assert.Contains("translate.X = 0d;", popInAnimatorSource);
+        Assert.DoesNotContain("1.025d", popInAnimatorSource);
+        Assert.DoesNotContain("StartScale = 0.84d", popInAnimatorSource);
+        Assert.Contains("BuildBatteryAlertThresholds(_viewModel.BatteryAlertThresholds)", mainWindowSource);
+        Assert.Contains("PrimeBatteryAlertToastKeysForCurrentLevels();", mainWindowSource);
+        Assert.Contains("private void PrimeBatteryAlertToastKeysForCurrentLevels()", mainWindowSource);
+        Assert.Contains("ShouldSuppressAutomaticBatteryToastOnStartup", mainWindowSource);
+        Assert.DoesNotContain(
+            "CheckAllLowBatteryToasts();",
+            mainWindowSource[
+                mainWindowSource.IndexOf("private void BatteryAlertThresholdsButton_Click", StringComparison.Ordinal)..
+                mainWindowSource.IndexOf("private void BatteryGuideTriggerSelectButton_Click", StringComparison.Ordinal)]);
+        Assert.DoesNotContain(
+            "CheckAllLowBatteryToasts();",
+            mainWindowSource[
+                mainWindowSource.IndexOf("if (e.PropertyName is nameof(MainViewModel.BatteryAlertThresholds))", StringComparison.Ordinal)..
+                mainWindowSource.IndexOf("if (e.PropertyName is nameof(MainViewModel.ColorPresetId))", StringComparison.Ordinal)]);
+        Assert.Contains("RemoveBatteryAlertToastKeysForDevice", mainWindowSource);
+        Assert.Equal([15, 30, 40, 50, 60], MainWindow.BuildBatteryAlertThresholds("30, 40, 50, 60"));
+        Assert.Equal(60, MainWindow.ResolveBatteryAlertThresholdToShow(60, [15, 30, 40, 50, 60]));
+        Assert.Equal(60, MainWindow.ResolveBatteryAlertThresholdToShow(59, [15, 30, 40, 50, 60]));
+        Assert.Equal(50, MainWindow.ResolveBatteryAlertThresholdToShow(50, [15, 30, 40, 50, 60]));
+        Assert.Equal(15, MainWindow.ResolveBatteryAlertThresholdToShow(15, [15, 30, 40, 50, 60]));
+        Assert.Equal([30, 40, 50, 60, 70, 80], BatteryAlertThresholdsWindow.SelectableThresholds);
+    }
+
+    [Fact]
+    public void BatteryAlertThresholds_ResolveDescendingBatteryLevelsInConfiguredOrder()
+    {
+        var thresholds = MainWindow.BuildBatteryAlertThresholds("30, 40, 50, 60, 70, 80");
+
+        Assert.Equal([15, 30, 40, 50, 60, 70, 80], thresholds);
+        Assert.Equal(0, MainWindow.ResolveBatteryAlertThresholdToShow(81, thresholds));
+        Assert.Equal(80, MainWindow.ResolveBatteryAlertThresholdToShow(80, thresholds));
+        Assert.Equal(80, MainWindow.ResolveBatteryAlertThresholdToShow(79, thresholds));
+        Assert.Equal(70, MainWindow.ResolveBatteryAlertThresholdToShow(70, thresholds));
+        Assert.Equal(70, MainWindow.ResolveBatteryAlertThresholdToShow(69, thresholds));
+        Assert.Equal(60, MainWindow.ResolveBatteryAlertThresholdToShow(60, thresholds));
+        Assert.Equal(50, MainWindow.ResolveBatteryAlertThresholdToShow(50, thresholds));
+        Assert.Equal(40, MainWindow.ResolveBatteryAlertThresholdToShow(40, thresholds));
+        Assert.Equal(30, MainWindow.ResolveBatteryAlertThresholdToShow(30, thresholds));
+        Assert.Equal(15, MainWindow.ResolveBatteryAlertThresholdToShow(15, thresholds));
+        Assert.Equal(15, MainWindow.ResolveBatteryAlertThresholdToShow(1, thresholds));
+    }
+
+    [Fact]
+    public void BatteryAlertThresholds_UsesOnlySelectedCustomThresholdsPlusForcedFifteen()
+    {
+        var thresholds = MainWindow.BuildBatteryAlertThresholds("40, 70");
+
+        Assert.Equal([15, 40, 70], thresholds);
+        Assert.Equal(0, MainWindow.ResolveBatteryAlertThresholdToShow(71, thresholds));
+        Assert.Equal(70, MainWindow.ResolveBatteryAlertThresholdToShow(70, thresholds));
+        Assert.Equal(70, MainWindow.ResolveBatteryAlertThresholdToShow(69, thresholds));
+        Assert.Equal(40, MainWindow.ResolveBatteryAlertThresholdToShow(40, thresholds));
+        Assert.Equal(40, MainWindow.ResolveBatteryAlertThresholdToShow(30, thresholds));
+        Assert.Equal(15, MainWindow.ResolveBatteryAlertThresholdToShow(15, thresholds));
+        Assert.Equal(15, MainWindow.ResolveBatteryAlertThresholdToShow(10, thresholds));
+        Assert.DoesNotContain(30, thresholds);
+        Assert.DoesNotContain(50, thresholds);
+        Assert.DoesNotContain(60, thresholds);
+        Assert.DoesNotContain(80, thresholds);
+    }
+
+    [Fact]
+    public void NewlyAddedBatterySettingsText_FollowsSelectedLanguage()
+    {
+        Assert.Equal(
+            "조합할 2개의 버튼을 눌러주세요",
+            UiLanguageCatalog.GetExtraText("ko-KR", "BatteryGuideCapturePrompt"));
+        Assert.Equal(
+            "Press the 2 buttons for the combo",
+            UiLanguageCatalog.GetExtraText("en-US", "BatteryGuideCapturePrompt"));
+        Assert.Equal(
+            "組み合わせる2つのボタンを押してください",
+            UiLanguageCatalog.GetExtraText("ja-JP", "BatteryGuideCapturePrompt"));
+        Assert.Equal(
+            "Battery auto alerts",
+            UiLanguageCatalog.GetExtraText("en-US", "BatteryAlertThresholdsHeading"));
+        Assert.Equal(
+            "バッテリー自動通知",
+            UiLanguageCatalog.GetExtraText("ja-JP", "BatteryAlertThresholdsHeading"));
+    }
+
+    [Fact]
+    public void AutomaticBatteryToast_SuppressesStartupCarryoverAlerts()
+    {
+        var suppressUntil = DateTimeOffset.Parse("2026-06-01T12:00:08Z");
+
+        Assert.True(MainWindow.ShouldSuppressAutomaticBatteryToastOnStartup(
+            DateTimeOffset.Parse("2026-06-01T12:00:00Z"),
+            suppressUntil));
+        Assert.False(MainWindow.ShouldSuppressAutomaticBatteryToastOnStartup(
+            DateTimeOffset.Parse("2026-06-01T12:00:08Z"),
+            suppressUntil));
+    }
+
+    [Fact]
+    public void UpdateInstallerScript_RunsElevatedWaitsLogsAndChecksInstalledVersion()
+    {
+        var mainWindowSource = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+        var serviceSource = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "Services",
+            "UpdateService.cs"));
+
+        Assert.Contains("_updateService.StartInstallerUpdateAndRestart(", mainWindowSource);
+        Assert.Contains("DownloadAndVerifyInstallerAsync", mainWindowSource);
+        Assert.Contains("Start-Process -FilePath $setupPath -ArgumentList $installArgs -Verb RunAs -Wait -PassThru", serviceSource);
+        Assert.Contains("('/LOG=\\\"' + $logPath + '\\\"')", serviceSource);
+        Assert.Contains("'/CLOSEAPPLICATIONS'", serviceSource);
+        Assert.Contains("'/NORESTARTAPPLICATIONS'", serviceSource);
+        Assert.Contains("installer_exit_code=", serviceSource);
+        Assert.Contains("installer_launch_error=", serviceSource);
+        Assert.Contains("Test-BlossInstalledVersion", serviceSource);
+        Assert.Contains("ProductVersion -like ($versionPrefix + '*')", serviceSource);
+        Assert.Contains("Bloss.dll", serviceSource);
+        Assert.Contains("installed_target_version=", serviceSource);
     }
 
     [Fact]

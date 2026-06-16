@@ -214,9 +214,34 @@ internal static class HidGamepadAccess
         string? addressFilter,
         CancellationToken cancellationToken)
     {
-        var endpoints = EnumerateProbeEndpoints(addressFilter, HidEndpointDiscoveryStage.Strict, cancellationToken);
+        var strictEndpoints = EnumerateProbeEndpoints(addressFilter, HidEndpointDiscoveryStage.Strict, cancellationToken);
+        var relaxedEndpoints = EnumerateProbeEndpoints(addressFilter, HidEndpointDiscoveryStage.Relaxed, cancellationToken);
+        return SelectRuntimeBluetoothEndpoints(
+            strictEndpoints.Concat(relaxedEndpoints),
+            requireVidPid: true);
+    }
+
+    internal static IReadOnlyList<HidGamepadEndpoint> SelectRuntimeBluetoothEndpoints(
+        IEnumerable<HidGamepadEndpoint> endpoints,
+        bool requireVidPid)
+    {
         return endpoints
-            .Where(endpoint => !string.IsNullOrWhiteSpace(endpoint.VendorId) && !string.IsNullOrWhiteSpace(endpoint.ProductId))
+            .Select(endpoint =>
+            {
+                var normalizedAddress = AddressNormalizer.NormalizeAddress(endpoint.Address);
+                return string.IsNullOrWhiteSpace(normalizedAddress)
+                    ? null
+                    : endpoint with { Address = normalizedAddress };
+            })
+            .OfType<HidGamepadEndpoint>()
+            .Where(endpoint =>
+                !requireVidPid ||
+                (!string.IsNullOrWhiteSpace(endpoint.VendorId) &&
+                 !string.IsNullOrWhiteSpace(endpoint.ProductId)))
+            .GroupBy(endpoint => endpoint.DevicePath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(endpoint => endpoint.DiscoveryStage)
+                .First())
             .ToList();
     }
 

@@ -10,5 +10,7 @@ public sealed record GamepadBatteryProfile(
     int Score,
     BatteryConfidence Confidence = BatteryConfidence.Confirmed,
     GamepadProfileState State = GamepadProfileState.Active,
-    string IdentityKey = ""
+    string IdentityKey = "",
+    string ValidationKind = "",
+    int ValidationCount = 0
 );
