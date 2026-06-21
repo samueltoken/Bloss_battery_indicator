@@ -101,6 +101,44 @@ public sealed class PowerIdlePolicyTests
         Assert.True(result);
     }
 
+    [Fact]
+    public void ShouldPauseBackgroundWork_KeepsRunningWhenLocalGamepadActivityIsRecent()
+    {
+        var result = PowerIdlePolicy.ShouldPauseBackgroundWork(
+            TimeSpan.FromSeconds(45),
+            systemIdleDuration: TimeSpan.FromMinutes(10),
+            localIdleDuration: TimeSpan.FromSeconds(2),
+            isProbeRunning: false,
+            isRefreshRunning: false);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldPauseBackgroundWork_KeepsRunningWhenLocalGamepadActivityJustHappened()
+    {
+        var result = PowerIdlePolicy.ShouldPauseBackgroundWork(
+            TimeSpan.FromSeconds(45),
+            systemIdleDuration: TimeSpan.FromMinutes(10),
+            localIdleDuration: TimeSpan.Zero,
+            isProbeRunning: false,
+            isRefreshRunning: false);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldPauseBackgroundWork_WithoutLocalIdleStillUsesSystemIdle()
+    {
+        var result = PowerIdlePolicy.ShouldPauseBackgroundWork(
+            TimeSpan.FromSeconds(45),
+            systemIdleDuration: TimeSpan.FromMinutes(10),
+            isProbeRunning: false,
+            isRefreshRunning: false);
+
+        Assert.True(result);
+    }
+
     [Theory]
     [InlineData(true, false)]
     [InlineData(false, true)]
@@ -115,4 +153,5 @@ public sealed class PowerIdlePolicyTests
 
         Assert.False(result);
     }
+
 }

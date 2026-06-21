@@ -94,6 +94,29 @@ public sealed class WidgetSettingsStoreTests
     }
 
     [Fact]
+    public void Load_BacksUpUnreadableSettingsAndReturnsDefaults()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            File.WriteAllText(settingsPath, "{ not valid json");
+            var store = new WidgetSettingsStore(settingsPath, Path.Combine(directory, "legacy.json"));
+
+            var settings = store.Load();
+
+            Assert.Equal(30, settings.RefreshSeconds);
+            var backups = Directory.GetFiles(directory, "settings.json.corrupt-*.bak");
+            var backup = Assert.Single(backups);
+            Assert.Equal("{ not valid json", File.ReadAllText(backup));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Load_MigratesLegacyBatteryGuideTriggerToDeviceProfile()
     {
         var directory = CreateTempDirectory();

@@ -4,8 +4,26 @@ using BluetoothBatteryWidget.Core.Services;
 
 namespace BluetoothBatteryWidget.App.Services;
 
+internal sealed class GlobalHumanInputEventArgs(string source, bool countsAsUserActivity, bool isWakeEligible)
+    : EventArgs
+{
+    public string Source { get; } = source;
+
+    public bool CountsAsUserActivity { get; } = countsAsUserActivity;
+
+    public bool IsWakeEligible { get; } = isWakeEligible;
+}
+
 internal sealed class SteamControllerRawInputMonitorService : IDisposable
 {
+    private enum RawInputMonitorMode
+    {
+        None,
+        Normal,
+        HumanInputOnly,
+        WakeOnly
+    }
+
     private const int WmInput = 0x00FF;
     private const uint RidInput = 0x10000003;
     private const uint RidiDeviceName = 0x20000007;
@@ -38,6 +56,8 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
     private readonly Dictionary<string, DateTimeOffset> _lastPressByAddress = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _guideInputSuppressedUntilByAddress = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _seenRawHidInputByAddress = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, byte[]> _lastRawHidReportByAddress = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _lastRawHidGuidePressedByAddress = new(StringComparer.OrdinalIgnoreCase);
     private readonly SteamRawHidGuideButtonStateTracker _rawHidGuideButtonStateTracker = new(
         ShortPressMinimumDuration,
         ShortPressMaximumDuration,
@@ -49,10 +69,57 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
     private readonly Dictionary<string, DateTimeOffset> _lastDiagnosticByKey = new(StringComparer.OrdinalIgnoreCase);
     private Func<IReadOnlyList<GuideButtonKnownDevice>> _knownDeviceProvider = static () => [];
     private bool _isRegistered;
+    private RawInputMonitorMode _monitorMode = RawInputMonitorMode.None;
     private bool _disposed;
 
     public event EventHandler<GuideButtonPressedEventArgs>? GuideButtonPressed;
     public event EventHandler<GuideButtonInputReportEventArgs>? InputReportReceived;
+    public event EventHandler<GuideButtonActivityEventArgs>? InputActivityReceived;
+    public event EventHandler<GlobalHumanInputEventArgs>? GlobalHumanInputReceived;
+
+    public bool IsRegistered
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _isRegistered && !_disposed;
+            }
+        }
+    }
+
+    public bool IsNormalMode
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _isRegistered && !_disposed && _monitorMode == RawInputMonitorMode.Normal;
+            }
+        }
+    }
+
+    public bool IsWakeOnlyMode
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _isRegistered && !_disposed && _monitorMode == RawInputMonitorMode.WakeOnly;
+            }
+        }
+    }
+
+    public bool IsHumanInputOnlyMode
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _isRegistered && !_disposed && _monitorMode == RawInputMonitorMode.HumanInputOnly;
+            }
+        }
+    }
 
     public void SetKnownDeviceProvider(Func<IReadOnlyList<GuideButtonKnownDevice>> provider)
     {
@@ -106,18 +173,54 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
 
     public void Start(IntPtr windowHandle)
     {
+        StartCore(windowHandle, RawInputMonitorMode.Normal);
+    }
+
+    public void StartWakeOnly(IntPtr windowHandle)
+    {
+        StartCore(windowHandle, RawInputMonitorMode.WakeOnly);
+    }
+
+    public void StartHumanInputOnly(IntPtr windowHandle)
+    {
+        StartCore(windowHandle, RawInputMonitorMode.HumanInputOnly);
+    }
+
+    private void StartCore(IntPtr windowHandle, RawInputMonitorMode mode)
+    {
         if (windowHandle == IntPtr.Zero)
         {
             return;
         }
 
-        var devices = new[]
+        var alreadyRegistered = false;
+        var shouldStopExisting = false;
+        lock (_sync)
         {
-            BuildRawInputDevice(UsageMouse, windowHandle),
-            BuildRawInputDevice(UsageJoystick, windowHandle),
-            BuildRawInputDevice(UsageGamepad, windowHandle),
-            BuildRawInputDevice(UsageKeyboard, windowHandle),
-            BuildRawInputPageDevice(UsagePageVendorSteam, windowHandle)
+            if (_disposed)
+            {
+                return;
+            }
+
+            alreadyRegistered = _isRegistered && _monitorMode == mode;
+            shouldStopExisting = _isRegistered && _monitorMode != mode;
+        }
+
+        if (alreadyRegistered)
+        {
+            return;
+        }
+
+        if (shouldStopExisting)
+        {
+            Stop();
+        }
+
+        var devices = mode switch
+        {
+            RawInputMonitorMode.WakeOnly => BuildWakeOnlyRawInputDevices(windowHandle),
+            RawInputMonitorMode.HumanInputOnly => BuildHumanInputOnlyRawInputDevices(windowHandle),
+            _ => BuildNormalRawInputDevices(windowHandle)
         };
 
         var registered = RegisterRawInputDevices(
@@ -128,6 +231,7 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         lock (_sync)
         {
             _isRegistered = registered;
+            _monitorMode = registered ? mode : RawInputMonitorMode.None;
         }
 
         GuideButtonEventLog.Write(
@@ -136,7 +240,11 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             string.Empty,
             "Steam Controller",
             registered
-                ? "Steam Controller raw keyboard/mouse/HID/vendor-page monitor started."
+                ? mode == RawInputMonitorMode.WakeOnly
+                    ? "Steam Controller wake-only raw gamepad/HID/vendor-page monitor started."
+                    : mode == RawInputMonitorMode.HumanInputOnly
+                        ? "Global keyboard/mouse raw input monitor started for power-idle recovery."
+                    : "Steam Controller raw keyboard/mouse/HID/vendor-page monitor started."
                 : $"Steam Controller raw input registration failed. win32={Marshal.GetLastWin32Error()}.");
 
         LogRawDeviceSummary();
@@ -149,9 +257,12 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         {
             shouldUnregister = _isRegistered && !_disposed;
             _isRegistered = false;
+            _monitorMode = RawInputMonitorMode.None;
             _lastPressByAddress.Clear();
             _guideInputSuppressedUntilByAddress.Clear();
             _seenRawHidInputByAddress.Clear();
+            _lastRawHidReportByAddress.Clear();
+            _lastRawHidGuidePressedByAddress.Clear();
             _rawHidGuideButtonStateTracker.Clear();
         }
 
@@ -210,10 +321,13 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         {
             _disposed = true;
             _isRegistered = false;
+            _monitorMode = RawInputMonitorMode.None;
             _knownDeviceProvider = static () => [];
             _lastPressByAddress.Clear();
             _guideInputSuppressedUntilByAddress.Clear();
             _seenRawHidInputByAddress.Clear();
+            _lastRawHidReportByAddress.Clear();
+            _lastRawHidGuidePressedByAddress.Clear();
             _rawHidGuideButtonStateTracker.Clear();
             _lastDiagnosticByKey.Clear();
         }
@@ -245,7 +359,28 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
 
             var header = Marshal.PtrToStructure<RawInputHeader>(buffer);
             var deviceName = GetRawInputDeviceName(header.Device);
-            if (!TryResolveSteamDevice(deviceName, out var matchedDevice, out var isSteamDevice))
+            var knownGuideDevices = ReadKnownRawInputGuideDevices();
+            var isSteamCandidate = IsSteamCandidateDeviceName(deviceName, knownGuideDevices);
+            var isWakeOnly = IsWakeOnlyMode;
+            var isHumanInputOnly = IsHumanInputOnlyMode;
+            if (isHumanInputOnly)
+            {
+                if (TryCreateGlobalHumanInputEvent(buffer, headerSize, header.Type, out var humanOnlyInput))
+                {
+                    GlobalHumanInputReceived?.Invoke(this, humanOnlyInput);
+                }
+
+                return;
+            }
+
+            if (!isSteamCandidate &&
+                !isWakeOnly &&
+                TryCreateGlobalHumanInputEvent(buffer, headerSize, header.Type, out var globalInput))
+            {
+                GlobalHumanInputReceived?.Invoke(this, globalInput);
+            }
+
+            if (!TryResolveSteamDevice(deviceName, knownGuideDevices, out var matchedDevice, out _))
             {
                 WriteUnmatchedSteamInputDiagnostic(header.Type, deviceName);
                 return;
@@ -270,6 +405,53 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         }
     }
 
+    private static bool TryCreateGlobalHumanInputEvent(
+        IntPtr buffer,
+        uint headerSize,
+        uint rawInputType,
+        out GlobalHumanInputEventArgs eventArgs)
+    {
+        var createdEventArgs = rawInputType switch
+        {
+            RimTypeKeyboard => CreateKeyboardHumanInputEvent(buffer, headerSize),
+            RimTypeMouse => CreateMouseHumanInputEvent(buffer, headerSize),
+            _ => null
+        };
+
+        if (createdEventArgs is null)
+        {
+            eventArgs = new GlobalHumanInputEventArgs(string.Empty, countsAsUserActivity: false, isWakeEligible: false);
+            return false;
+        }
+
+        eventArgs = createdEventArgs;
+        return true;
+    }
+
+    private static GlobalHumanInputEventArgs? CreateKeyboardHumanInputEvent(IntPtr buffer, uint headerSize)
+    {
+        var keyboard = Marshal.PtrToStructure<RawKeyboard>(IntPtr.Add(buffer, (int)headerSize));
+        var isKeyDown = (keyboard.Flags & RiKeyBreak) == 0;
+        return isKeyDown && keyboard.VKey != 0
+            ? new GlobalHumanInputEventArgs("raw_keyboard", countsAsUserActivity: true, isWakeEligible: true)
+            : null;
+    }
+
+    private static GlobalHumanInputEventArgs? CreateMouseHumanInputEvent(IntPtr buffer, uint headerSize)
+    {
+        var mouse = Marshal.PtrToStructure<RawMouse>(IntPtr.Add(buffer, (int)headerSize));
+        var buttonFlags = (ushort)(mouse.Buttons & 0xFFFF);
+        var movementDistance = Math.Abs(mouse.LastX) + Math.Abs(mouse.LastY);
+        if (buttonFlags != 0)
+        {
+            return new GlobalHumanInputEventArgs("raw_mouse_button", countsAsUserActivity: true, isWakeEligible: true);
+        }
+
+        return movementDistance >= 8
+            ? new GlobalHumanInputEventArgs("raw_mouse_move", countsAsUserActivity: true, isWakeEligible: true)
+            : null;
+    }
+
     private void ProcessKeyboardInput(IntPtr buffer, uint headerSize, GuideButtonKnownDevice device)
     {
         var keyboard = Marshal.PtrToStructure<RawKeyboard>(IntPtr.Add(buffer, (int)headerSize));
@@ -286,15 +468,26 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             $"Steam raw keyboard input seen. vkey=0x{keyboard.VKey:X4}, make=0x{keyboard.MakeCode:X4}, flags=0x{keyboard.Flags:X4}.");
 
         // Steam Controller lizard mode maps normal game buttons to keyboard keys
-        // such as Esc and Enter. Do not use keyboard input as the guide button.
+        // such as Esc and Enter. Do not use keyboard input as guide or idle activity.
     }
 
     private void ProcessMouseInput(IntPtr buffer, uint headerSize, GuideButtonKnownDevice device)
     {
         var mouse = Marshal.PtrToStructure<RawMouse>(IntPtr.Add(buffer, (int)headerSize));
         var buttonFlags = (ushort)(mouse.Buttons & 0xFFFF);
+        var hasMovement = mouse.LastX != 0 || mouse.LastY != 0;
+        if (buttonFlags == 0 && !hasMovement)
+        {
+            return;
+        }
+
         if (buttonFlags == 0)
         {
+            WriteDiagnostic(
+                $"raw_mouse_move:{device.Address}:{mouse.LastX}:{mouse.LastY}",
+                "raw_mouse_move_seen",
+                device,
+                $"Steam raw mouse movement seen. dx={mouse.LastX}; dy={mouse.LastY}.");
             return;
         }
 
@@ -302,7 +495,7 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             $"raw_mouse:{device.Address}:{buttonFlags:X4}",
             "raw_mouse_button_seen",
             device,
-            $"Steam raw mouse button input seen. flags=0x{buttonFlags:X4}.");
+            $"Steam raw mouse button input seen. flags=0x{buttonFlags:X4}; dx={mouse.LastX}; dy={mouse.LastY}.");
     }
 
     private void ProcessHidInput(IntPtr buffer, uint headerSize, GuideButtonKnownDevice device)
@@ -327,36 +520,73 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
                 continue;
             }
 
+            if (TryGetHidInputActivity(device, report, out var countsAsUserActivity, out var isWakeEligible))
+            {
+                RaiseInputActivityReceived(device, countsAsUserActivity, isWakeEligible);
+            }
+
             InputReportReceived?.Invoke(
                 this,
                 new GuideButtonInputReportEventArgs(
                     device.Address,
-                    string.IsNullOrWhiteSpace(device.DisplayName) ? "Steam Controller" : device.DisplayName,
-                    GuideButtonDeviceKind.SteamController,
+                    ResolveDisplayName(device),
+                    device.DeviceKind,
                     report));
 
             if (GuideButtonReportParser.TryParseGuideButton(
-                    GuideButtonDeviceKind.SteamController,
+                    device.DeviceKind,
                     report,
                     out var pressed))
             {
-                RegisterRawHidGuideState(device, pressed, report);
+                if (TryRegisterRawHidGuidePressEdge(device, pressed))
+                {
+                    RaiseInputActivityReceived(device, countsAsUserActivity: true, isWakeEligible: true);
+                    if (device.DeviceKind != GuideButtonDeviceKind.SteamController)
+                    {
+                        RaiseGuideButtonPressed(device, "raw_hid_guide_press_edge", GuideButtonGesture.ShortPress);
+                    }
+                }
+
+                if (device.DeviceKind == GuideButtonDeviceKind.SteamController)
+                {
+                    RegisterRawHidGuideState(device, pressed, report);
+                }
+
                 continue;
             }
 
-            if (TryApplyRawHidStatusReleaseHint(device, report))
+            if (device.DeviceKind == GuideButtonDeviceKind.SteamController &&
+                TryApplyRawHidStatusReleaseHint(device, report))
             {
                 continue;
             }
 
-            TryClearStaleRawHidGuideState(device, report);
+            if (device.DeviceKind == GuideButtonDeviceKind.SteamController)
+            {
+                TryClearStaleRawHidGuideState(device, report);
+            }
 
             WriteDiagnostic(
                 $"raw_hid:{device.Address}:{BuildReportSignature(report)}",
                 "raw_hid_unparsed",
                 device,
-                $"Steam raw HID input was seen but not recognized as the guide button. {FormatReportSample(report)}");
+                $"{device.DeviceKind} raw HID input was seen but not recognized as the guide button. {FormatReportSample(report)}");
         }
+    }
+
+    private void RaiseInputActivityReceived(
+        GuideButtonKnownDevice device,
+        bool countsAsUserActivity,
+        bool isWakeEligible)
+    {
+        InputActivityReceived?.Invoke(
+            this,
+            new GuideButtonActivityEventArgs(
+                device.Address,
+                ResolveDisplayName(device),
+                device.DeviceKind,
+                countsAsUserActivity,
+                isWakeEligible));
     }
 
     private void SuppressGuideInput(string address, TimeSpan duration, string reason, string displayName)
@@ -379,6 +609,7 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
 
             _lastPressByAddress.Remove(address);
             _rawHidGuideButtonStateTracker.ClearActivity(address, now);
+            _lastRawHidGuidePressedByAddress.Remove(address);
         }
 
         WriteDiagnostic(
@@ -390,6 +621,16 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
 
     private bool ShouldSuppressGuideInputReport(GuideButtonKnownDevice device, ReadOnlySpan<byte> report)
     {
+        if (IsWakeOnlyMode)
+        {
+            return false;
+        }
+
+        if (device.DeviceKind != GuideButtonDeviceKind.SteamController)
+        {
+            return false;
+        }
+
         var address = AddressNormalizer.NormalizeAddress(device.Address);
         if (string.IsNullOrWhiteSpace(address))
         {
@@ -412,6 +653,8 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
                 }
 
                 _lastPressByAddress.Remove(address);
+                _lastRawHidReportByAddress.Remove(address);
+                _lastRawHidGuidePressedByAddress.Remove(address);
                 _rawHidGuideButtonStateTracker.ClearActivity(address, now);
             }
 
@@ -427,6 +670,8 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             }
 
             _lastPressByAddress.Remove(address);
+            _lastRawHidReportByAddress.Remove(address);
+            _lastRawHidGuidePressedByAddress.Remove(address);
             _rawHidGuideButtonStateTracker.ClearActivity(address, now);
         }
 
@@ -449,6 +694,92 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             knownDevice,
             $"Steam Controller raw HID input was ignored while the device settled after connection/refresh. remainingMs={(int)Math.Max(0, (suppressUntil - now).TotalMilliseconds)}; {FormatReportSample(report)}");
         return true;
+    }
+
+    private bool TryRegisterRawHidGuidePressEdge(GuideButtonKnownDevice device, bool pressed)
+    {
+        var address = AddressNormalizer.NormalizeAddress(device.Address);
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return false;
+        }
+
+        var wasPressed = false;
+        lock (_sync)
+        {
+            if (_lastRawHidGuidePressedByAddress.TryGetValue(address, out var previousPressed))
+            {
+                wasPressed = previousPressed;
+            }
+
+            _lastRawHidGuidePressedByAddress[address] = pressed;
+        }
+
+        return pressed && !wasPressed;
+    }
+
+    private bool TryGetHidInputActivity(
+        GuideButtonKnownDevice device,
+        ReadOnlySpan<byte> report,
+        out bool countsAsUserActivity,
+        out bool isWakeEligible)
+    {
+        countsAsUserActivity = false;
+        isWakeEligible = false;
+
+        var address = AddressNormalizer.NormalizeAddress(device.Address);
+        if (string.IsNullOrWhiteSpace(address) || report.Length == 0)
+        {
+            return false;
+        }
+
+        byte[]? previousReport;
+        var currentReport = report.ToArray();
+        lock (_sync)
+        {
+            _lastRawHidReportByAddress.TryGetValue(address, out previousReport);
+            _lastRawHidReportByAddress[address] = currentReport;
+        }
+
+        if (previousReport is null ||
+            previousReport.Length == 0 ||
+            previousReport[0] != currentReport[0])
+        {
+            return false;
+        }
+
+        countsAsUserActivity = ShouldTreatHidReportChangeAsActivity(device.DeviceKind, previousReport, currentReport);
+        isWakeEligible = countsAsUserActivity;
+        return countsAsUserActivity;
+    }
+
+    internal static bool ShouldTreatHidReportChangeAsActivity(
+        ReadOnlySpan<byte> previousReport,
+        ReadOnlySpan<byte> currentReport)
+    {
+        return ShouldTreatHidReportChangeAsActivity(
+            GuideButtonDeviceKind.SteamController,
+            previousReport,
+            currentReport);
+    }
+
+    internal static bool ShouldTreatHidReportChangeAsActivity(
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> previousReport,
+        ReadOnlySpan<byte> currentReport)
+    {
+        if (previousReport.Length == 0 ||
+            currentReport.Length == 0 ||
+            previousReport[0] != currentReport[0])
+        {
+            return false;
+        }
+
+        return BatteryGuideTriggerParser.TryCaptureButtonsOnly(
+            deviceKind,
+            previousReport,
+            currentReport,
+            out _);
     }
 
     private bool TryApplyRawHidStatusReleaseHint(GuideButtonKnownDevice device, ReadOnlySpan<byte> report)
@@ -638,17 +969,12 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
 
     private bool TryResolveSteamDevice(
         string deviceName,
+        IReadOnlyList<GuideButtonKnownDevice> knownDevices,
         out GuideButtonKnownDevice matchedDevice,
         out bool isSteamDevice)
     {
         matchedDevice = new GuideButtonKnownDevice(string.Empty, "Steam Controller", GuideButtonDeviceKind.SteamController);
         isSteamDevice = false;
-
-        var knownDevices = ReadKnownSteamDevices();
-        if (knownDevices.Count == 0)
-        {
-            return false;
-        }
 
         var address = AddressNormalizer.ExtractAddressFromInstanceId(deviceName);
         if (!string.IsNullOrWhiteSpace(address))
@@ -666,16 +992,42 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             }
         }
 
-        if (HidProbeTextParser.TryParseVidPid(deviceName, out var vendorId, out var productId) &&
-            IsSteamRawInputVidPid(vendorId, productId) &&
-            knownDevices.Count == 1)
+        if (!HidProbeTextParser.TryParseVidPid(deviceName, out var vendorId, out var productId))
         {
-            matchedDevice = knownDevices[0];
+            return false;
+        }
+
+        if (IsSteamRawInputVidPid(vendorId, productId))
+        {
+            var knownSteamDevices = knownDevices
+                .Where(device => device.DeviceKind == GuideButtonDeviceKind.SteamController)
+                .ToList();
+            matchedDevice = knownSteamDevices.Count == 1
+                ? knownSteamDevices[0]
+                : new GuideButtonKnownDevice(
+                    AddressNormalizer.NormalizeAddress(address),
+                    "Steam Controller",
+                    GuideButtonDeviceKind.SteamController);
             isSteamDevice = true;
             return true;
         }
 
-        return false;
+        if (!IsDualSenseRawInputVidPid(vendorId, productId))
+        {
+            return false;
+        }
+
+        var knownDualSenseDevices = knownDevices
+            .Where(device => device.DeviceKind == GuideButtonDeviceKind.DualSense)
+            .ToList();
+        matchedDevice = knownDualSenseDevices.Count == 1
+            ? knownDualSenseDevices[0]
+            : new GuideButtonKnownDevice(
+                AddressNormalizer.NormalizeAddress(address),
+                "DualSense Wireless Controller",
+                GuideButtonDeviceKind.DualSense);
+        isSteamDevice = false;
+        return true;
     }
 
     private static bool IsSteamRawInputVidPid(string? vendorId, string? productId)
@@ -699,9 +1051,21 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
                string.Equals(productId, "1142", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsDualSenseRawInputVidPid(string? vendorId, string? productId)
+    {
+        if (!string.Equals(vendorId, "054C", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return string.Equals(productId, "0CE6", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(productId, "0DF2", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(productId, "0DF3", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void WriteRawDeviceSummary()
     {
-        var knownDevices = ReadKnownSteamDevices();
+        var knownDevices = ReadKnownRawInputGuideDevices();
         var rawDevices = EnumerateRawInputDevices();
         var steamCandidates = rawDevices
             .Where(device => IsSteamCandidateDeviceName(device.DeviceName, knownDevices))
@@ -711,20 +1075,20 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             .ToList();
 
         var summary = steamCandidates.Count == 0
-            ? "No Steam-looking raw input device was listed."
+            ? "No guide-button raw input device was listed."
             : string.Join("; ", steamCandidates);
 
         GuideButtonEventLog.Write(
             "raw_input_devices",
-            "SteamController",
+            "GuideButton",
             knownDevices.Count == 1 ? knownDevices[0].Address : string.Empty,
-            "Steam Controller",
-            $"RawInput devices={rawDevices.Count}, knownSteam={knownDevices.Count}, steamCandidates={steamCandidates.Count}. {summary}");
+            "Guide Button",
+            $"RawInput devices={rawDevices.Count}, knownGuide={knownDevices.Count}, guideCandidates={steamCandidates.Count}. {summary}");
     }
 
     private void WriteUnmatchedSteamInputDiagnostic(uint rawInputType, string deviceName)
     {
-        var knownDevices = ReadKnownSteamDevices();
+        var knownDevices = ReadKnownRawInputGuideDevices();
         if (!IsSteamCandidateDeviceName(deviceName, knownDevices))
         {
             return;
@@ -744,10 +1108,17 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             $"raw_unmatched:{rawInputType}:{vidPidText}:{addressText}",
             "raw_unmatched_steam_input",
             new GuideButtonKnownDevice(string.Empty, "Steam Controller", GuideButtonDeviceKind.SteamController),
-            $"Steam-looking raw input was seen but did not match a known battery-list address. type={FormatRawInputType(rawInputType)}, {vidPidText}{rawInfoText}, address={addressText}, knownSteam={knownDevices.Count}.");
+            $"Guide-button-looking raw input was seen but did not match a known battery-list address. type={FormatRawInputType(rawInputType)}, {vidPidText}{rawInfoText}, address={addressText}, knownGuide={knownDevices.Count}.");
     }
 
     private IReadOnlyList<GuideButtonKnownDevice> ReadKnownSteamDevices()
+    {
+        return ReadKnownRawInputGuideDevices()
+            .Where(device => device.DeviceKind == GuideButtonDeviceKind.SteamController)
+            .ToList();
+    }
+
+    private IReadOnlyList<GuideButtonKnownDevice> ReadKnownRawInputGuideDevices()
     {
         Func<IReadOnlyList<GuideButtonKnownDevice>> provider;
         lock (_sync)
@@ -758,16 +1129,14 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         try
         {
             return provider()
-                .Where(device => device.DeviceKind == GuideButtonDeviceKind.SteamController)
+                .Where(device => device.DeviceKind is GuideButtonDeviceKind.SteamController or GuideButtonDeviceKind.DualSense)
                 .Select(device => device with
                 {
                     Address = AddressNormalizer.NormalizeAddress(device.Address),
-                    DisplayName = string.IsNullOrWhiteSpace(device.DisplayName)
-                        ? "Steam Controller"
-                        : device.DisplayName
+                    DisplayName = ResolveDisplayName(device)
                 })
                 .Where(device => !string.IsNullOrWhiteSpace(device.Address))
-                .GroupBy(device => device.Address, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(device => $"{device.DeviceKind}:{device.Address}", StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToList();
         }
@@ -798,14 +1167,14 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         }
 
         var displayName = string.IsNullOrWhiteSpace(device.DisplayName)
-            ? "Steam Controller"
+            ? ResolveDisplayName(device)
             : device.DisplayName;
         GuideButtonPressed?.Invoke(
             this,
-            new GuideButtonPressedEventArgs(address, displayName, GuideButtonDeviceKind.SteamController, gesture));
+            new GuideButtonPressedEventArgs(address, displayName, device.DeviceKind, gesture));
         GuideButtonEventLog.Write(
             "pressed",
-            "SteamController",
+            device.DeviceKind.ToString(),
             address,
             displayName,
             $"Guide button {gesture} detected from {source}.");
@@ -853,6 +1222,35 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             Flags = RidevInputSink | RidevPageOnly,
             Target = windowHandle
         };
+    }
+
+    private static RawInputDevice[] BuildNormalRawInputDevices(IntPtr windowHandle)
+    {
+        return
+        [
+            BuildRawInputDevice(UsageJoystick, windowHandle),
+            BuildRawInputDevice(UsageGamepad, windowHandle),
+            BuildRawInputPageDevice(UsagePageVendorSteam, windowHandle)
+        ];
+    }
+
+    private static RawInputDevice[] BuildHumanInputOnlyRawInputDevices(IntPtr windowHandle)
+    {
+        return
+        [
+            BuildRawInputDevice(UsageMouse, windowHandle),
+            BuildRawInputDevice(UsageKeyboard, windowHandle)
+        ];
+    }
+
+    private static RawInputDevice[] BuildWakeOnlyRawInputDevices(IntPtr windowHandle)
+    {
+        return
+        [
+            BuildRawInputDevice(UsageJoystick, windowHandle),
+            BuildRawInputDevice(UsageGamepad, windowHandle),
+            BuildRawInputPageDevice(UsagePageVendorSteam, windowHandle)
+        ];
     }
 
     private static RawInputDevice BuildRawInputRemovalDevice(ushort usagePage, ushort usage)
@@ -917,7 +1315,9 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         }
 
         if (deviceName.Contains("Steam", StringComparison.OrdinalIgnoreCase) ||
-            deviceName.Contains("28DE", StringComparison.OrdinalIgnoreCase))
+            deviceName.Contains("28DE", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Contains("DualSense", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Contains("054C", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -928,6 +1328,18 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
                    AddressNormalizer.NormalizeAddress(device.Address),
                    address,
                    StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolveDisplayName(GuideButtonKnownDevice device)
+    {
+        if (!string.IsNullOrWhiteSpace(device.DisplayName))
+        {
+            return device.DisplayName;
+        }
+
+        return device.DeviceKind == GuideButtonDeviceKind.DualSense
+            ? "DualSense Wireless Controller"
+            : "Steam Controller";
     }
 
     private static string BuildRawDeviceSummaryItem(

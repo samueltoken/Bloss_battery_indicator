@@ -46,4 +46,45 @@ public sealed class GuideButtonEventScriptTests
         Assert.Contains("Format-Table -AutoSize -Wrap", script);
         Assert.DoesNotContain("Format-Table -AutoSize\r\n", script);
     }
+
+    [Fact]
+    public void ShowGamepadIdleActivityScript_WatchesIdleAndGamepadActivity()
+    {
+        var script = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "scripts",
+            "show-gamepad-idle-activity.ps1"));
+
+        Assert.Contains("GetLastInputInfo", script);
+        Assert.Contains("\"hid_button_input\"", script);
+        Assert.Contains("\"xinput_button_input\"", script);
+        Assert.Contains("\"xinput_stick_input\"", script);
+        Assert.DoesNotContain("\"hid_input_activity\"", script);
+        Assert.DoesNotContain("\"hid_state_activity\"", script);
+        Assert.DoesNotContain("\"steam_raw_input_activity\"", script);
+        Assert.DoesNotContain("\"raw_mouse_move_seen\"", script);
+        Assert.DoesNotContain("\"raw_keyboard_seen\"", script);
+        Assert.DoesNotContain("\"raw_mouse_button_seen\"", script);
+        Assert.DoesNotContain("\"raw_hid_unparsed\"", script);
+        Assert.DoesNotContain("\"xinput_activity\"", script);
+        Assert.Contains("\"automatic_battery_toast_shown\"", script);
+        Assert.Contains("[switch]$RequireActivity", script);
+        Assert.Contains("[switch]$RequirePopup", script);
+        Assert.Contains("[switch]$RequireAutoAlert", script);
+        Assert.Contains("Do not touch the mouse or keyboard", script);
+        Assert.Contains("power-idle-debug.log", script);
+        Assert.Contains("Convert-PowerIdleDebugLine", script);
+        Assert.Contains("Get-LatestPowerIdleState", script);
+        Assert.Contains("RawInputMode", script);
+        Assert.Contains("XInputMode", script);
+        Assert.Contains("NormalMonitorRemaining", script);
+        Assert.Contains("normalLeft=", script);
+        Assert.Contains("mode={2}", script);
+        Assert.Contains("monitors={3}", script);
+        Assert.Contains("Latest power idle state:", script);
+    }
 }

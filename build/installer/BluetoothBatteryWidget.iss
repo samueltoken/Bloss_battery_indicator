@@ -1,6 +1,6 @@
 #define MyAppName "Bloss"
 #ifndef AppVersion
-  #define AppVersion "1.0.6"
+  #define AppVersion "1.0.8"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\..\artifacts\staging\installer-publish"
@@ -44,6 +44,46 @@ Name: "{autoprograms}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Filename: "{app}\Bloss.exe"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+const
+  RunKeyPath = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+procedure DeleteRunValue(const RootKey: Integer; const SubKeyName, ValueName: String);
+begin
+  if RegDeleteValue(RootKey, SubKeyName, ValueName) then
+  begin
+    Log('Deleted autostart value: ' + SubKeyName + '\' + ValueName);
+  end;
+end;
+
+procedure DeleteAutostartValuesFromRoot(const RootKey: Integer; const SubKeyName: String);
+begin
+  DeleteRunValue(RootKey, SubKeyName, 'Bloss');
+  DeleteRunValue(RootKey, SubKeyName, 'BluetoothBatteryWidget');
+end;
+
+function ShouldCleanLoadedUserHive(const HiveName: String): Boolean;
+begin
+  Result :=
+    (Length(HiveName) > 0) and
+    (Pos('S-1-5-21-', HiveName) = 1) and
+    (Pos('_Classes', HiveName) = 0);
+end;
+
+procedure DeleteAutostartValuesFromLoadedUserHives;
+var
+  HiveNames: TArrayOfString;
+  I: Integer;
+begin
+  if RegGetSubkeyNames(HKEY_USERS, '', HiveNames) then
+  begin
+    for I := 0 to GetArrayLength(HiveNames) - 1 do
+      if ShouldCleanLoadedUserHive(HiveNames[I]) then
+      begin
+        DeleteAutostartValuesFromRoot(HKEY_USERS, HiveNames[I] + '\' + RunKeyPath);
+      end;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   GeneratedUninstallExe: string;
@@ -57,5 +97,14 @@ begin
     begin
       CopyFile(GeneratedUninstallExe, FriendlyUninstallExe, False);
     end;
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    DeleteAutostartValuesFromRoot(HKEY_CURRENT_USER, RunKeyPath);
+    DeleteAutostartValuesFromLoadedUserHives;
   end;
 end;

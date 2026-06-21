@@ -7,18 +7,23 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ChecklistPath)) {
-    $ChecklistPath = Join-Path $projectRoot "manual-verification-v107.md"
+    if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
+        $ChecklistPath = $env:BLOSS_MANUAL_CHECKLIST_PATH
+    }
+    else {
+        $ChecklistPath = Join-Path $projectRoot "manual-verification-v107.md"
+    }
 }
 
 $checklistPath = [System.IO.Path]::GetFullPath($ChecklistPath)
 $validStatuses = @("PENDING", "PASS", "FAIL")
 $requiredGates = @(
-    @{ Id = "UPDATE-104"; Description = "v1.0.4 in-app update reaches 1.0.7 and restarts" },
-    @{ Id = "UPDATE-105"; Description = "v1.0.5 in-app update reaches 1.0.7 and restarts" },
+    @{ Id = "UPDATE-104"; Description = "v1.0.4 in-app update reaches 1.0.8 and restarts" },
+    @{ Id = "UPDATE-105"; Description = "v1.0.5 in-app update reaches 1.0.8 and restarts" },
     @{ Id = "UPDATE-106-NOTES"; Description = "v1.0.6 update release notes one-time behavior" },
     @{ Id = "CLEAN-INSTALL-NOTES"; Description = "clean install release notes one-time behavior" },
     @{ Id = "TEST-EXE-NOTES-VISUAL"; Description = "test.exe release notes every-run visual check" },
-    @{ Id = "DISPLAY-SLEEP"; Description = "Windows display-off/system sleep is not blocked" },
+    @{ Id = "DISPLAY-SLEEP"; Description = "Windows display-off/system sleep is not blocked"; RequiredGateText = @("DualSense/Pico2W", "Steam Controller", "connected but untouched", "guide/PS") },
     @{ Id = "STEAM-CONTROLLER"; Description = "real Steam Controller guide/power/custom/Quick Access stability/rename checks"; RequiredGateText = @("short Steam press", "long power hold", "user-selected guide trigger", "Quick Access capture window stability", "lower square hotspot highlight", "renamed-device behavior") },
     @{ Id = "UNINSTALL-AUTOSTART"; Description = "uninstall removes Bloss startup values" },
     @{ Id = "SETTINGS-SECONDARY-WINDOWS"; Description = "settings secondary windows finish smoothly" }

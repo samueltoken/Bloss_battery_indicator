@@ -10,7 +10,7 @@ public sealed class PowerIdleSourceSafetyTests
         ".."));
 
     [Fact]
-    public void AppSources_DoNotUseWindowsCallsThatForceDisplayAwake()
+    public void AppSources_DoNotUseWindowsCallsThatContinuouslyForceDisplayAwake()
     {
         var sourceRoots = new[]
         {
@@ -19,10 +19,13 @@ public sealed class PowerIdleSourceSafetyTests
         };
         var forbiddenTokens = new[]
         {
-            "SetThreadExecutionState",
-            "ES_DISPLAY_REQUIRED",
+            "ES_CONTINUOUS",
             "ES_SYSTEM_REQUIRED",
             "PowerSetRequest",
+            "TryTurnDisplayOff",
+            "MonitorPowerOff",
+            "DisplayOffFallback",
+            "display_off_fallback",
             "SendInput(",
             "mouse_event(",
             "keybd_event("
@@ -38,6 +41,44 @@ public sealed class PowerIdleSourceSafetyTests
                     .Where(token => source.Contains(token, StringComparison.Ordinal))
                     .Select(token => $"{Path.GetRelativePath(ProjectRoot, path)} contains {token}");
             })
+            .ToArray();
+
+        Assert.Empty(violations);
+
+        var systemDisplayPowerPath = Path.Combine(
+            ProjectRoot,
+            "BluetoothBatteryWidget.App",
+            "Services",
+            "SystemDisplayPower.cs");
+        var systemDisplayPowerSource = File.ReadAllText(systemDisplayPowerPath);
+        Assert.Contains("TryNotifyDisplayUserActivity", systemDisplayPowerSource);
+        Assert.Contains("SetThreadExecutionState(EsDisplayRequired)", systemDisplayPowerSource);
+        Assert.DoesNotContain("ES_CONTINUOUS", systemDisplayPowerSource);
+        Assert.DoesNotContain("EsContinuous", systemDisplayPowerSource);
+    }
+
+    [Fact]
+    public void GamepadIdleActivityScript_DoesNotForceDisplayAwakeOrCreateSyntheticInput()
+    {
+        var scriptPath = Path.Combine(ProjectRoot, "scripts", "show-gamepad-idle-activity.ps1");
+        var forbiddenTokens = new[]
+        {
+            "SetThreadExecutionState",
+            "ES_DISPLAY_REQUIRED",
+            "ES_SYSTEM_REQUIRED",
+            "PowerSetRequest",
+            "SendInput",
+            "mouse_event",
+            "keybd_event",
+            "SetCursorPos",
+            "PowerWrite",
+            "PowerSetActiveScheme",
+            "powercfg"
+        };
+
+        var source = File.ReadAllText(scriptPath);
+        var violations = forbiddenTokens
+            .Where(token => source.Contains(token, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         Assert.Empty(violations);

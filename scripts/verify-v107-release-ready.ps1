@@ -14,16 +14,24 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $manualGates = @(
-    [pscustomobject]@{ Id = "UPDATE-104"; Description = "Install v1.0.4, update from inside the app, confirm the app reaches 1.0.7 and restarts." },
-    [pscustomobject]@{ Id = "UPDATE-105"; Description = "Install v1.0.5, update from inside the app, confirm the app reaches 1.0.7 and restarts." },
+    [pscustomobject]@{ Id = "UPDATE-104"; Description = "Install v1.0.4, update from inside the app, confirm the app reaches 1.0.8 and restarts." },
+    [pscustomobject]@{ Id = "UPDATE-105"; Description = "Install v1.0.5, update from inside the app, confirm the app reaches 1.0.8 and restarts." },
     [pscustomobject]@{ Id = "UPDATE-106-NOTES"; Description = "Install v1.0.6, update from inside the app, confirm the release notes popup appears once." },
     [pscustomobject]@{ Id = "CLEAN-INSTALL-NOTES"; Description = "Clean install release\installer\setup.exe and confirm the release notes popup appears once." },
     [pscustomobject]@{ Id = "TEST-EXE-NOTES-VISUAL"; Description = "Run artifacts\portable\test.exe repeatedly and confirm the release notes popup appears every run." },
-    [pscustomobject]@{ Id = "DISPLAY-SLEEP"; Description = "Run scripts\check-display-sleep-readiness.ps1, set Windows display-off timeout to 1 minute or system sleep to a short test value for the current power mode shown by the script, and confirm Bloss does not keep the monitor or sleep state awake." },
+    [pscustomobject]@{ Id = "DISPLAY-SLEEP"; Description = "Run scripts\check-display-sleep-readiness.ps1, set Windows display-off timeout to 1 minute for the current power mode, and confirm no gamepad plus real DualSense/Pico2W, Steam Controller, and third-party gamepads connected but untouched do not block display-off; then confirm guide/PS input resumes Bloss guide handling after wake." },
     [pscustomobject]@{ Id = "STEAM-CONTROLLER"; Description = "Use a real Steam Controller to confirm short Steam, long power hold, custom guide trigger, Quick Access capture-window stability, lower-square highlight, and renamed-device behavior." },
     [pscustomobject]@{ Id = "UNINSTALL-AUTOSTART"; Description = "Uninstall Bloss and run scripts\check-autostart-cleanup.ps1 to confirm Bloss and BluetoothBatteryWidget startup values are gone." },
     [pscustomobject]@{ Id = "SETTINGS-SECONDARY-WINDOWS"; Description = "Open settings secondary windows and confirm the pressed-open animation finishes smoothly." }
 )
+
+function Get-ManualChecklistPath {
+    if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
+        return [System.IO.Path]::GetFullPath($env:BLOSS_MANUAL_CHECKLIST_PATH)
+    }
+
+    return (Join-Path $projectRoot "manual-verification-v107.md")
+}
 
 function Invoke-ReadinessStep {
     param(
@@ -75,7 +83,7 @@ function Assert-FileContains {
 }
 
 function Get-ManualGateStatuses {
-    $checklistPath = Join-Path $projectRoot "manual-verification-v107.md"
+    $checklistPath = Get-ManualChecklistPath
     $statuses = @{}
     if (-not (Test-Path -LiteralPath $checklistPath)) {
         return $statuses
@@ -154,17 +162,19 @@ try {
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-test-portable.ps1" -Message "Release guide does not mention the portable test verification script."
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-release-notes-popup.ps1" -Message "Release guide does not mention the release-notes verification script."
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-secondary-window-animation.ps1" -Message "Release guide does not mention the secondary-window animation verification script."
-        Assert-FileContains -Path $guidePath -Needle "scripts\show-v107-manual-gate-commands.ps1" -Message "Release guide does not mention the manual gate command helper."
-        Assert-FileContains -Path $guidePath -Needle "scripts\build-v107-old-installer-prereq.ps1" -Message "Release guide does not mention the old installer prerequisite builder."
-        Assert-FileContains -Path $guidePath -Needle "scripts\check-v107-manual-gate-prereqs.ps1" -Message "Release guide does not mention the manual gate prerequisite check."
-        Assert-FileContains -Path $guidePath -Needle "scripts\export-v107-manual-gate-evidence.ps1" -Message "Release guide does not mention the manual gate evidence export."
-        Assert-FileContains -Path $guidePath -Needle "scripts\verify-v107-manual-gate-updater.ps1" -Message "Release guide does not mention the manual gate updater verification script."
-        Assert-FileContains -Path $guidePath -Needle "scripts\set-v107-manual-gate.ps1" -Message "Release guide does not mention the manual gate updater script."
+        Assert-FileContains -Path $guidePath -Needle "manual-verification-v108.md" -Message "Release guide does not mention the v1.0.8 manual checklist."
+        Assert-FileContains -Path $guidePath -Needle "scripts\show-v108-manual-gate-commands.ps1" -Message "Release guide does not mention the manual gate command helper."
+        Assert-FileContains -Path $guidePath -Needle "scripts\build-v108-old-installer-prereq.ps1" -Message "Release guide does not mention the old installer prerequisite builder."
+        Assert-FileContains -Path $guidePath -Needle "scripts\check-v108-manual-gate-prereqs.ps1" -Message "Release guide does not mention the manual gate prerequisite check."
+        Assert-FileContains -Path $guidePath -Needle "scripts\export-v108-manual-gate-evidence.ps1" -Message "Release guide does not mention the manual gate evidence export."
+        Assert-FileContains -Path $guidePath -Needle "scripts\verify-git-publish-safety.ps1" -Message "Release guide does not mention the git publish safety check."
+        Assert-FileContains -Path $guidePath -Needle "scripts\verify-v108-manual-gate-updater.ps1" -Message "Release guide does not mention the manual gate updater verification script."
+        Assert-FileContains -Path $guidePath -Needle "scripts\set-v108-manual-gate.ps1" -Message "Release guide does not mention the manual gate updater script."
         Assert-FileContains -Path $setManualGatePath -Needle "Evidence is required when setting" -Message "Manual gate updater does not require evidence for PASS/FAIL."
         Assert-FileContains -Path $setManualGatePath -Needle "verify-v107-manual-checklist.ps1" -Message "Manual gate updater does not re-run checklist validation."
         Assert-FileContains -Path $guidePath -Needle "scripts\build-installer.ps1" -Message "Release guide does not mention the installer build script."
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-installer.ps1" -Message "Release guide does not mention the installer verification script."
-        Assert-FileContains -Path $guidePath -Needle "scripts\verify-v107-release-ready.ps1" -Message "Release guide does not mention the one-shot readiness gate."
+        Assert-FileContains -Path $guidePath -Needle "scripts\verify-v108-release-ready.ps1" -Message "Release guide does not mention the one-shot readiness gate."
         Assert-FileContains -Path $guidePath -Needle "scripts\check-autostart-cleanup.ps1" -Message "Release guide does not mention the autostart cleanup check."
         Assert-FileContains -Path $guidePath -Needle "installer\BluetoothBatteryWidget.iss" -Message "Release guide does not mention the current installer script."
         Assert-FileContains -Path $guidePath -Needle "display-off timeout to 1 minute" -Message "Release guide does not include the display-off manual gate."
@@ -174,7 +184,7 @@ try {
         Assert-FileContains -Path $guidePath -Needle "lower square hotspot" -Message "Release guide does not include the Steam Quick Access lower-square hotspot gate."
         Assert-FileContains -Path $guidePath -Needle "release notes popup appears once" -Message "Release guide does not include release-notes one-time behavior."
         Assert-FileContains -Path $guidePath -Needle "release notes popup appears every run" -Message "Release guide does not include test.exe every-run behavior."
-        Assert-FileContains -Path $guidePath -Needle 'powershell -ExecutionPolicy Bypass -File ".\scripts\verify-v107-release-ready.ps1" -LiveReleaseNotes -DisplaySleepSnapshot -RequireManualGatePasses -RequireNoRunningBlossOrTest -RequireNoCurrentAutostart' -Message "Release guide does not include the final manual-gate upload guard command."
+        Assert-FileContains -Path $guidePath -Needle 'powershell -ExecutionPolicy Bypass -File ".\scripts\verify-v108-release-ready.ps1" -LiveReleaseNotes -DisplaySleepSnapshot -RequireManualGatePasses -RequireNoRunningBlossOrTest -RequireNoCurrentAutostart' -Message "Release guide does not include the final manual-gate upload guard command."
         Assert-FileContains -Path $guidePath -Needle 'Do not run `gh release upload` while this fails' -Message "Release guide does not block upload while manual gates are incomplete."
         Assert-FileContains -Path $guidePath -Needle '-RequireNoRunningProcesses' -Message "Release guide does not mention the no-running-process manual gate prerequisite guard."
         Assert-FileContains -Path $guidePath -Needle '-RequireNoCurrentAutostart' -Message "Release guide does not mention the current-user autostart prerequisite guard."
@@ -219,8 +229,8 @@ try {
         Assert-FileContains -Path $settingsStoreTestsPath -Needle "Load_MigratesLegacyPowerIdleOneMinuteDefaultToWindowsAuto" -Message "Legacy one-minute setting migration test is missing."
         Assert-FileContains -Path $settingsStoreTestsPath -Needle "Load_PreservesCurrentSchemaPowerIdleOneMinuteUserChoice" -Message "Manual one-minute setting preservation test is missing."
         Assert-FileContains -Path $systemDisplayIdleTimeoutTestsPath -Needle "SelectShortestPositiveTimeout_UsesEarlierDisplayOrSleepTimeout" -Message "Windows display/sleep earliest-timeout test is missing."
-        Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "SetThreadExecutionState" -Message "Display/system-awake source safety guard is missing SetThreadExecutionState."
-        Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "ES_DISPLAY_REQUIRED" -Message "Display-awake source safety guard is missing ES_DISPLAY_REQUIRED."
+        Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "TryNotifyDisplayUserActivity" -Message "Verified gamepad display-idle pulse guard is missing."
+        Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "ES_CONTINUOUS" -Message "Continuous display-awake source safety guard is missing ES_CONTINUOUS."
         Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "ES_SYSTEM_REQUIRED" -Message "System-awake source safety guard is missing ES_SYSTEM_REQUIRED."
         Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "PowerSetRequest" -Message "Power request source safety guard is missing PowerSetRequest."
         Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "SendInput(" -Message "Synthetic input source safety guard is missing SendInput."
@@ -280,6 +290,10 @@ try {
 
     Invoke-ReadinessStep -Name "Manual gate evidence report" -Action {
         & (Join-Path $PSScriptRoot "export-v107-manual-gate-evidence.ps1")
+    }
+
+    Invoke-ReadinessStep -Name "Git publish safety" -Action {
+        & (Join-Path $PSScriptRoot "verify-git-publish-safety.ps1")
     }
 
     Invoke-ReadinessStep -Name "Manual verification checklist" -Action {
@@ -354,7 +368,7 @@ try {
     }
 
     Write-Host ""
-    Write-Host "v1.0.7 release readiness gate passed for non-destructive local checks."
+    Write-Host "v1.0.8 release readiness gate passed for non-destructive local checks."
 }
 finally {
     Pop-Location

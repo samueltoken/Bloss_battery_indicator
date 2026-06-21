@@ -170,6 +170,82 @@ internal static class BatteryGuideTriggerParser
         ReadOnlySpan<byte> currentReport,
         out BatteryGuideTrigger trigger)
     {
+        return TryCaptureCore(
+            deviceKind,
+            previousReport,
+            currentReport,
+            includeSteamAxisPseudoBits: true,
+            out trigger);
+    }
+
+    public static bool TryCaptureButtonsOnly(
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> previousReport,
+        ReadOnlySpan<byte> currentReport,
+        out BatteryGuideTrigger trigger)
+    {
+        return TryCaptureCore(
+            deviceKind,
+            previousReport,
+            currentReport,
+            includeSteamAxisPseudoBits: false,
+            out trigger);
+    }
+
+    public static bool HasButtonDownEdgeForPowerIdleActivity(
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> previousReport,
+        ReadOnlySpan<byte> currentReport)
+    {
+        if (currentReport.Length == 0 ||
+            previousReport.Length == 0)
+        {
+            return false;
+        }
+
+        var reportId = currentReport[0];
+        if (previousReport[0] != reportId)
+        {
+            return false;
+        }
+
+        var offsets = deviceKind == GuideButtonDeviceKind.DualSense &&
+            LooksLikePaddedShortBluetoothDualSenseReport(currentReport)
+                ? [7]
+                : GetButtonOffsets(deviceKind, reportId, currentReport.Length);
+        foreach (var offset in offsets)
+        {
+            if (offset >= currentReport.Length || offset >= previousReport.Length)
+            {
+                continue;
+            }
+
+            var pressed = currentReport[offset];
+            for (var bit = 0; bit < 8; bit++)
+            {
+                var mask = (byte)(1 << bit);
+                if ((pressed & mask) == 0 ||
+                    (previousReport[offset] & mask) != 0 ||
+                    !ShouldCaptureButtonBit(deviceKind, reportId, offset, mask))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+        }
+
+        return deviceKind == GuideButtonDeviceKind.DualSense &&
+               HasDualSenseDPadDownEdge(previousReport, currentReport);
+    }
+
+    private static bool TryCaptureCore(
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> previousReport,
+        ReadOnlySpan<byte> currentReport,
+        bool includeSteamAxisPseudoBits,
+        out BatteryGuideTrigger trigger)
+    {
         trigger = null!;
         if (currentReport.Length == 0 || previousReport.Length == 0)
         {
@@ -224,10 +300,13 @@ internal static class BatteryGuideTriggerParser
         if (deviceKind == GuideButtonDeviceKind.SteamController &&
             reportId is 0x42 or 0x45)
         {
-            foreach (var axisBit in CaptureSteamControllerAxes(previousReport, currentReport, out var axisHasNewPress))
+            if (includeSteamAxisPseudoBits)
             {
-                hasNewPress |= axisHasNewPress;
-                bits.Add(axisBit);
+                foreach (var axisBit in CaptureSteamControllerAxes(previousReport, currentReport, out var axisHasNewPress))
+                {
+                    hasNewPress |= axisHasNewPress;
+                    bits.Add(axisBit);
+                }
             }
 
             if (!bits.Any(IsSteamLeftPadAxisPseudoBit) &&
@@ -333,6 +412,31 @@ internal static class BatteryGuideTriggerParser
         GuideButtonDeviceKind deviceKind,
         ReadOnlySpan<byte> report)
     {
+        return HasAnyTriggerBitPressedCore(
+            trigger,
+            deviceKind,
+            report,
+            includeSteamAxisPseudoBits: true);
+    }
+
+    public static bool HasAnyButtonTriggerBitPressed(
+        BatteryGuideTrigger trigger,
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report)
+    {
+        return HasAnyTriggerBitPressedCore(
+            trigger,
+            deviceKind,
+            report,
+            includeSteamAxisPseudoBits: false);
+    }
+
+    private static bool HasAnyTriggerBitPressedCore(
+        BatteryGuideTrigger trigger,
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report,
+        bool includeSteamAxisPseudoBits)
+    {
         if (trigger.DeviceKind != deviceKind ||
             report.Length == 0 ||
             report[0] != trigger.ReportId)
@@ -344,6 +448,11 @@ internal static class BatteryGuideTriggerParser
         {
             if (IsAxisPseudoBit(bit))
             {
+                if (!includeSteamAxisPseudoBits)
+                {
+                    continue;
+                }
+
                 if (IsAxisPseudoBitPressed(trigger.DeviceKind, trigger.ReportId, bit, report))
                 {
                     return true;
@@ -642,6 +751,24 @@ internal static class BatteryGuideTriggerParser
         };
 
         return offset >= 0;
+    }
+
+    private static bool HasDualSenseDPadDownEdge(
+        ReadOnlySpan<byte> previousReport,
+        ReadOnlySpan<byte> currentReport)
+    {
+        if (currentReport.Length == 0 ||
+            previousReport.Length == 0 ||
+            previousReport[0] != currentReport[0] ||
+            !TryGetDualSenseDPadOffset(currentReport[0], currentReport.Length, out var offset) ||
+            offset >= previousReport.Length)
+        {
+            return false;
+        }
+
+        var previousDirection = previousReport[offset] & 0x0F;
+        var currentDirection = currentReport[offset] & 0x0F;
+        return previousDirection > 7 && currentDirection <= 7;
     }
 
     private static bool IsDualSenseDPadPseudoBitPressed(

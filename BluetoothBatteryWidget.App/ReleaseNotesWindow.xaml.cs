@@ -18,7 +18,7 @@ public partial class ReleaseNotesWindow : Window
     public ReleaseNotesWindow(string version, string? language = null)
     {
         InitializeComponent();
-        var displayVersion = string.IsNullOrWhiteSpace(version) ? "1.0.7" : version.Trim();
+        var displayVersion = string.IsNullOrWhiteSpace(version) ? AppVersionInfo.DisplayVersion : version.Trim();
         var normalizedLanguage = WidgetSettings.NormalizeLanguage(language);
         ApplyLocalizedText(displayVersion, normalizedLanguage);
         RoundedContentRoot.SizeChanged += (_, _) => ApplyRoundedContentClip();
@@ -40,12 +40,18 @@ public partial class ReleaseNotesWindow : Window
         AutomationProperties.SetName(this, Title);
 
         HeadingText.Text = UiLanguageCatalog.GetExtraText(language, "ReleaseNotesHeading");
-        CleanupAutostartText.Text = UiLanguageCatalog.GetExtraText(language, "ReleaseNotesCleanupAutostart");
-        SleepGuardText.Text = UiLanguageCatalog.GetExtraText(language, "ReleaseNotesSleepGuard");
-        CustomGuideTriggerText.Text = UiLanguageCatalog.GetExtraText(language, "ReleaseNotesCustomGuideTrigger");
-        InstallUpdateValidationText.Text = UiLanguageCatalog.GetExtraText(language, "ReleaseNotesInstallUpdateValidation");
+        SetReleaseNoteText(CleanupAutostartText, UiLanguageCatalog.GetExtraText(language, "ReleaseNotesCleanupAutostart"));
+        SetReleaseNoteText(SleepGuardText, UiLanguageCatalog.GetExtraText(language, "ReleaseNotesSleepGuard"));
+        SetReleaseNoteText(CustomGuideTriggerText, UiLanguageCatalog.GetExtraText(language, "ReleaseNotesCustomGuideTrigger"));
+        SetReleaseNoteText(InstallUpdateValidationText, UiLanguageCatalog.GetExtraText(language, "ReleaseNotesInstallUpdateValidation"));
         FooterText.Text = UiLanguageCatalog.GetExtraText(language, "ReleaseNotesFooter");
         ConfirmButton.Content = UiLanguageCatalog.GetExtraText(language, "ReleaseNotesConfirm");
+    }
+
+    private static void SetReleaseNoteText(TextBlock target, string text)
+    {
+        target.Text = text;
+        target.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void ApplyRoundedContentClip()

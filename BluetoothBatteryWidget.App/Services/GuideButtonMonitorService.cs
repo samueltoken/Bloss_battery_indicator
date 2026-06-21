@@ -49,6 +49,33 @@ internal sealed class GuideButtonInputReportEventArgs : EventArgs
     public byte[] Report { get; }
 }
 
+internal sealed class GuideButtonActivityEventArgs : EventArgs
+{
+    public GuideButtonActivityEventArgs(
+        string address,
+        string displayName,
+        GuideButtonDeviceKind deviceKind,
+        bool countsAsUserActivity = true,
+        bool isWakeEligible = true)
+    {
+        Address = AddressNormalizer.NormalizeAddress(address);
+        DisplayName = displayName;
+        DeviceKind = deviceKind;
+        CountsAsUserActivity = countsAsUserActivity;
+        IsWakeEligible = isWakeEligible;
+    }
+
+    public string Address { get; }
+
+    public string DisplayName { get; }
+
+    public GuideButtonDeviceKind DeviceKind { get; }
+
+    public bool CountsAsUserActivity { get; }
+
+    public bool IsWakeEligible { get; }
+}
+
 internal sealed record GuideButtonKnownDevice(
     string Address,
     string DisplayName,
@@ -65,6 +92,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
 {
     private static readonly TimeSpan DiscoveryInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PressDebounce = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan PowerIdleStopWait = TimeSpan.FromMilliseconds(1800);
     private const int StreamReadTimeoutMs = 650;
     private const int DualSenseMinimumReportSize = 78;
     private const int SteamMinimumReportSize = 64;
@@ -80,10 +108,34 @@ internal sealed class GuideButtonMonitorService : IDisposable
     private CancellationTokenSource? _cts;
     private Task? _supervisorTask;
     private bool _disposed;
+    private bool _isPowerIdlePollingPaused;
     private string _lastDiscoveryLogKey = string.Empty;
 
     public event EventHandler<GuideButtonPressedEventArgs>? GuideButtonPressed;
     public event EventHandler<GuideButtonInputReportEventArgs>? InputReportReceived;
+    public event EventHandler<GuideButtonActivityEventArgs>? InputActivityReceived;
+
+    public bool IsRunning
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return !_disposed && _supervisorTask is { IsCompleted: false };
+            }
+        }
+    }
+
+    public bool IsPowerIdlePollingPausedForDiagnostics
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _isPowerIdlePollingPaused;
+            }
+        }
+    }
 
     public void SetKnownDeviceProvider(Func<IReadOnlyList<GuideButtonKnownDevice>> provider)
     {
@@ -113,9 +165,29 @@ internal sealed class GuideButtonMonitorService : IDisposable
         }
     }
 
+    public void SetPowerIdlePollingPaused(bool isPaused)
+    {
+        lock (_sync)
+        {
+            _isPowerIdlePollingPaused = isPaused;
+        }
+    }
+
     public void Stop()
     {
+        StopCore(waitForExit: false);
+    }
+
+    public void StopForPowerIdle()
+    {
+        StopCore(waitForExit: true);
+    }
+
+    private void StopCore(bool waitForExit)
+    {
         CancellationTokenSource? cts;
+        Task? supervisorTask;
+        List<Task> endpointTasks;
         lock (_sync)
         {
             if (_disposed)
@@ -124,15 +196,27 @@ internal sealed class GuideButtonMonitorService : IDisposable
             }
 
             cts = _cts;
+            supervisorTask = _supervisorTask;
+            endpointTasks = _endpointTasks.Values
+                .Where(task => !task.IsCompleted)
+                .ToList();
             _cts = null;
             _supervisorTask = null;
             _endpointTasks.Clear();
             _lastPressByAddress.Clear();
         }
 
+        var waitTasks = supervisorTask is null || supervisorTask.IsCompleted
+            ? endpointTasks
+            : endpointTasks.Prepend(supervisorTask).ToList();
+
         try
         {
             cts?.Cancel();
+            if (waitForExit && waitTasks.Count > 0)
+            {
+                _ = Task.WaitAll(waitTasks.ToArray(), PowerIdleStopWait);
+            }
         }
         catch
         {
@@ -142,6 +226,13 @@ internal sealed class GuideButtonMonitorService : IDisposable
         {
             cts?.Dispose();
         }
+
+        WriteGuideButtonEvent(
+            "service_stopped",
+            deviceKind: string.Empty,
+            address: string.Empty,
+            displayName: string.Empty,
+            message: "Guide button monitor service stopped for power idle.");
     }
 
     public void Dispose()
@@ -268,6 +359,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
         var lastPressed = false;
         DateTimeOffset? pressedAt = null;
         var emptyReadCount = 0;
+        var idleQuietLogged = false;
 
         using var handle = HidGamepadAccess.OpenHandle(endpoint.DevicePath);
         if (handle.IsInvalid)
@@ -292,6 +384,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
         {
             var snapshotDiagnostic = string.Empty;
             if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
+                !IsPowerIdlePollingPaused() &&
                 TryReadSteamGuideSnapshot(handle, out var polledPressed, out snapshotDiagnostic))
             {
                 if (!snapshotFallbackLogged)
@@ -321,12 +414,23 @@ internal sealed class GuideButtonMonitorService : IDisposable
                     minimumReportSize,
                     StreamReadTimeoutMs,
                     out var frame,
-                    out _))
+                    out var timedOut))
             {
+                if (!timedOut)
+                {
+                    WriteGuideButtonEvent(
+                        "monitor_read_failed",
+                        endpoint,
+                        "HID input stream failed, so the guide-button monitor will restart through discovery.");
+                    return;
+                }
+
                 if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
+                    !IsPowerIdlePollingPaused() &&
                     TryReadSteamGuideSnapshot(handle, out var snapshotPressed, out snapshotDiagnostic))
                 {
                     emptyReadCount = 0;
+                    idleQuietLogged = false;
                     if (!snapshotFallbackLogged)
                     {
                         snapshotFallbackLogged = true;
@@ -351,16 +455,20 @@ internal sealed class GuideButtonMonitorService : IDisposable
                 }
 
                 emptyReadCount++;
-                if (emptyReadCount >= 12)
+                if (emptyReadCount >= 12 && !idleQuietLogged)
                 {
-                    WriteGuideButtonEvent("monitor_idle_timeout", endpoint, "No HID input report was received for this endpoint.");
-                    return;
+                    idleQuietLogged = true;
+                    WriteGuideButtonEvent(
+                        "monitor_idle_quiet",
+                        endpoint,
+                        "No HID input report is currently flowing, so the guide-button monitor is staying open and waiting.");
                 }
 
                 continue;
             }
 
             emptyReadCount = 0;
+            idleQuietLogged = false;
             RaiseInputReportReceived(endpoint, frame.Data);
             if (!GuideButtonReportParser.TryParseGuideButton(endpoint.DeviceKind, frame.Data, out var pressed))
             {
@@ -414,10 +522,12 @@ internal sealed class GuideButtonMonitorService : IDisposable
         var now = DateTimeOffset.Now;
         if (pressed && !lastPressed)
         {
+            RaiseInputActivityReceived(endpoint);
             pressedAt = now;
         }
         else if (!pressed && lastPressed)
         {
+            RaiseInputActivityReceived(endpoint);
             var duration = pressedAt.HasValue ? now - pressedAt.Value : TimeSpan.Zero;
             if (duration >= ShortPressMinimumDuration && duration <= ShortPressMaximumDuration)
             {
@@ -428,6 +538,24 @@ internal sealed class GuideButtonMonitorService : IDisposable
         }
 
         lastPressed = pressed;
+    }
+
+    private void RaiseInputActivityReceived(GuideButtonEndpoint endpoint)
+    {
+        InputActivityReceived?.Invoke(
+            this,
+            new GuideButtonActivityEventArgs(
+                endpoint.Address,
+                endpoint.DisplayName,
+                endpoint.DeviceKind));
+    }
+
+    private bool IsPowerIdlePollingPaused()
+    {
+        lock (_sync)
+        {
+            return _isPowerIdlePollingPaused;
+        }
     }
 
     private void RaiseInputReportReceived(GuideButtonEndpoint endpoint, ReadOnlySpan<byte> report)

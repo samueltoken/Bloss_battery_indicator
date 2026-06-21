@@ -25,7 +25,12 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ChecklistPath)) {
-    $ChecklistPath = Join-Path $projectRoot "manual-verification-v107.md"
+    if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
+        $ChecklistPath = $env:BLOSS_MANUAL_CHECKLIST_PATH
+    }
+    else {
+        $ChecklistPath = Join-Path $projectRoot "manual-verification-v107.md"
+    }
 }
 
 $checklistPath = [System.IO.Path]::GetFullPath($ChecklistPath)

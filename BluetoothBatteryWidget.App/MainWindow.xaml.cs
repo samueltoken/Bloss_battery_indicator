@@ -2,6 +2,7 @@
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -27,6 +28,15 @@ using WpfThumb = System.Windows.Controls.Primitives.Thumb;
 using WpfToggleButton = System.Windows.Controls.Primitives.ToggleButton;
 
 namespace BluetoothBatteryWidget.App;
+
+internal enum PowerIdleRuntimeMode
+{
+    Active,
+    PreDisplaySleep,
+    DisplayOffWakeOnly,
+    WakeRecovery,
+    ExternalInputBlocked
+}
 
 public partial class MainWindow : Window
 {
@@ -58,7 +68,6 @@ public partial class MainWindow : Window
     private const string DeveloperContactEmail = "lamsaiku65@gmail.com";
     private const string SupportUrl = "https://ko-fi.com/dukduk";
     private const string AppDisplayName = "Bloss";
-    private const string FallbackVersion = "1.0.7";
     private static readonly TimeSpan GuideButtonGlobalDebounce = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan SteamGuideButtonToastCooldown = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan CustomBatteryGuideTriggerToastCooldown = TimeSpan.FromMilliseconds(1500);
@@ -66,6 +75,26 @@ public partial class MainWindow : Window
     private static readonly TimeSpan SteamGuideToastConnectionSuppressDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan SteamGuideToastRefreshSuppressDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan AutomaticBatteryToastStartupSuppressDuration = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan GamepadActivityDiagnosticInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan GamepadActivityRefreshCooldown = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan GamepadDisplayIdlePulseCooldown = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DisplayWakePulseCooldown = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan DisplayOffSettleWindow = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan TelemetryPowerIdleUpdateCooldown = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan NormalGamepadMonitoringGrace = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan QuietPreparationStartMinimum = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan QuietPreparationStartMaximum = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ShortDisplayTimeoutQuietPreparationStart = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ShortDisplayTimeoutQuietPreparationLead = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ExternalInputBlockProbeWindow = TimeSpan.FromSeconds(25);
+    private static readonly TimeSpan ShortDisplayTimeoutExternalInputProbeWindow = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan LongDisplayTimeoutExternalInputProbeWindowMaximum = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan ExternalInputBlockRetryCooldown = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan QuietModeIntentionalInputCooldown = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DisplayWakeRecoveryDuration = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan VerifiedInputWakeRecoveryBypassDuration = TimeSpan.FromSeconds(7);
+    private static readonly TimeSpan DisplayWakeGuideToastHold = TimeSpan.FromSeconds(7);
+    private static readonly TimeSpan DisplaySleepBlockedDiagnosticInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SteamRawInputPreferredWindow = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan SteamSecondaryFallbackDelay = TimeSpan.FromMilliseconds(120);
     private static readonly TimeSpan SteamSecondaryFallbackRawHidRecheckDelay = TimeSpan.FromMilliseconds(120);
@@ -76,6 +105,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan SteamSecondaryFallbackRawHidStaleStateAge = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan SteamSecondaryFallbackRawHidPreExistingHoldAge = TimeSpan.FromMilliseconds(2500);
     private static readonly TimeSpan SteamSecondaryFallbackBurstWindow = TimeSpan.FromMilliseconds(450);
+    private static readonly TimeSpan GuideButtonInputReportFallbackSuppressDuration = TimeSpan.FromMilliseconds(1200);
     private const string Ds5DongleLatestReleaseApiUrl = "https://api.github.com/repos/awalol/DS5Dongle/releases/latest";
     private const string Ds5DongleReleasePageUrl = "https://github.com/awalol/DS5Dongle/releases";
     private const long Ds5DongleMaxFirmwareBytes = 16L * 1024 * 1024;
@@ -99,7 +129,7 @@ public partial class MainWindow : Window
         System.Windows.Media.Color.FromRgb(0x35, 0x61, 0x7F);
 
     private readonly MainViewModel _viewModel;
-    private readonly Forms.NotifyIcon _trayIcon;
+    private readonly TrayIconService _trayIconService;
     private readonly DrawingIcon _appIcon;
 
     private bool _isExiting;
@@ -125,18 +155,14 @@ public partial class MainWindow : Window
     private double _statusPanelCollapsedHeightDelta;
     private DateTime _lastBoundsSaveAt = DateTime.MinValue;
     private Storyboard? _glassWaveStoryboard;
-    private Forms.ToolStripMenuItem? _trayOpenMenuItem;
-    private Forms.ToolStripMenuItem? _trayRefreshMenuItem;
-    private Forms.ToolStripMenuItem? _trayResetPositionMenuItem;
-    private Forms.ToolStripMenuItem? _trayAutostartMenuItem;
-    private Forms.ToolStripMenuItem? _trayStartMinimizedToTrayMenuItem;
-    private Forms.ToolStripMenuItem? _trayExitMenuItem;
     private readonly HttpClient _httpClient = new();
     private readonly UpdateService _updateService;
     private readonly DateTimeOffset _automaticBatteryToastStartupSuppressUntilUtc =
         DateTimeOffset.UtcNow.Add(AutomaticBatteryToastStartupSuppressDuration);
     private readonly GuideButtonMonitorService _guideButtonMonitor = new();
     private readonly SteamControllerRawInputMonitorService _steamRawInputMonitor = new();
+    private readonly XInputActivityMonitorService _xInputActivityMonitor = new();
+    private readonly DisplayPowerCoordinator _displayPowerCoordinator = new();
     private readonly BatteryGuideChimePlayer _batteryGuideChimePlayer = new(BatteryGuideChimeWave);
     private readonly System.Windows.Threading.DispatcherTimer _guideSoundPreviewResetTimer = new();
     private readonly System.Windows.Threading.DispatcherTimer _settingsAutoCloseTimer = new();
@@ -146,9 +172,12 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, DateTimeOffset> _lastSteamRawGuideButtonByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _lastCustomBatteryGuideTriggerToastByBinding = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]> _lastBatteryGuideTriggerReportByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, byte[]> _lastPowerIdleInputReportByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _lastDefaultGuideButtonPressedByInputReport = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<string>> _customBatteryGuideTriggerPressedReportKeysByBinding = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PendingSteamSecondaryGuideFallback> _pendingSteamSecondaryGuideFallbackByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _steamSecondaryGuideFallbackBlockedUntilByDevice = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _inputReportGuideFallbackSuppressRegularUntilByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> _steamGuideConnectionStableByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<FrameworkElement, int> _settingsAccordionAnimationTokens = new();
     private readonly Dictionary<WpfControls.TextBlock, (double FontSize, FontWeight FontWeight)> _settingsTextBlockDefaults = new();
@@ -158,18 +187,33 @@ public partial class MainWindow : Window
     private BatteryToastWindow? _activeBatteryToastWindow;
     private LabsWindow? _labsWindow;
     private HwndSource? _windowMessageSource;
+    private IntPtr _steamRawInputWindowHandle;
     private bool _isGuideSoundPreviewPlaying;
     private bool _isUpdating;
     private bool _isPicoFirmwareUpdating;
-    private bool _guideMonitorsPausedForPowerIdle;
     private bool _isBatteryGuideTriggerCaptureActive;
     private bool _batteryGuideTriggerSelectMouseToggleRequested;
     private DateTimeOffset _steamGuideToastsSuppressedUntilUtc =
         DateTimeOffset.UtcNow.Add(SteamGuideToastConnectionSuppressDuration);
+    private readonly Dictionary<string, DateTimeOffset> _lastGamepadActivityDiagnosticAtUtcByKind = new(StringComparer.OrdinalIgnoreCase);
+    private DateTimeOffset _lastGamepadActivityRefreshRequestedAtUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastGamepadDisplayIdlePulseAtUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastDisplayWakePulseAtUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastDisplayOffStateAtUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastTelemetryPowerIdleUpdateAtUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _wakeRecoveryUntilUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _verifiedInputWakeRecoveryBypassUntilUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _pendingDisplayWakeGuideToastUntilUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _preDisplaySleepEnteredAtUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _normalGamepadMonitoringAllowedUntilUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _naturalSleepRetryBlockedUntilUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastDisplaySleepBlockedDiagnosticAtUtc = DateTimeOffset.MinValue;
+    private PowerIdleRuntimeMode _powerIdleMode = PowerIdleRuntimeMode.Active;
     private BatteryAlertThresholdsWindow? _batteryAlertThresholdsWindow;
     private BatteryGuideTriggerCaptureWindow? _batteryGuideTriggerCaptureWindow;
     private IconOverrideWindow? _iconOverrideWindow;
     private BatteryGuideTrigger? _pendingBatteryGuideTriggerCapture;
+    private GuideButtonPressedEventArgs? _pendingDisplayWakeGuideToast;
     private string? _batteryGuideTriggerCaptureKey;
 
     private static readonly HashSet<string> ColorElementKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -203,7 +247,7 @@ public partial class MainWindow : Window
         GuideSoundComboBox.ItemsSource = BatteryGuideSoundCatalog.GetGuideOptions(_viewModel.CustomGuideSoundPath, _viewModel.Language);
         GuideSoundComboBox.DisplayMemberPath = nameof(BatteryGuideSoundOption.DisplayName);
         _appIcon = LoadAppIcon();
-        _trayIcon = BuildTrayIcon();
+        _trayIconService = BuildTrayIconService();
         RefreshTrayMenuTexts();
         UpdateVersionMenuHeader();
         SyncGuideSoundSelection();
@@ -213,15 +257,20 @@ public partial class MainWindow : Window
         _viewModel.Devices.CollectionChanged += Devices_CollectionChanged;
         _guideButtonMonitor.GuideButtonPressed += GuideButtonMonitor_GuideButtonPressed;
         _guideButtonMonitor.InputReportReceived += GuideButtonMonitor_InputReportReceived;
+        _guideButtonMonitor.InputActivityReceived += GuideButtonHidMonitor_InputActivityReceived;
         _guideButtonMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
         _steamRawInputMonitor.GuideButtonPressed += GuideButtonMonitor_GuideButtonPressed;
         _steamRawInputMonitor.InputReportReceived += GuideButtonMonitor_InputReportReceived;
+        _steamRawInputMonitor.InputActivityReceived += GuideButtonMonitor_InputActivityReceived;
+        _steamRawInputMonitor.GlobalHumanInputReceived += SteamRawInputMonitor_GlobalHumanInputReceived;
         _steamRawInputMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
+        _xInputActivityMonitor.InputActivityReceived += XInputActivityMonitor_InputActivityReceived;
+        _displayPowerCoordinator.StateChanged += DisplayPowerCoordinator_StateChanged;
         _batteryGuideChimePlayer.PlaybackEnded += BatteryGuideChimePlayer_PlaybackEnded;
         _guideSoundPreviewResetTimer.Tick += GuideSoundPreviewResetTimer_Tick;
         _settingsAutoCloseTimer.Interval = TimeSpan.FromMilliseconds(280);
         _settingsAutoCloseTimer.Tick += SettingsAutoCloseTimer_Tick;
-        _powerIdleMonitorTimer.Interval = TimeSpan.FromSeconds(15);
+        _powerIdleMonitorTimer.Interval = TimeSpan.FromSeconds(1);
         _powerIdleMonitorTimer.Tick += PowerIdleMonitorTimer_Tick;
 
         LocationChanged += (_, _) =>
@@ -276,8 +325,8 @@ public partial class MainWindow : Window
         UpdateResizeGripPlacement();
         UpdateDwmBlurBehindRegion();
         ApplyVisualModeState();
-        _guideButtonMonitor.Start();
         _steamRawInputMonitor.LogRawDeviceSummary();
+        ArmNormalGamepadMonitoring("startup");
         UpdatePowerIdleGuideMonitoring();
         _powerIdleMonitorTimer.Start();
 
@@ -367,10 +416,17 @@ public partial class MainWindow : Window
 
         _guideButtonMonitor.GuideButtonPressed -= GuideButtonMonitor_GuideButtonPressed;
         _guideButtonMonitor.InputReportReceived -= GuideButtonMonitor_InputReportReceived;
+        _guideButtonMonitor.InputActivityReceived -= GuideButtonHidMonitor_InputActivityReceived;
         _guideButtonMonitor.Dispose();
         _steamRawInputMonitor.GuideButtonPressed -= GuideButtonMonitor_GuideButtonPressed;
         _steamRawInputMonitor.InputReportReceived -= GuideButtonMonitor_InputReportReceived;
+        _steamRawInputMonitor.InputActivityReceived -= GuideButtonMonitor_InputActivityReceived;
+        _steamRawInputMonitor.GlobalHumanInputReceived -= SteamRawInputMonitor_GlobalHumanInputReceived;
         _steamRawInputMonitor.Dispose();
+        _xInputActivityMonitor.InputActivityReceived -= XInputActivityMonitor_InputActivityReceived;
+        _xInputActivityMonitor.Dispose();
+        _displayPowerCoordinator.StateChanged -= DisplayPowerCoordinator_StateChanged;
+        _displayPowerCoordinator.Dispose();
         _batteryGuideChimePlayer.PlaybackEnded -= BatteryGuideChimePlayer_PlaybackEnded;
         _windowMessageSource?.RemoveHook(MainWindow_WndProc);
         _windowMessageSource = null;
@@ -1587,7 +1643,7 @@ public partial class MainWindow : Window
     private async Task RefreshFromUserCommandAsync()
     {
         SuppressSteamGuideToasts(SteamGuideToastRefreshSuppressDuration, "manual_refresh_started");
-        await _viewModel.RefreshAsync().ConfigureAwait(true);
+        await _viewModel.RefreshAsync(forceFullRefresh: true).ConfigureAwait(true);
         SuppressSteamGuideToasts(SteamGuideToastRefreshSuppressDuration, "manual_refresh_completed");
     }
 
@@ -1755,7 +1811,7 @@ public partial class MainWindow : Window
             _updateService.StartInstallerUpdateAndRestart(
                 setupPath,
                 releaseInfo.Version,
-                FallbackVersion,
+                AppVersionInfo.FallbackVersion,
                 _viewModel.CurrentLanguageText.UpdateInstallLaunchFailed);
             ExitApplication();
         }
@@ -2267,6 +2323,7 @@ public partial class MainWindow : Window
         }
 
         _viewModel.MarkUserActivity();
+        ArmNormalGamepadMonitoring("local_mouse_input", requireActiveMode: false);
         UpdatePowerIdleGuideMonitoring();
 
         var originalSource = e.OriginalSource as DependencyObject;
@@ -2314,6 +2371,13 @@ public partial class MainWindow : Window
         {
             // DragMove throws if mouse is released during call.
         }
+    }
+
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        _viewModel.MarkUserActivity();
+        ArmNormalGamepadMonitoring("local_keyboard_input", requireActiveMode: false);
+        UpdatePowerIdleGuideMonitoring();
     }
 
     private void PopupChrome_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2397,7 +2461,8 @@ public partial class MainWindow : Window
         if (_windowMessageSource is not null)
         {
             _windowMessageSource.AddHook(MainWindow_WndProc);
-            _steamRawInputMonitor.Start(_windowMessageSource.Handle);
+            _steamRawInputWindowHandle = _windowMessageSource.Handle;
+            _displayPowerCoordinator.Register(_steamRawInputWindowHandle);
         }
 
         UpdateCompactMode();
@@ -2407,7 +2472,81 @@ public partial class MainWindow : Window
 
     private IntPtr MainWindow_WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        var powerResult = _displayPowerCoordinator.HandleWindowMessage(hwnd, msg, wParam, lParam, ref handled);
+        if (handled)
+        {
+            return powerResult;
+        }
+
         return _steamRawInputMonitor.HandleWindowMessage(hwnd, msg, wParam, lParam, ref handled);
+    }
+
+    private void DisplayPowerCoordinator_StateChanged(object? sender, DisplayPowerStateChangedEventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.BeginInvoke(new Action(() => DisplayPowerCoordinator_StateChanged(sender, e)));
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (e.CurrentState == DisplayPowerState.Off)
+        {
+            _lastDisplayOffStateAtUtc = now;
+            ClearPendingDisplayWakeGuideToast();
+            ApplyPowerIdleMonitorState(PowerIdleRuntimeMode.DisplayOffWakeOnly, shouldPause: true);
+            GuideButtonEventLog.Write(
+                "display_state_changed",
+                "PowerIdle",
+                string.Empty,
+                AppDisplayName,
+                $"Windows display state changed to Off. previous={e.PreviousState}; wake-only input monitoring enabled.");
+            return;
+        }
+
+        if (e.CurrentState == DisplayPowerState.On)
+        {
+            _viewModel.MarkUserActivity();
+            ArmNormalGamepadMonitoring("display_state_on", requireActiveMode: false);
+            if (ShouldBypassWakeRecoveryAfterVerifiedInput(now))
+            {
+                _wakeRecoveryUntilUtc = DateTimeOffset.MinValue;
+                _verifiedInputWakeRecoveryBypassUntilUtc = DateTimeOffset.MinValue;
+                ApplyPowerIdleMonitorState(PowerIdleRuntimeMode.Active, shouldPause: false);
+                GuideButtonEventLog.Write(
+                    "display_state_changed",
+                    "PowerIdle",
+                    string.Empty,
+                    AppDisplayName,
+                    $"Windows display state changed to On. previous={e.PreviousState}; wake recovery skipped after verified gamepad input.");
+                FlushPendingDisplayWakeGuideToast(now);
+                _ = Dispatcher.BeginInvoke(
+                    new Action(UpdatePowerIdleGuideMonitoring),
+                    System.Windows.Threading.DispatcherPriority.Background);
+                return;
+            }
+
+            _wakeRecoveryUntilUtc = now + DisplayWakeRecoveryDuration;
+            ApplyPowerIdleMonitorState(PowerIdleRuntimeMode.WakeRecovery, shouldPause: true);
+            GuideButtonEventLog.Write(
+                "display_state_changed",
+                "PowerIdle",
+                string.Empty,
+                AppDisplayName,
+                $"Windows display state changed to On. previous={e.PreviousState}; wake recovery started.");
+            FlushPendingDisplayWakeGuideToast(now);
+            _ = Dispatcher.BeginInvoke(
+                new Action(UpdatePowerIdleGuideMonitoring),
+                System.Windows.Threading.DispatcherPriority.Background);
+            return;
+        }
+
+        GuideButtonEventLog.Write(
+            "display_state_changed",
+            "PowerIdle",
+            string.Empty,
+            AppDisplayName,
+            $"Windows display state changed to {e.CurrentState}. previous={e.PreviousState}.");
     }
 
     private void PowerIdleMonitorTimer_Tick(object? sender, EventArgs e)
@@ -2417,39 +2556,687 @@ public partial class MainWindow : Window
 
     private void UpdatePowerIdleGuideMonitoring()
     {
-        if (_windowMessageSource is null)
+        var now = DateTimeOffset.UtcNow;
+        var delay = _viewModel.GetPowerIdlePauseDelay();
+        var displayTimeout = SystemDisplayIdleTimeout.GetCurrentDisplayOrSleepTimeout();
+        var systemIdle = SystemIdleMonitor.GetIdleDuration();
+        var localIdle = _viewModel.GetLocalIdleDuration();
+        var gamepadIdle = _viewModel.GetGamepadIdleDuration();
+        var localOrGamepadIdle = _viewModel.GetLocalOrGamepadIdleDuration();
+        var isProbeOrCaptureRunning = _viewModel.IsAnyProbeRunning || _isBatteryGuideTriggerCaptureActive;
+        var shouldPause = PowerIdlePolicy.ShouldPauseBackgroundWork(
+            delay,
+            systemIdle,
+            localOrGamepadIdle,
+            isProbeOrCaptureRunning,
+            isRefreshRunning: false);
+        var mode = ResolvePowerIdleRuntimeMode(
+            displayTimeout,
+            systemIdle,
+            localOrGamepadIdle,
+            isProbeOrCaptureRunning,
+            now);
+        ApplyPowerIdleMonitorState(mode, shouldPause);
+        WriteDisplaySleepBlockedDiagnosticIfNeeded(displayTimeout, systemIdle, localOrGamepadIdle, mode);
+        PowerIdleDebugLog.Write(
+            mode.ToString(),
+            delay,
+            displayTimeout,
+            systemIdle,
+            localIdle,
+            gamepadIdle,
+            shouldPause,
+            _viewModel.IsRefreshRunning,
+            _viewModel.IsAnyProbeRunning,
+            _isBatteryGuideTriggerCaptureActive,
+            _guideButtonMonitor.IsRunning,
+            _guideButtonMonitor.IsPowerIdlePollingPausedForDiagnostics,
+            _steamRawInputMonitor.IsRegistered,
+            _xInputActivityMonitor.IsRunning,
+            GetRawInputModeForDiagnostics(),
+            GetXInputModeForDiagnostics(),
+            GetNormalGamepadMonitoringRemaining(now));
+    }
+
+    private string GetRawInputModeForDiagnostics()
+    {
+        if (!_steamRawInputMonitor.IsRegistered)
         {
-            return;
+            return "off";
         }
 
-        var shouldPause = PowerIdlePolicy.ShouldPauseBackgroundWork(
-            _viewModel.GetPowerIdlePauseDelay(),
-            SystemIdleMonitor.GetIdleDuration(),
-            _viewModel.GetLocalIdleDuration(),
-            _viewModel.IsAnyProbeRunning || _isBatteryGuideTriggerCaptureActive,
-            _viewModel.IsRefreshRunning);
-
-        if (shouldPause)
+        if (_steamRawInputMonitor.IsNormalMode)
         {
-            if (_guideMonitorsPausedForPowerIdle)
+            return "normal";
+        }
+
+        if (_steamRawInputMonitor.IsWakeOnlyMode)
+        {
+            return "wake";
+        }
+
+        if (_steamRawInputMonitor.IsHumanInputOnlyMode)
+        {
+            return "human";
+        }
+
+        return "unknown";
+    }
+
+    private string GetXInputModeForDiagnostics()
+    {
+        if (!_xInputActivityMonitor.IsRunning)
+        {
+            return "off";
+        }
+
+        return _xInputActivityMonitor.IsWakeOnlyMode ? "wake" : "normal";
+    }
+
+    private TimeSpan GetNormalGamepadMonitoringRemaining(DateTimeOffset now)
+    {
+        if (_normalGamepadMonitoringAllowedUntilUtc <= now)
+        {
+            return TimeSpan.Zero;
+        }
+
+        return _normalGamepadMonitoringAllowedUntilUtc - now;
+    }
+
+    private PowerIdleRuntimeMode ResolvePowerIdleRuntimeMode(
+        TimeSpan? displayTimeout,
+        TimeSpan systemIdle,
+        TimeSpan localOrGamepadIdle,
+        bool isProbeOrCaptureRunning,
+        DateTimeOffset now)
+    {
+        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
+        {
+            return PowerIdleRuntimeMode.DisplayOffWakeOnly;
+        }
+
+        if (now < _wakeRecoveryUntilUtc)
+        {
+            return PowerIdleRuntimeMode.WakeRecovery;
+        }
+
+        if (displayTimeout is null ||
+            displayTimeout.Value <= TimeSpan.Zero ||
+            isProbeOrCaptureRunning)
+        {
+            return PowerIdleRuntimeMode.Active;
+        }
+
+        if (now < _naturalSleepRetryBlockedUntilUtc)
+        {
+            return PowerIdleRuntimeMode.ExternalInputBlocked;
+        }
+
+        if (!ShouldEnterPreDisplaySleep(displayTimeout, localOrGamepadIdle, isProbeOrCaptureRunning))
+        {
+            return PowerIdleRuntimeMode.Active;
+        }
+
+        if (_powerIdleMode == PowerIdleRuntimeMode.PreDisplaySleep &&
+            now - _preDisplaySleepEnteredAtUtc >= ResolveExternalInputBlockProbeWindow(displayTimeout.Value) &&
+            systemIdle < TimeSpan.FromSeconds(5))
+        {
+            _naturalSleepRetryBlockedUntilUtc = now + ExternalInputBlockRetryCooldown;
+            return PowerIdleRuntimeMode.ExternalInputBlocked;
+        }
+
+        return PowerIdleRuntimeMode.PreDisplaySleep;
+    }
+
+    private static bool ShouldEnterPreDisplaySleep(
+        TimeSpan? displayTimeout,
+        TimeSpan localOrGamepadIdle,
+        bool isProbeOrCaptureRunning)
+    {
+        if (displayTimeout is null ||
+            displayTimeout.Value <= TimeSpan.Zero ||
+            localOrGamepadIdle == TimeSpan.MaxValue ||
+            isProbeOrCaptureRunning)
+        {
+            return false;
+        }
+
+        var quietPoint = ResolveQuietPreparationStart(displayTimeout.Value);
+
+        return localOrGamepadIdle >= quietPoint;
+    }
+
+    private static TimeSpan ResolveQuietPreparationStart(TimeSpan displayTimeout)
+    {
+        if (displayTimeout <= TimeSpan.Zero)
+        {
+            return TimeSpan.MaxValue;
+        }
+
+        if (displayTimeout <= QuietPreparationStartMinimum)
+        {
+            return TimeSpan.FromMilliseconds(Math.Max(1000d, displayTimeout.TotalMilliseconds * 0.5d));
+        }
+
+        if (displayTimeout <= TimeSpan.FromMinutes(2))
+        {
+            var seconds = Math.Max(
+                ShortDisplayTimeoutQuietPreparationStart.TotalSeconds,
+                displayTimeout.TotalSeconds - ShortDisplayTimeoutQuietPreparationLead.TotalSeconds);
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        return NormalGamepadMonitoringGrace;
+    }
+
+    private static TimeSpan ResolveExternalInputBlockProbeWindow(TimeSpan displayTimeout)
+    {
+        if (displayTimeout <= TimeSpan.FromMinutes(2))
+        {
+            return ShortDisplayTimeoutExternalInputProbeWindow;
+        }
+
+        var seconds = Math.Clamp(
+            displayTimeout.TotalSeconds * 0.05d,
+            ExternalInputBlockProbeWindow.TotalSeconds,
+            LongDisplayTimeoutExternalInputProbeWindowMaximum.TotalSeconds);
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private void ApplyPowerIdleMonitorState(PowerIdleRuntimeMode mode, bool shouldPause)
+    {
+        var previousMode = _powerIdleMode;
+        var isModeChanged = previousMode != mode;
+        if (isModeChanged)
+        {
+            _powerIdleMode = mode;
+            if (mode == PowerIdleRuntimeMode.PreDisplaySleep)
             {
-                return;
+                _preDisplaySleepEnteredAtUtc = DateTimeOffset.UtcNow;
             }
 
-            _guideButtonMonitor.Stop();
-            _steamRawInputMonitor.Stop();
-            _guideMonitorsPausedForPowerIdle = true;
+            GuideButtonEventLog.Write(
+                "power_idle_mode_changed",
+                "PowerIdle",
+                string.Empty,
+                AppDisplayName,
+                $"Power idle monitor mode changed. previous={previousMode}; current={mode}; shouldPause={shouldPause}.");
+        }
+
+        switch (mode)
+        {
+            case PowerIdleRuntimeMode.Active:
+                _viewModel.SetDisplaySleepPreparationActive(shouldPause);
+                if (shouldPause)
+                {
+                    StopNormalHidRawInputMonitors();
+                    StopWakeOnlyInputMonitors();
+                    StartScreenOnXInputActivityMonitor();
+                }
+                else
+                {
+                    StartNormalInputMonitors();
+                    StopWakeOnlyInputMonitors();
+                }
+                break;
+            case PowerIdleRuntimeMode.PreDisplaySleep:
+                _viewModel.SetDisplaySleepPreparationActive(true);
+                if (isModeChanged)
+                {
+                    EnterPreDisplaySleepQuietMode();
+                }
+
+                break;
+            case PowerIdleRuntimeMode.DisplayOffWakeOnly:
+                _viewModel.SetDisplaySleepPreparationActive(true);
+                if (isModeChanged)
+                {
+                    StopNormalInputMonitors();
+                }
+
+                StartWakeOnlyInputMonitors();
+                break;
+            case PowerIdleRuntimeMode.WakeRecovery:
+                _viewModel.SetDisplaySleepPreparationActive(true);
+                if (isModeChanged)
+                {
+                    StopPowerIdleGuideOnlyMonitor();
+                    StopNormalInputMonitors();
+                    StartWakeOnlyInputMonitors();
+                }
+
+                break;
+            case PowerIdleRuntimeMode.ExternalInputBlocked:
+                _viewModel.SetDisplaySleepPreparationActive(true);
+                if (isModeChanged)
+                {
+                    EnterExternalInputBlockedQuietMode();
+                }
+
+                break;
+        }
+    }
+
+    private void StartNormalInputMonitors()
+    {
+        if (!ShouldRunNormalGamepadMonitoring(DateTimeOffset.UtcNow))
+        {
+            StopNormalHidRawInputMonitors();
+            StartScreenOnXInputActivityMonitor();
             return;
         }
 
-        if (!_guideMonitorsPausedForPowerIdle)
+        _guideButtonMonitor.SetPowerIdlePollingPaused(false);
+        if (!_guideButtonMonitor.IsRunning)
+        {
+            _guideButtonMonitor.Start();
+        }
+
+        if (_steamRawInputWindowHandle != IntPtr.Zero &&
+            (!_steamRawInputMonitor.IsRegistered || !_steamRawInputMonitor.IsNormalMode))
+        {
+            _steamRawInputMonitor.Start(_steamRawInputWindowHandle);
+        }
+
+        if (!_xInputActivityMonitor.IsRunning || _xInputActivityMonitor.IsWakeOnlyMode)
+        {
+            _xInputActivityMonitor.Start();
+        }
+    }
+
+    private void StartScreenOnXInputActivityMonitor()
+    {
+        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
         {
             return;
         }
 
-        _guideButtonMonitor.Start();
-        _steamRawInputMonitor.Start(_windowMessageSource.Handle);
-        _guideMonitorsPausedForPowerIdle = false;
+        if (!_xInputActivityMonitor.IsRunning || _xInputActivityMonitor.IsWakeOnlyMode)
+        {
+            _xInputActivityMonitor.Start();
+        }
+    }
+
+    private bool ShouldRunNormalGamepadMonitoring(DateTimeOffset now)
+    {
+        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
+        {
+            return false;
+        }
+
+        return _isBatteryGuideTriggerCaptureActive ||
+               (_powerIdleMode == PowerIdleRuntimeMode.Active &&
+                now <= _normalGamepadMonitoringAllowedUntilUtc);
+    }
+
+    private bool IsAnyNormalGamepadMonitorRunning()
+    {
+        return (_guideButtonMonitor.IsRunning && !_guideButtonMonitor.IsPowerIdlePollingPausedForDiagnostics) ||
+               (_steamRawInputMonitor.IsRegistered && _steamRawInputMonitor.IsNormalMode) ||
+               (_xInputActivityMonitor.IsRunning && !_xInputActivityMonitor.IsWakeOnlyMode);
+    }
+
+    private void ArmNormalGamepadMonitoring(string reason, bool requireActiveMode = true)
+    {
+        if (requireActiveMode && _powerIdleMode is not PowerIdleRuntimeMode.Active)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var previousAllowedUntil = _normalGamepadMonitoringAllowedUntilUtc;
+        var nextAllowedUntil = now + NormalGamepadMonitoringGrace;
+        if (nextAllowedUntil <= previousAllowedUntil)
+        {
+            return;
+        }
+
+        _normalGamepadMonitoringAllowedUntilUtc = nextAllowedUntil;
+        if (previousAllowedUntil > now)
+        {
+            return;
+        }
+
+        GuideButtonEventLog.Write(
+            "normal_gamepad_monitoring_armed",
+            "PowerIdle",
+            string.Empty,
+            AppDisplayName,
+            $"Normal gamepad monitoring armed briefly. reason={reason}; durationMs={(int)NormalGamepadMonitoringGrace.TotalMilliseconds}.");
+    }
+
+    private void EnterPreDisplaySleepQuietMode()
+    {
+        ApplyPreDisplaySleepQuietMonitorState();
+    }
+
+    private void EnterExternalInputBlockedQuietMode()
+    {
+        StopNormalInputMonitors(waitForExit: true);
+        StopWakeOnlyInputMonitors(waitForExit: true);
+    }
+
+    private void StopNormalInputMonitors(bool waitForExit = false)
+    {
+        if (!_guideButtonMonitor.IsRunning &&
+            !_steamRawInputMonitor.IsRegistered &&
+            !_xInputActivityMonitor.IsRunning)
+        {
+            return;
+        }
+
+        _guideButtonMonitor.SetPowerIdlePollingPaused(true);
+        if (_guideButtonMonitor.IsRunning)
+        {
+            if (waitForExit)
+            {
+                _guideButtonMonitor.StopForPowerIdle();
+            }
+            else
+            {
+                _guideButtonMonitor.Stop();
+            }
+        }
+
+        if (_steamRawInputMonitor.IsRegistered && _steamRawInputMonitor.IsNormalMode)
+        {
+            _steamRawInputMonitor.Stop();
+        }
+
+        if (_xInputActivityMonitor.IsRunning && !_xInputActivityMonitor.IsWakeOnlyMode)
+        {
+            if (waitForExit)
+            {
+                _xInputActivityMonitor.StopForPowerIdle();
+            }
+            else
+            {
+                _xInputActivityMonitor.Stop();
+            }
+        }
+
+    }
+
+    private void StopNormalHidRawInputMonitors()
+    {
+        _guideButtonMonitor.SetPowerIdlePollingPaused(true);
+        if (_guideButtonMonitor.IsRunning)
+        {
+            _guideButtonMonitor.Stop();
+        }
+
+        if (_steamRawInputMonitor.IsRegistered && _steamRawInputMonitor.IsNormalMode)
+        {
+            _steamRawInputMonitor.Stop();
+        }
+    }
+
+    private void ApplyPreDisplaySleepQuietMonitorState()
+    {
+        StopPowerIdleGuideOnlyMonitor();
+        StopNormalInputMonitors();
+        StopWakeOnlyInputMonitors();
+    }
+
+    private void StartPowerIdleGuideOnlyMonitor()
+    {
+        _guideButtonMonitor.SetPowerIdlePollingPaused(true);
+        if (!_guideButtonMonitor.IsRunning)
+        {
+            _guideButtonMonitor.Start();
+        }
+    }
+
+    private void StopPowerIdleGuideOnlyMonitor()
+    {
+        if (_guideButtonMonitor.IsRunning)
+        {
+            _guideButtonMonitor.Stop();
+        }
+    }
+
+    private void StartPowerIdleXInputActivityMonitor()
+    {
+        if (!_xInputActivityMonitor.IsRunning || !_xInputActivityMonitor.IsWakeOnlyMode)
+        {
+            _xInputActivityMonitor.StartWakeOnly();
+        }
+    }
+
+    private void StartPowerIdleRawInputActivityMonitor()
+    {
+        if (_steamRawInputWindowHandle != IntPtr.Zero &&
+            (!_steamRawInputMonitor.IsRegistered || !_steamRawInputMonitor.IsWakeOnlyMode))
+        {
+            _steamRawInputMonitor.StartWakeOnly(_steamRawInputWindowHandle);
+        }
+    }
+
+    private void StartWakeOnlyInputMonitors()
+    {
+        StopPowerIdleGuideOnlyMonitor();
+        StartPowerIdleRawInputActivityMonitor();
+        StartPowerIdleXInputActivityMonitor();
+    }
+
+    private void StopWakeOnlyInputMonitors(bool waitForExit = false)
+    {
+        if (!_guideButtonMonitor.IsRunning &&
+            !_steamRawInputMonitor.IsRegistered &&
+            !_xInputActivityMonitor.IsRunning)
+        {
+            return;
+        }
+
+        if (_guideButtonMonitor.IsRunning && _guideButtonMonitor.IsPowerIdlePollingPausedForDiagnostics)
+        {
+            if (waitForExit)
+            {
+                _guideButtonMonitor.StopForPowerIdle();
+            }
+            else
+            {
+                _guideButtonMonitor.Stop();
+            }
+        }
+
+        if (_steamRawInputMonitor.IsRegistered && _steamRawInputMonitor.IsWakeOnlyMode)
+        {
+            _steamRawInputMonitor.Stop();
+        }
+
+        if (_xInputActivityMonitor.IsRunning && _xInputActivityMonitor.IsWakeOnlyMode)
+        {
+            if (waitForExit)
+            {
+                _xInputActivityMonitor.StopForPowerIdle();
+            }
+            else
+            {
+                _xInputActivityMonitor.Stop();
+            }
+        }
+    }
+
+    private void WriteDisplaySleepBlockedDiagnosticIfNeeded(
+        TimeSpan? displayTimeout,
+        TimeSpan systemIdle,
+        TimeSpan localOrGamepadIdle,
+        PowerIdleRuntimeMode mode)
+    {
+        if (mode is not (PowerIdleRuntimeMode.PreDisplaySleep or PowerIdleRuntimeMode.ExternalInputBlocked) ||
+            displayTimeout is null ||
+            displayTimeout.Value <= TimeSpan.Zero ||
+            systemIdle >= TimeSpan.FromSeconds(5))
+        {
+            return;
+        }
+
+        if (mode == PowerIdleRuntimeMode.PreDisplaySleep &&
+            displayTimeout is { } timeout &&
+            DateTimeOffset.UtcNow - _preDisplaySleepEnteredAtUtc < ResolveExternalInputBlockProbeWindow(timeout))
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastDisplaySleepBlockedDiagnosticAtUtc < DisplaySleepBlockedDiagnosticInterval)
+        {
+            return;
+        }
+
+        _lastDisplaySleepBlockedDiagnosticAtUtc = now;
+        GuideButtonEventLog.Write(
+            mode == PowerIdleRuntimeMode.ExternalInputBlocked
+                ? "display_sleep_external_input_blocked"
+                : "display_sleep_external_input_suspected",
+            "PowerIdle",
+            string.Empty,
+            AppDisplayName,
+            $"Bloss reduced noisy monitoring for display sleep, but Windows idle remains low. mode={mode}; displayTimeout={FormatPowerIdleSeconds(displayTimeout)}, systemIdle={FormatPowerIdleSeconds(systemIdle)}, localOrGamepadIdle={FormatPowerIdleSeconds(localOrGamepadIdle)}.");
+    }
+
+    private void TryWakeDisplayAfterVerifiedInput(string reason)
+    {
+        if (!ShouldSendDisplayWakeForInput(reason))
+        {
+            return;
+        }
+
+        ArmWakeRecoveryBypassAfterVerifiedInput(reason);
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastDisplayWakePulseAtUtc < DisplayWakePulseCooldown)
+        {
+            return;
+        }
+
+        _lastDisplayWakePulseAtUtc = now;
+        var success = SystemDisplayPower.TryTurnDisplayOn(_steamRawInputWindowHandle);
+        GuideButtonEventLog.Write(
+            success ? "display_on_fallback_sent" : "display_on_fallback_failed",
+            "PowerIdle",
+            string.Empty,
+            AppDisplayName,
+            $"Display-on fallback {(success ? "sent" : "failed")}. reason={reason}.");
+    }
+
+    private bool ShouldSendDisplayWakeForInput(string reason)
+    {
+        var currentState = _displayPowerCoordinator.CurrentState;
+        if (currentState is not (DisplayPowerState.Off or DisplayPowerState.Dimmed))
+        {
+            return false;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastDisplayOffStateAtUtc < DisplayOffSettleWindow)
+        {
+            GuideButtonEventLog.Write(
+                "display_on_fallback_suppressed",
+                "PowerIdle",
+                string.Empty,
+                AppDisplayName,
+                $"Display-on fallback suppressed while display-off command settles. reason={reason}.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void ArmWakeRecoveryBypassAfterVerifiedInput(string reason)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var until = now + VerifiedInputWakeRecoveryBypassDuration;
+        if (_verifiedInputWakeRecoveryBypassUntilUtc > now)
+        {
+            if (until > _verifiedInputWakeRecoveryBypassUntilUtc)
+            {
+                _verifiedInputWakeRecoveryBypassUntilUtc = until;
+            }
+
+            return;
+        }
+
+        _verifiedInputWakeRecoveryBypassUntilUtc = until;
+        GuideButtonEventLog.Write(
+            "wake_recovery_bypass_armed",
+            "PowerIdle",
+            string.Empty,
+            AppDisplayName,
+            $"Wake recovery bypass armed after verified gamepad input. reason={reason}.");
+    }
+
+    private bool ShouldBypassWakeRecoveryAfterVerifiedInput(DateTimeOffset now)
+    {
+        return now <= _verifiedInputWakeRecoveryBypassUntilUtc;
+    }
+
+    private bool ShouldDeferBatteryGuideToastUntilDisplayWake()
+    {
+        return _displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed ||
+               _powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly;
+    }
+
+    private void QueueBatteryGuideToastAfterDisplayWake(GuideButtonPressedEventArgs e)
+    {
+        _pendingDisplayWakeGuideToast = e;
+        _pendingDisplayWakeGuideToastUntilUtc = DateTimeOffset.UtcNow + DisplayWakeGuideToastHold;
+        GuideButtonEventLog.Write(
+            "guide_toast_deferred_until_display_wake",
+            e.DeviceKind.ToString(),
+            e.Address,
+            e.DisplayName,
+            "Guide-button toast deferred until the display reports that it is on.");
+        FlushPendingDisplayWakeGuideToast(DateTimeOffset.UtcNow);
+    }
+
+    private void FlushPendingDisplayWakeGuideToast(DateTimeOffset now)
+    {
+        if (_pendingDisplayWakeGuideToast is not { } pending)
+        {
+            return;
+        }
+
+        if (_displayPowerCoordinator.CurrentState != DisplayPowerState.On)
+        {
+            return;
+        }
+
+        if (now > _pendingDisplayWakeGuideToastUntilUtc)
+        {
+            ClearPendingDisplayWakeGuideToast();
+            GuideButtonEventLog.Write(
+                "guide_toast_deferred_expired",
+                pending.DeviceKind.ToString(),
+                pending.Address,
+                pending.DisplayName,
+                "Deferred guide-button toast expired before the display reported that it was on.");
+            return;
+        }
+
+        ClearPendingDisplayWakeGuideToast();
+        _ = Dispatcher.BeginInvoke(
+            new Action(() => _ = ShowBatteryGuideAfterGamepadActivityRefreshAsync(pending)),
+            System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void ClearPendingDisplayWakeGuideToast()
+    {
+        _pendingDisplayWakeGuideToast = null;
+        _pendingDisplayWakeGuideToastUntilUtc = DateTimeOffset.MinValue;
+    }
+
+    private static string FormatPowerIdleSeconds(TimeSpan? value)
+    {
+        return value is null ? "null" : FormatPowerIdleSeconds(value.Value);
+    }
+
+    private static string FormatPowerIdleSeconds(TimeSpan value)
+    {
+        return value == TimeSpan.MaxValue
+            ? "max"
+            : Math.Round(value.TotalSeconds, 1, MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture) + "s";
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -4038,45 +4825,17 @@ public partial class MainWindow : Window
         GlassCardContent.Clip = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
     }
 
-    private Forms.NotifyIcon BuildTrayIcon()
+    private TrayIconService BuildTrayIconService()
     {
-        var contextMenu = new Forms.ContextMenuStrip();
-        _trayOpenMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayOpenWidget);
-        _trayOpenMenuItem.Click += (_, _) => Dispatcher.Invoke(ShowWidgetFromTray);
-        contextMenu.Items.Add(_trayOpenMenuItem);
-
-        _trayRefreshMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayRefreshNow);
-        _trayRefreshMenuItem.Click += (_, _) => Dispatcher.Invoke(() => _ = RefreshFromUserCommandAsync());
-        contextMenu.Items.Add(_trayRefreshMenuItem);
-
-        _trayResetPositionMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayResetPosition);
-        _trayResetPositionMenuItem.Click += (_, _) => Dispatcher.Invoke(ResetWidgetPositionToCurrentMonitor);
-        contextMenu.Items.Add(_trayResetPositionMenuItem);
-
-        contextMenu.Items.Add(new Forms.ToolStripSeparator());
-        _trayAutostartMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextAutostart);
-        _trayAutostartMenuItem.Click += (_, _) => Dispatcher.Invoke(ToggleAutostartFromTray);
-        contextMenu.Items.Add(_trayAutostartMenuItem);
-
-        _trayStartMinimizedToTrayMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextStartMinimizedToTray);
-        _trayStartMinimizedToTrayMenuItem.Click += (_, _) => Dispatcher.Invoke(ToggleStartMinimizedToTrayFromTray);
-        contextMenu.Items.Add(_trayStartMinimizedToTrayMenuItem);
-
-        contextMenu.Items.Add(new Forms.ToolStripSeparator());
-        _trayExitMenuItem = new Forms.ToolStripMenuItem(_viewModel.TextTrayExit);
-        _trayExitMenuItem.Click += (_, _) => Dispatcher.Invoke(ExitApplication);
-        contextMenu.Items.Add(_trayExitMenuItem);
-
-        var trayIcon = new Forms.NotifyIcon
-        {
-            Icon = _appIcon,
-            Text = AppDisplayName,
-            Visible = true,
-            ContextMenuStrip = contextMenu
-        };
-
-        trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowWidgetFromTray);
-        return trayIcon;
+        return new TrayIconService(
+            _appIcon,
+            AppDisplayName,
+            () => Dispatcher.Invoke(ShowWidgetFromTray),
+            () => Dispatcher.Invoke(() => _ = RefreshFromUserCommandAsync()),
+            () => Dispatcher.Invoke(ResetWidgetPositionToCurrentMonitor),
+            () => Dispatcher.Invoke(ToggleAutostartFromTray),
+            () => Dispatcher.Invoke(ToggleStartMinimizedToTrayFromTray),
+            () => Dispatcher.Invoke(ExitApplication));
     }
 
     private static DrawingIcon LoadAppIcon()
@@ -4263,23 +5022,7 @@ public partial class MainWindow : Window
 
     private void HideAndDisposeTrayIcon()
     {
-        try
-        {
-            _trayIcon.Visible = false;
-        }
-        catch
-        {
-            // Ignore tray visibility failures during shutdown.
-        }
-
-        try
-        {
-            _trayIcon.Dispose();
-        }
-        catch
-        {
-            // Ignore tray dispose failures during shutdown.
-        }
+        _trayIconService.Dispose();
     }
 
     private void ApplyWindowBounds()
@@ -4588,62 +5331,30 @@ public partial class MainWindow : Window
 
     private void RefreshTrayMenuTexts()
     {
-        if (_trayOpenMenuItem is not null)
-        {
-            _trayOpenMenuItem.Text = _viewModel.TextTrayOpenWidget;
-        }
-
-        if (_trayRefreshMenuItem is not null)
-        {
-            _trayRefreshMenuItem.Text = _viewModel.TextTrayRefreshNow;
-        }
-
-        if (_trayResetPositionMenuItem is not null)
-        {
-            _trayResetPositionMenuItem.Text = _viewModel.TextTrayResetPosition;
-        }
-
-        if (_trayAutostartMenuItem is not null)
-        {
-            _trayAutostartMenuItem.Text = _viewModel.TextAutostart;
-            _trayAutostartMenuItem.Checked = _viewModel.AutostartEnabled;
-        }
-
-        if (_trayStartMinimizedToTrayMenuItem is not null)
-        {
-            _trayStartMinimizedToTrayMenuItem.Text = _viewModel.TextStartMinimizedToTray;
-            _trayStartMinimizedToTrayMenuItem.Checked = _viewModel.StartMinimizedToTrayEnabled;
-        }
-
-        if (_trayExitMenuItem is not null)
-        {
-            _trayExitMenuItem.Text = _viewModel.TextTrayExit;
-        }
+        _trayIconService.RefreshTexts(new TrayIconTexts(
+            _viewModel.TextTrayOpenWidget,
+            _viewModel.TextTrayRefreshNow,
+            _viewModel.TextTrayResetPosition,
+            _viewModel.TextAutostart,
+            _viewModel.AutostartEnabled,
+            _viewModel.TextStartMinimizedToTray,
+            _viewModel.StartMinimizedToTrayEnabled,
+            _viewModel.TextTrayExit));
     }
 
     private static string GetDisplayVersion()
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        if (!string.IsNullOrWhiteSpace(informational))
-        {
-            var plusIndex = informational.IndexOf('+');
-            return plusIndex > 0 ? informational[..plusIndex] : informational;
-        }
-
-        var version = assembly.GetName().Version;
-        if (version is not null)
-        {
-            return $"{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
-        }
-
-        return FallbackVersion;
+        return AppVersionInfo.DisplayVersion;
     }
 
     private void GuideButtonMonitor_GuideButtonPressed(object? sender, GuideButtonPressedEventArgs e)
     {
         try
         {
+            var shouldDeferToastUntilDisplayWake = ShouldDeferBatteryGuideToastUntilDisplayWake();
+            MarkIntentionalGamepadInputAndExitQuietMode("guide_button_press");
+            TryWakeDisplayAfterVerifiedInput("guide_button_press");
+
             if (_isBatteryGuideTriggerCaptureActive)
             {
                 return;
@@ -4664,12 +5375,23 @@ public partial class MainWindow : Window
                 return;
             }
 
+            if (ShouldSuppressGuideButtonPressAfterInputReportFallback(e))
+            {
+                return;
+            }
+
             if (ShouldSuppressDuplicateGuideButtonToast(e))
             {
                 return;
             }
 
-            Dispatcher.BeginInvoke(new Action(() => ShowBatteryGuide(e)));
+            if (shouldDeferToastUntilDisplayWake)
+            {
+                QueueBatteryGuideToastAfterDisplayWake(e);
+                return;
+            }
+
+            _ = Dispatcher.BeginInvoke(new Action(() => _ = ShowBatteryGuideAfterGamepadActivityRefreshAsync(e)));
         }
         catch
         {
@@ -4687,12 +5409,455 @@ public partial class MainWindow : Window
                 return;
             }
 
-            HandleBatteryGuideInputReport(e);
+            if (ShouldTreatInputReportAsIntentionalGamepadActivity(e))
+            {
+                var isDisplayOffWake = _powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly ||
+                    _powerIdleMode == PowerIdleRuntimeMode.WakeRecovery;
+                MarkIntentionalGamepadInputAndExitQuietMode("hid_button_input");
+                TryWakeDisplayAfterVerifiedInput("hid_button_input");
+                if (!isDisplayOffWake)
+                {
+                    RequestRefreshAfterGamepadActivity();
+                }
+
+                WriteGamepadActivityDiagnosticIfNeeded(
+                    "hid_button_input",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    "Intentional HID controller button input refreshed Bloss local idle tracking.");
+            }
+
+            if (TryHandleDefaultGuideButtonToastFromInputReport(e))
+            {
+                return;
+            }
+
+            if (_powerIdleMode != PowerIdleRuntimeMode.DisplayOffWakeOnly &&
+                _powerIdleMode != PowerIdleRuntimeMode.WakeRecovery)
+            {
+                HandleBatteryGuideInputReport(e);
+            }
         }
         catch
         {
             // Input reports are best-effort; battery display must keep running.
         }
+    }
+
+    private void GuideButtonHidMonitor_InputActivityReceived(object? sender, GuideButtonActivityEventArgs e)
+    {
+        try
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                _ = Dispatcher.BeginInvoke(new Action(() => GuideButtonHidMonitor_InputActivityReceived(sender, e)));
+                return;
+            }
+
+            if (e.CountsAsUserActivity)
+            {
+                MarkIntentionalGamepadInputAndExitQuietMode("steam_raw_input_telemetry");
+                if (_powerIdleMode == PowerIdleRuntimeMode.Active)
+                {
+                    RequestRefreshAfterGamepadActivity();
+                }
+            }
+            else
+            {
+                _viewModel.MarkGamepadTelemetryActivity();
+                if (_powerIdleMode == PowerIdleRuntimeMode.Active)
+                {
+                    RequestTelemetryRefreshIfAllowed();
+                }
+            }
+
+            if (e.IsWakeEligible &&
+                (_powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly ||
+                 _powerIdleMode == PowerIdleRuntimeMode.WakeRecovery))
+            {
+                TryWakeDisplayAfterVerifiedInput("steam_raw_input_telemetry");
+            }
+
+            WriteGamepadActivityDiagnosticIfNeeded(
+                "hid_state_telemetry",
+                e.DeviceKind.ToString(),
+                e.Address,
+                e.DisplayName,
+                e.CountsAsUserActivity
+                    ? "HID controller state changed as user activity."
+                    : "HID controller state changed, but it was treated as telemetry for display-sleep safety.");
+        }
+        catch
+        {
+            // Activity refresh is best-effort; battery display must keep running.
+        }
+    }
+
+    private void GuideButtonMonitor_InputActivityReceived(object? sender, GuideButtonActivityEventArgs e)
+    {
+        try
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                _ = Dispatcher.BeginInvoke(new Action(() => GuideButtonMonitor_InputActivityReceived(sender, e)));
+                return;
+            }
+
+            if (e.CountsAsUserActivity)
+            {
+                MarkIntentionalGamepadInputAndExitQuietMode("steam_raw_input_activity");
+                if (_powerIdleMode == PowerIdleRuntimeMode.Active)
+                {
+                    RequestRefreshAfterGamepadActivity();
+                }
+            }
+            else
+            {
+                _viewModel.MarkGamepadTelemetryActivity();
+                if (_powerIdleMode == PowerIdleRuntimeMode.Active)
+                {
+                    RequestTelemetryRefreshIfAllowed();
+                }
+            }
+
+            if (e.IsWakeEligible &&
+                (_powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly ||
+                 _powerIdleMode == PowerIdleRuntimeMode.WakeRecovery))
+            {
+                TryWakeDisplayAfterVerifiedInput("steam_raw_input_activity");
+            }
+
+            WriteGamepadActivityDiagnosticIfNeeded(
+                "steam_raw_input_activity",
+                e.DeviceKind.ToString(),
+                e.Address,
+                e.DisplayName,
+                e.CountsAsUserActivity
+                    ? "Steam RawInput controller activity treated as intentional input."
+                    : "Steam RawInput activity changed, but it was treated as telemetry for display-sleep safety.");
+        }
+        catch
+        {
+            // Activity refresh is best-effort; battery display must keep running.
+        }
+    }
+
+    private void XInputActivityMonitor_InputActivityReceived(object? sender, GamepadWakeInputEventArgs e)
+    {
+        try
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                _ = Dispatcher.BeginInvoke(new Action(() => XInputActivityMonitor_InputActivityReceived(sender, e)));
+                return;
+            }
+
+            var isDisplayOffWake = _powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly ||
+                _powerIdleMode == PowerIdleRuntimeMode.WakeRecovery;
+            var countsAsUserActivity = e.CountsAsUserActivity || e.HasStick;
+            var eventName = countsAsUserActivity
+                ? e.HasStick && !e.CountsAsUserActivity
+                    ? "xinput_stick_input"
+                    : "xinput_button_input"
+                : "xinput_telemetry";
+            if (countsAsUserActivity)
+            {
+                MarkIntentionalGamepadInputAndExitQuietMode(eventName);
+            }
+            else
+            {
+                _viewModel.MarkGamepadTelemetryActivity();
+            }
+
+            if (e.IsWakeEligible)
+            {
+                TryWakeDisplayAfterVerifiedInput(eventName);
+            }
+
+            if (countsAsUserActivity)
+            {
+                if (!isDisplayOffWake)
+                {
+                    RequestRefreshAfterGamepadActivity();
+                }
+            }
+            else if (_powerIdleMode == PowerIdleRuntimeMode.Active)
+            {
+                RequestTelemetryRefreshIfAllowed();
+            }
+
+            WriteGamepadActivityDiagnosticIfNeeded(
+                eventName,
+                "XInput",
+                string.Empty,
+                "XInput Gamepad",
+                countsAsUserActivity
+                    ? "Intentional XInput controller input refreshed Bloss local idle tracking."
+                    : "XInput controller stick/noise activity was treated as telemetry for display-sleep safety.");
+        }
+        catch
+        {
+            // XInput activity is best-effort; battery display must keep running.
+        }
+    }
+
+    private void MarkIntentionalGamepadInputAndExitQuietMode(string reason)
+    {
+        _viewModel.MarkIntentionalGamepadActivity();
+        NotifyDisplayIdleTimerAfterVerifiedGamepadInput(reason);
+        ArmNormalGamepadMonitoring(reason, requireActiveMode: false);
+        _naturalSleepRetryBlockedUntilUtc = DateTimeOffset.MinValue;
+
+        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed ||
+            _powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly)
+        {
+            ArmWakeRecoveryBypassAfterVerifiedInput(reason);
+            return;
+        }
+
+        if (_powerIdleMode is not (
+                PowerIdleRuntimeMode.PreDisplaySleep or
+                PowerIdleRuntimeMode.WakeRecovery or
+                PowerIdleRuntimeMode.ExternalInputBlocked))
+        {
+            return;
+        }
+
+        _wakeRecoveryUntilUtc = DateTimeOffset.MinValue;
+        _verifiedInputWakeRecoveryBypassUntilUtc = DateTimeOffset.MinValue;
+        ApplyPowerIdleMonitorState(PowerIdleRuntimeMode.Active, shouldPause: false);
+        GuideButtonEventLog.Write(
+            "intentional_gamepad_input",
+            "PowerIdle",
+            string.Empty,
+            AppDisplayName,
+            $"Intentional gamepad input restored active monitoring. reason={reason}.");
+    }
+
+    private void NotifyDisplayIdleTimerAfterVerifiedGamepadInput(string reason)
+    {
+        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastGamepadDisplayIdlePulseAtUtc < GamepadDisplayIdlePulseCooldown)
+        {
+            return;
+        }
+
+        _lastGamepadDisplayIdlePulseAtUtc = now;
+        var success = SystemDisplayPower.TryNotifyDisplayUserActivity();
+        GuideButtonEventLog.Write(
+            success ? "display_idle_timer_pulsed" : "display_idle_timer_pulse_failed",
+            "PowerIdle",
+            string.Empty,
+            AppDisplayName,
+            $"Windows display idle timer pulse {(success ? "sent" : "failed")} after verified gamepad input. reason={reason}.");
+    }
+
+    private void SteamRawInputMonitor_GlobalHumanInputReceived(object? sender, GlobalHumanInputEventArgs e)
+    {
+        try
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                _ = Dispatcher.BeginInvoke(new Action(() => SteamRawInputMonitor_GlobalHumanInputReceived(sender, e)));
+                return;
+            }
+
+            if (e.CountsAsUserActivity)
+            {
+                _viewModel.MarkUserActivity();
+                ArmNormalGamepadMonitoring(e.Source, requireActiveMode: false);
+                if (_powerIdleMode != PowerIdleRuntimeMode.DisplayOffWakeOnly &&
+                    _powerIdleMode != PowerIdleRuntimeMode.WakeRecovery)
+                {
+                    UpdatePowerIdleGuideMonitoring();
+                }
+            }
+
+            if (e.IsWakeEligible)
+            {
+                TryWakeDisplayAfterVerifiedInput(e.Source);
+            }
+        }
+        catch
+        {
+            // Global input tracking is best-effort; battery display must keep running.
+        }
+    }
+
+    private void RequestRefreshAfterGamepadActivity()
+    {
+        UpdatePowerIdleGuideMonitoring();
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastGamepadActivityRefreshRequestedAtUtc < GamepadActivityRefreshCooldown)
+        {
+            return;
+        }
+
+        _ = RefreshAfterGamepadActivityAsync(force: false);
+    }
+
+    private void RequestTelemetryRefreshIfAllowed()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastTelemetryPowerIdleUpdateAtUtc < TelemetryPowerIdleUpdateCooldown)
+        {
+            return;
+        }
+
+        _lastTelemetryPowerIdleUpdateAtUtc = now;
+        UpdatePowerIdleGuideMonitoring();
+    }
+
+    private async Task RefreshAfterGamepadActivityAsync(bool force)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (!force && now - _lastGamepadActivityRefreshRequestedAtUtc < GamepadActivityRefreshCooldown)
+        {
+            return;
+        }
+
+        _lastGamepadActivityRefreshRequestedAtUtc = now;
+        try
+        {
+            await _viewModel.RefreshAsync().ConfigureAwait(true);
+        }
+        catch
+        {
+            // Gamepad activity refresh is best-effort; input handling must keep running.
+        }
+    }
+
+    private async Task ShowBatteryGuideAfterGamepadActivityRefreshAsync(GuideButtonPressedEventArgs e)
+    {
+        try
+        {
+            if (FindGuideButtonDevice(e) is null)
+            {
+                await RefreshAfterGamepadActivityAsync(force: true).ConfigureAwait(true);
+            }
+
+            ShowBatteryGuide(e);
+        }
+        catch
+        {
+            // Guide-button toast is best-effort; input monitoring must keep running.
+        }
+    }
+
+    private bool ShouldTreatInputReportAsIntentionalGamepadActivity(GuideButtonInputReportEventArgs e)
+    {
+        if (_isBatteryGuideTriggerCaptureActive)
+        {
+            return true;
+        }
+
+        var key = BuildBatteryGuideInputReportKey(e);
+        if (!_lastPowerIdleInputReportByDevice.TryGetValue(key, out var previousReport))
+        {
+            _lastPowerIdleInputReportByDevice[key] = e.Report.ToArray();
+            return false;
+        }
+
+        _lastPowerIdleInputReportByDevice[key] = e.Report.ToArray();
+        return BatteryGuideTriggerParser.HasButtonDownEdgeForPowerIdleActivity(
+            e.DeviceKind,
+            previousReport,
+            e.Report);
+    }
+
+    private bool TryHandleDefaultGuideButtonToastFromInputReport(GuideButtonInputReportEventArgs e)
+    {
+        if (_isBatteryGuideTriggerCaptureActive ||
+            _viewModel.HasCustomBatteryGuideTriggerForDevice(e.DeviceKind) ||
+            !ShouldTreatInputReportAsDefaultGuideButtonPress(e))
+        {
+            return false;
+        }
+
+        MarkIntentionalGamepadInputAndExitQuietMode("guide_button_input_report");
+        TryWakeDisplayAfterVerifiedInput("guide_button_input_report");
+
+        var args = new GuideButtonPressedEventArgs(
+            e.Address,
+            e.DisplayName,
+            e.DeviceKind,
+            GuideButtonGesture.ShortPress);
+
+        if (ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, "guide_button_input_report"))
+        {
+            return true;
+        }
+
+        if (ShouldSuppressDuplicateGuideButtonToast(args))
+        {
+            return true;
+        }
+
+        MarkGuideButtonInputReportFallbackHandled(args);
+        GuideButtonEventLog.Write(
+            "guide_input_report_fallback",
+            e.DeviceKind.ToString(),
+            e.Address,
+            e.DisplayName,
+            "Guide button input report was promoted to the default battery guide toast because the press event path did not fire first.");
+
+        if (ShouldDeferBatteryGuideToastUntilDisplayWake())
+        {
+            QueueBatteryGuideToastAfterDisplayWake(args);
+            return true;
+        }
+
+        _ = Dispatcher.BeginInvoke(new Action(() => _ = ShowBatteryGuideAfterGamepadActivityRefreshAsync(args)));
+        return true;
+    }
+
+    private bool ShouldTreatInputReportAsDefaultGuideButtonPress(GuideButtonInputReportEventArgs e)
+    {
+        if (!GuideButtonReportParser.TryParseGuideButton(e.DeviceKind, e.Report, out var isPressed))
+        {
+            return false;
+        }
+
+        var key = BuildBatteryGuideInputReportKey(e);
+        if (!_lastDefaultGuideButtonPressedByInputReport.TryGetValue(key, out var wasPressed))
+        {
+            _lastDefaultGuideButtonPressedByInputReport[key] = isPressed;
+            return false;
+        }
+
+        _lastDefaultGuideButtonPressedByInputReport[key] = isPressed;
+        return isPressed && !wasPressed;
+    }
+
+    private void WriteGamepadActivityDiagnosticIfNeeded(
+        string eventName,
+        string deviceKind,
+        string address,
+        string displayName,
+        string message)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var key = $"{eventName}:{deviceKind}:{AddressNormalizer.NormalizeAddress(address)}:{displayName}";
+        if (_lastGamepadActivityDiagnosticAtUtcByKind.TryGetValue(key, out var previous) &&
+            now - previous < GamepadActivityDiagnosticInterval)
+        {
+            return;
+        }
+
+        _lastGamepadActivityDiagnosticAtUtcByKind[key] = now;
+        GuideButtonEventLog.Write(
+            eventName,
+            deviceKind,
+            address,
+            displayName,
+            message);
     }
 
     private void HandleBatteryGuideInputReport(GuideButtonInputReportEventArgs e)
@@ -5406,7 +6571,7 @@ public partial class MainWindow : Window
             e.DisplayName,
             "Secondary Steam HID monitor event was used because RawInput did not produce a toast for this press.");
 
-        _ = Dispatcher.BeginInvoke(new Action(() => ShowBatteryGuide(e)));
+        _ = Dispatcher.BeginInvoke(new Action(() => _ = ShowBatteryGuideAfterGamepadActivityRefreshAsync(e)));
     }
 
     private bool ShouldSuppressSteamSecondaryFallbackForCustomBatteryGuideTrigger(GuideButtonPressedEventArgs e)
@@ -5477,6 +6642,43 @@ public partial class MainWindow : Window
             _lastGuideButtonToastByDevice[key] = now;
             return false;
         }
+    }
+
+    private void MarkGuideButtonInputReportFallbackHandled(GuideButtonPressedEventArgs e)
+    {
+        var key = BuildGuideButtonToastKey(e);
+        var suppressUntil = DateTimeOffset.Now + GuideButtonInputReportFallbackSuppressDuration;
+        lock (_guideButtonToastSync)
+        {
+            _inputReportGuideFallbackSuppressRegularUntilByDevice[key] = suppressUntil;
+        }
+    }
+
+    private bool ShouldSuppressGuideButtonPressAfterInputReportFallback(GuideButtonPressedEventArgs e)
+    {
+        var key = BuildGuideButtonToastKey(e);
+        var now = DateTimeOffset.Now;
+        lock (_guideButtonToastSync)
+        {
+            if (!_inputReportGuideFallbackSuppressRegularUntilByDevice.TryGetValue(key, out var suppressUntil))
+            {
+                return false;
+            }
+
+            if (now > suppressUntil)
+            {
+                _inputReportGuideFallbackSuppressRegularUntilByDevice.Remove(key);
+                return false;
+            }
+        }
+
+        GuideButtonEventLog.Write(
+            "input_report_fallback_press_suppressed",
+            e.DeviceKind.ToString(),
+            e.Address,
+            e.DisplayName,
+            "Regular guide-button press event was ignored because the input-report fallback already showed the battery guide toast.");
+        return true;
     }
 
     internal static bool ShouldSuppressGuideButtonToast(DateTimeOffset? lastSeen, DateTimeOffset now, GuideButtonDeviceKind deviceKind)
@@ -5667,6 +6869,12 @@ public partial class MainWindow : Window
         }
 
         ShowBatteryToast(item.Snapshot, automatic: true);
+        GuideButtonEventLog.Write(
+            "automatic_battery_toast_shown",
+            item.Category.ToString(),
+            item.Address,
+            item.DisplayName,
+            $"Automatic battery toast was shown. percent={percent}; threshold={targetThreshold}.");
     }
 
     private bool ShouldSuppressSteamBatteryToastDuringSettling(DeviceItemViewModel item, int threshold)
@@ -5972,17 +7180,7 @@ public partial class MainWindow : Window
 
     private void ShowTrayNotification(string title, string message, Forms.ToolTipIcon icon)
     {
-        try
-        {
-            _trayIcon.BalloonTipTitle = title;
-            _trayIcon.BalloonTipText = message;
-            _trayIcon.BalloonTipIcon = icon;
-            _trayIcon.ShowBalloonTip(2500);
-        }
-        catch
-        {
-            // Ignore tray notification failures.
-        }
+        _trayIconService.ShowNotification(title, message, icon);
     }
 
     private static bool IsInteractiveElement(DependencyObject? source)

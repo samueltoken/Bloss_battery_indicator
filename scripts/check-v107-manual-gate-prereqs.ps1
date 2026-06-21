@@ -76,7 +76,12 @@ function New-RequiredFileResult {
         [string]$ExpectedProductVersion = ""
     )
 
-    $path = Join-Path $projectRoot $RelativePath
+    $path = if ([System.IO.Path]::IsPathRooted($RelativePath)) {
+        $RelativePath
+    }
+    else {
+        Join-Path $projectRoot $RelativePath
+    }
     $exists = Test-Path -LiteralPath $path -PathType Leaf
     $productVersion = if ($exists) { Get-TrimmedVersion -Path $path } else { "" }
     $sha256 = if ($exists) { Get-Sha256OrEmpty -Path $path } else { "" }
@@ -178,16 +183,30 @@ if ($searchRootsFull.Count -eq 0) {
     throw "No valid search root was found."
 }
 
+$manualChecklistPath = if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
+    [System.IO.Path]::GetFullPath($env:BLOSS_MANUAL_CHECKLIST_PATH)
+}
+else {
+    "manual-verification-v107.md"
+}
+$manualScriptVersion = if ((Split-Path -Leaf $manualChecklistPath) -eq "manual-verification-v108.md") {
+    "v108"
+}
+else {
+    "v107"
+}
+
 $requiredFiles = @(
-    New-RequiredFileResult -Name "v1.0.7 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.7"
-    New-RequiredFileResult -Name "v1.0.7 installer hash" -RelativePath "release\installer\setup.exe.sha256"
-    New-RequiredFileResult -Name "portable visual test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.7"
-    New-RequiredFileResult -Name "manual verification checklist" -RelativePath "manual-verification-v107.md"
-    New-RequiredFileResult -Name "manual gate command helper" -RelativePath "scripts\show-v107-manual-gate-commands.ps1"
-    New-RequiredFileResult -Name "manual gate updater" -RelativePath "scripts\set-v107-manual-gate.ps1"
+    New-RequiredFileResult -Name "v1.0.8 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.8"
+    New-RequiredFileResult -Name "v1.0.8 installer hash" -RelativePath "release\installer\setup.exe.sha256"
+    New-RequiredFileResult -Name "portable visual test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.8"
+    New-RequiredFileResult -Name "manual verification checklist" -RelativePath $manualChecklistPath
+    New-RequiredFileResult -Name "manual gate command helper" -RelativePath "scripts\show-$manualScriptVersion-manual-gate-commands.ps1"
+    New-RequiredFileResult -Name "manual gate updater" -RelativePath "scripts\set-$manualScriptVersion-manual-gate.ps1"
     New-RequiredFileResult -Name "display sleep readiness check" -RelativePath "scripts\check-display-sleep-readiness.ps1"
     New-RequiredFileResult -Name "autostart cleanup check" -RelativePath "scripts\check-autostart-cleanup.ps1"
     New-RequiredFileResult -Name "Steam Controller guide event helper" -RelativePath "scripts\show-guide-button-events.ps1"
+    New-RequiredFileResult -Name "gamepad idle activity helper" -RelativePath "scripts\show-gamepad-idle-activity.ps1"
 )
 
 foreach ($requiredFile in $requiredFiles) {

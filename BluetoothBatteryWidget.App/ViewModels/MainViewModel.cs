@@ -40,6 +40,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private const int MaxPendingProbeFollowUps = 2;
     private const int MinimumMissingRefreshesBeforeDisconnect = 1;
     private const int DualShock4InitialLowPercentThreshold = 6;
+    private const string PowerIdleCachedDeviceIdPrefix = "power-idle-cache:";
 
     private static readonly string ProbeErrorLogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -85,11 +86,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private DateTime _lastTrimAtUtc;
     private DateTime _lastManagedTrimAtUtc;
     private DateTime _lastActivityAtUtc;
+    private DateTime _lastGamepadActivityAtUtc;
+    private DateTime _lastGamepadTelemetryActivityAtUtc;
     private bool _initialized;
     private bool _settingsLoaded;
     private bool _disposed;
     private bool _isAnyProbeRunning;
     private bool _isRefreshRunning;
+    private bool _isDisplaySleepPreparationActive;
     private double _lastCpuPercent;
     private double _lastRamMb;
     private double _lastPrivateMb;
@@ -116,6 +120,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _lastCpuSample = _ownProcess.TotalProcessorTime;
         _lastPerfSampleAtUtc = DateTime.UtcNow;
         _lastActivityAtUtc = DateTime.UtcNow;
+        _lastGamepadActivityAtUtc = DateTime.MinValue;
+        _lastGamepadTelemetryActivityAtUtc = DateTime.MinValue;
 
         Devices = new ObservableCollection<DeviceItemViewModel>();
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background);
@@ -135,6 +141,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool IsAnyProbeRunning => _isAnyProbeRunning;
 
     public bool IsRefreshRunning => _isRefreshRunning;
+
+    public bool IsDisplaySleepPreparationActive => _isDisplaySleepPreparationActive;
 
     public WidgetSettings Settings
     {
@@ -477,16 +485,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _settingsLoaded = true;
     }
 
-    public async Task RefreshAsync()
+    public async Task RefreshAsync(bool forceFullRefresh = false)
     {
         string? autoProbeTarget = null;
         var refreshTimedOut = false;
-
-        if (_initialized && ShouldPauseBackgroundPollingForPowerIdle())
-        {
-            StatusText = UiLanguageCatalog.GetExtraText(Settings.Language, "PowerIdlePauseActive");
-            return;
-        }
+        var connectionOnlyForPowerIdle = _initialized &&
+                                         !forceFullRefresh &&
+                                         ShouldPauseBackgroundPollingForPowerIdle();
 
         if (!await _refreshLock.WaitAsync(0).ConfigureAwait(true))
         {
@@ -497,24 +502,47 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            StatusText = CurrentLanguageText.StatusRefreshing;
+            StatusText = connectionOnlyForPowerIdle
+                ? UiLanguageCatalog.GetExtraText(Settings.Language, "PowerIdlePauseActive")
+                : CurrentLanguageText.StatusRefreshing;
             using var refreshCts = new CancellationTokenSource(RefreshOperationTimeout);
             var refreshToken = refreshCts.Token;
 
-            var connectedDevices = await _connectedDeviceProvider.GetConnectedDevicesAsync(refreshToken).ConfigureAwait(true);
-            if (FirmwareUpdateOverrideMigration.TryCopyPico2WOverridesToStableAddress(Settings, connectedDevices))
+            IReadOnlyList<ConnectedBluetoothDevice> connectedDevices;
+            if (connectionOnlyForPowerIdle)
+            {
+                connectedDevices = BuildPowerIdleConnectedDevicesSnapshot();
+            }
+            else
+            {
+                connectedDevices = await _connectedDeviceProvider
+                    .GetConnectedDevicesAsync(refreshToken)
+                    .ConfigureAwait(true);
+            }
+
+            if (!connectionOnlyForPowerIdle &&
+                FirmwareUpdateOverrideMigration.TryCopyPico2WOverridesToStableAddress(Settings, connectedDevices))
             {
                 SaveSettings();
             }
 
             IReadOnlyList<PnpBatteryReading> rawBatteryLevels = [];
-            if (connectedDevices.Count > 0)
+            if (!connectionOnlyForPowerIdle && connectedDevices.Count > 0)
             {
                 rawBatteryLevels = await _batteryLevelProvider
                     .GetBatteryLevelsAsync(connectedDevices, refreshToken)
                     .ConfigureAwait(true);
             }
-            var batteryLevels = ApplyBatteryJumpGuard(rawBatteryLevels, DateTimeOffset.Now);
+            var connectedAddresses = connectedDevices
+                .Select(device => AddressNormalizer.NormalizeAddress(device.Address))
+                .Where(address => !string.IsNullOrWhiteSpace(address))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var batteryLevels = connectionOnlyForPowerIdle
+                ? _lastBatteryReadingsByAddress
+                    .Where(pair => connectedAddresses.Contains(pair.Key))
+                    .Select(pair => pair.Value)
+                    .ToList()
+                : ApplyBatteryJumpGuard(rawBatteryLevels, DateTimeOffset.Now);
             var overrides = IconOverrideParser.Parse(Settings.IconOverrides);
             var imageOverrides = IconImageOverrideParser.Parse(Settings.IconImageOverrides);
             var nameOverrides = NameOverrideParser.Parse(Settings.NameOverrides);
@@ -526,29 +554,35 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 nameOverrides,
                 DateTimeOffset.Now);
 
-            _lastConnectedDevicesByAddress.Clear();
-            foreach (var connected in connectedDevices)
+            if (!connectionOnlyForPowerIdle)
             {
-                var normalized = AddressNormalizer.NormalizeAddress(connected.Address);
-                if (!string.IsNullOrWhiteSpace(normalized))
+                _lastConnectedDevicesByAddress.Clear();
+                foreach (var connected in connectedDevices)
                 {
-                    _lastConnectedDevicesByAddress[normalized] = connected;
+                    var normalized = AddressNormalizer.NormalizeAddress(connected.Address);
+                    if (!string.IsNullOrWhiteSpace(normalized))
+                    {
+                        _lastConnectedDevicesByAddress[normalized] = connected;
+                    }
                 }
             }
 
-            _lastBatteryReadingsByAddress.Clear();
-            foreach (var reading in batteryLevels)
+            if (!connectionOnlyForPowerIdle)
             {
-                var normalizedAddress = AddressNormalizer.NormalizeAddress(reading.Address);
-                if (string.IsNullOrWhiteSpace(normalizedAddress))
+                _lastBatteryReadingsByAddress.Clear();
+                foreach (var reading in batteryLevels)
                 {
-                    continue;
-                }
+                    var normalizedAddress = AddressNormalizer.NormalizeAddress(reading.Address);
+                    if (string.IsNullOrWhiteSpace(normalizedAddress))
+                    {
+                        continue;
+                    }
 
-                if (!_lastBatteryReadingsByAddress.TryGetValue(normalizedAddress, out var existing) ||
-                    (existing.BatteryPercent is null && reading.BatteryPercent is not null))
-                {
-                    _lastBatteryReadingsByAddress[normalizedAddress] = reading with { Address = normalizedAddress };
+                    if (!_lastBatteryReadingsByAddress.TryGetValue(normalizedAddress, out var existing) ||
+                        (existing.BatteryPercent is null && reading.BatteryPercent is not null))
+                    {
+                        _lastBatteryReadingsByAddress[normalizedAddress] = reading with { Address = normalizedAddress };
+                    }
                 }
             }
 
@@ -565,9 +599,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 _matchedCount,
                 _naCount);
 
-            StatusText = UiLanguageCatalog.BuildUpdatedStatus(Settings.Language, DateTime.Now);
+            StatusText = connectionOnlyForPowerIdle
+                ? UiLanguageCatalog.GetExtraText(Settings.Language, "PowerIdlePauseActive")
+                : UiLanguageCatalog.BuildUpdatedStatus(Settings.Language, DateTime.Now);
             ProcessMemoryTrimmer.TryTrim(_ownProcess);
-            autoProbeTarget = SelectAutoProbeTarget(DateTime.UtcNow);
+            autoProbeTarget = connectionOnlyForPowerIdle
+                ? null
+                : SelectAutoProbeTarget(DateTime.UtcNow);
         }
         catch (OperationCanceledException)
         {
@@ -1409,9 +1447,69 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         return GetLocalIdleDuration(DateTime.UtcNow);
     }
 
+    public TimeSpan GetGamepadIdleDuration()
+    {
+        return GetGamepadIdleDuration(DateTime.UtcNow);
+    }
+
+    public TimeSpan GetGamepadTelemetryIdleDuration()
+    {
+        return GetGamepadTelemetryIdleDuration(DateTime.UtcNow);
+    }
+
+    public TimeSpan GetLocalOrGamepadIdleDuration()
+    {
+        var nowUtc = DateTime.UtcNow;
+        var localIdle = GetLocalIdleDuration(nowUtc);
+        var gamepadIdle = GetGamepadIdleDuration(nowUtc);
+        return gamepadIdle == TimeSpan.MaxValue || localIdle <= gamepadIdle
+            ? localIdle
+            : gamepadIdle;
+    }
+
     public void MarkUserActivity()
     {
         MarkActivity();
+    }
+
+    public void MarkGamepadActivity()
+    {
+        MarkIntentionalGamepadActivity();
+    }
+
+    public void MarkGamepadActivity(bool countAsUserActivity)
+    {
+        if (countAsUserActivity)
+        {
+            MarkIntentionalGamepadActivity();
+            return;
+        }
+
+        MarkGamepadTelemetryActivity();
+    }
+
+    public void MarkIntentionalGamepadActivity()
+    {
+        var nowUtc = DateTime.UtcNow;
+        _lastActivityAtUtc = nowUtc;
+        _lastGamepadActivityAtUtc = nowUtc;
+        _lastGamepadTelemetryActivityAtUtc = nowUtc;
+    }
+
+    public void MarkGamepadTelemetryActivity()
+    {
+        _lastGamepadTelemetryActivityAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetDisplaySleepPreparationActive(bool isActive)
+    {
+        if (_isDisplaySleepPreparationActive == isActive)
+        {
+            return;
+        }
+
+        _isDisplaySleepPreparationActive = isActive;
+        OnPropertyChanged(nameof(IsDisplaySleepPreparationActive));
     }
 
     public int GetCurrentWindowsDisplayOffMinutes()
@@ -2412,10 +2510,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private bool ShouldPauseBackgroundPollingForPowerIdle()
     {
+        if (_isDisplaySleepPreparationActive)
+        {
+            return true;
+        }
+
         return PowerIdlePolicy.ShouldPauseBackgroundWork(
             GetPowerIdlePauseDelay(),
             SystemIdleMonitor.GetIdleDuration(),
-            GetLocalIdleDuration(),
+            GetLocalOrGamepadIdleDuration(),
             _isAnyProbeRunning,
             _isRefreshRunning);
     }
@@ -2452,9 +2555,46 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         return !shouldPauseBackgroundPolling;
     }
 
+    private IReadOnlyList<ConnectedBluetoothDevice> BuildPowerIdleConnectedDevicesSnapshot()
+    {
+        return _lastConnectedDevicesByAddress.Values
+            .Where(device => device.IsConnected)
+            .Select(device => device with
+            {
+                DeviceId = string.IsNullOrWhiteSpace(device.DeviceId)
+                    ? $"{PowerIdleCachedDeviceIdPrefix}{AddressNormalizer.NormalizeAddress(device.Address)}"
+                    : device.DeviceId
+            })
+            .OrderBy(device => device.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(device => device.Address, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private TimeSpan GetLocalIdleDuration(DateTime nowUtc)
     {
         var duration = nowUtc - _lastActivityAtUtc;
+        return duration <= TimeSpan.Zero ? TimeSpan.Zero : duration;
+    }
+
+    private TimeSpan GetGamepadIdleDuration(DateTime nowUtc)
+    {
+        if (_lastGamepadActivityAtUtc == DateTime.MinValue)
+        {
+            return TimeSpan.MaxValue;
+        }
+
+        var duration = nowUtc - _lastGamepadActivityAtUtc;
+        return duration <= TimeSpan.Zero ? TimeSpan.Zero : duration;
+    }
+
+    private TimeSpan GetGamepadTelemetryIdleDuration(DateTime nowUtc)
+    {
+        if (_lastGamepadTelemetryActivityAtUtc == DateTime.MinValue)
+        {
+            return TimeSpan.MaxValue;
+        }
+
+        var duration = nowUtc - _lastGamepadTelemetryActivityAtUtc;
         return duration <= TimeSpan.Zero ? TimeSpan.Zero : duration;
     }
 

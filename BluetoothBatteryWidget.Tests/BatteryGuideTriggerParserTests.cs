@@ -399,6 +399,52 @@ public sealed class BatteryGuideTriggerParserTests
     }
 
     [Fact]
+    public void TryCaptureButtonsOnly_SteamTritonReport_IgnoresAxisOnlyInput()
+    {
+        var previous = new byte[54];
+        previous[0] = 0x45;
+        var current = new byte[54];
+        current[0] = 0x45;
+        WriteInt16LittleEndian(current, 20, -12000);
+
+        Assert.True(BatteryGuideTriggerParser.TryCapture(
+            GuideButtonDeviceKind.SteamController,
+            previous,
+            current,
+            out var axisTrigger));
+        Assert.True(BatteryGuideTriggerParser.HasAnyTriggerBitPressed(
+            axisTrigger,
+            GuideButtonDeviceKind.SteamController,
+            current));
+        Assert.False(BatteryGuideTriggerParser.TryCaptureButtonsOnly(
+            GuideButtonDeviceKind.SteamController,
+            previous,
+            current,
+            out _));
+        Assert.False(BatteryGuideTriggerParser.HasAnyButtonTriggerBitPressed(
+            axisTrigger,
+            GuideButtonDeviceKind.SteamController,
+            current));
+    }
+
+    [Fact]
+    public void TryCaptureButtonsOnly_SteamTritonReport_KeepsButtonInput()
+    {
+        var previous = new byte[54];
+        previous[0] = 0x45;
+        var current = new byte[54];
+        current[0] = 0x45;
+        current[2] = 0x01;
+
+        Assert.True(BatteryGuideTriggerParser.TryCaptureButtonsOnly(
+            GuideButtonDeviceKind.SteamController,
+            previous,
+            current,
+            out var trigger));
+        Assert.Equal(new[] { "A" }, BatteryGuideTriggerParser.GetVisualButtonKeys(trigger));
+    }
+
+    [Fact]
     public void TryCapture_SteamTritonReport_UsesDominantLeftPadAxisWhenDigitalDpadIsDiagonal()
     {
         var previous = new byte[54];
@@ -680,6 +726,102 @@ public sealed class BatteryGuideTriggerParserTests
         Assert.Equal("Left Pad Left", roundTrip.DisplayName);
         Assert.Equal(new[] { "Left" }, BatteryGuideTriggerParser.GetVisualButtonKeys(roundTrip));
         Assert.True(BatteryGuideTriggerParser.IsMatch(roundTrip, GuideButtonDeviceKind.SteamController, current));
+    }
+
+    [Fact]
+    public void HasButtonDownEdgeForPowerIdleActivity_DualSenseFirstReport_DoesNotCountAsInput()
+    {
+        var current = new byte[64];
+        current[0] = 0x01;
+        current[8] = 0x08;
+
+        Assert.False(BatteryGuideTriggerParser.HasButtonDownEdgeForPowerIdleActivity(
+            GuideButtonDeviceKind.DualSense,
+            ReadOnlySpan<byte>.Empty,
+            current));
+    }
+
+    [Fact]
+    public void HasButtonDownEdgeForPowerIdleActivity_DualSenseIdleReport_DoesNotCountAsInput()
+    {
+        var previous = new byte[64];
+        previous[0] = 0x01;
+        previous[8] = 0x08;
+        var current = new byte[64];
+        current[0] = 0x01;
+        current[8] = 0x08;
+
+        Assert.False(BatteryGuideTriggerParser.HasButtonDownEdgeForPowerIdleActivity(
+            GuideButtonDeviceKind.DualSense,
+            previous,
+            current));
+    }
+
+    [Fact]
+    public void HasButtonDownEdgeForPowerIdleActivity_DualSenseHeldGuide_DoesNotRepeatInput()
+    {
+        var previous = new byte[64];
+        previous[0] = 0x01;
+        previous[8] = 0x08;
+        previous[10] = 0x01;
+        var current = new byte[64];
+        current[0] = 0x01;
+        current[8] = 0x08;
+        current[10] = 0x01;
+
+        Assert.False(BatteryGuideTriggerParser.HasButtonDownEdgeForPowerIdleActivity(
+            GuideButtonDeviceKind.DualSense,
+            previous,
+            current));
+    }
+
+    [Fact]
+    public void HasButtonDownEdgeForPowerIdleActivity_DualSenseFaceButtonDown_CountsAsInput()
+    {
+        var previous = new byte[64];
+        previous[0] = 0x01;
+        previous[8] = 0x08;
+        var current = new byte[64];
+        current[0] = 0x01;
+        current[8] = 0x28;
+        current[10] = 0x04;
+
+        Assert.True(BatteryGuideTriggerParser.HasButtonDownEdgeForPowerIdleActivity(
+            GuideButtonDeviceKind.DualSense,
+            previous,
+            current));
+    }
+
+    [Fact]
+    public void HasButtonDownEdgeForPowerIdleActivity_DualSenseDPadNeutralToDirection_CountsAsInput()
+    {
+        var previous = new byte[64];
+        previous[0] = 0x01;
+        previous[8] = 0x08;
+        var current = new byte[64];
+        current[0] = 0x01;
+        current[8] = 0x00;
+
+        Assert.True(BatteryGuideTriggerParser.HasButtonDownEdgeForPowerIdleActivity(
+            GuideButtonDeviceKind.DualSense,
+            previous,
+            current));
+    }
+
+    [Fact]
+    public void HasButtonDownEdgeForPowerIdleActivity_DualSenseHeldDPadDirection_DoesNotRepeatInput()
+    {
+        var previous = new byte[64];
+        previous[0] = 0x01;
+        previous[8] = 0x00;
+        var current = new byte[64];
+        current[0] = 0x01;
+        current[8] = 0x02;
+
+        Assert.False(BatteryGuideTriggerParser.HasButtonDownEdgeForPowerIdleActivity(
+            GuideButtonDeviceKind.DualSense,
+            previous,
+            current));
     }
 
     private static void WriteInt16LittleEndian(byte[] report, int offset, short value)

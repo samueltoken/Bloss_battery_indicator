@@ -6,12 +6,23 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ChecklistPath)) {
-    $ChecklistPath = Join-Path $projectRoot "manual-verification-v107.md"
+    if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
+        $ChecklistPath = $env:BLOSS_MANUAL_CHECKLIST_PATH
+    }
+    else {
+        $ChecklistPath = Join-Path $projectRoot "manual-verification-v107.md"
+    }
 }
 
 $checklistPath = [System.IO.Path]::GetFullPath($ChecklistPath)
-$updaterPath = Join-Path $PSScriptRoot "set-v107-manual-gate.ps1"
-$verifierPath = Join-Path $PSScriptRoot "verify-v107-manual-checklist.ps1"
+$manualScriptVersion = if ((Split-Path -Leaf $checklistPath) -eq "manual-verification-v108.md") {
+    "v108"
+}
+else {
+    "v107"
+}
+$updaterPath = Join-Path $PSScriptRoot "set-$manualScriptVersion-manual-gate.ps1"
+$verifierPath = Join-Path $PSScriptRoot "verify-$manualScriptVersion-manual-checklist.ps1"
 
 function Assert-ContainsText {
     param(
@@ -122,7 +133,7 @@ try {
 
     & $updaterPath -ChecklistPath $tempPath -Id TEST-EXE-NOTES-VISUAL -Status PENDING *> $null
     $content = Get-Content -Encoding UTF8 -LiteralPath $tempPath -Raw
-    Assert-ContainsText -Text $content -Needle "| TEST-EXE-NOTES-VISUAL | PENDING | Run artifacts\portable\test.exe repeatedly and visually confirm the release notes popup appears every run and looks correct. |  |" -Message "Updater did not clear evidence when returning a gate to PENDING."
+    Assert-ContainsText -Text $content -Needle "| TEST-EXE-NOTES-VISUAL | PENDING | Run artifacts\portable\test.exe repeatedly and visually confirm the 1.0.8 release notes popup appears every run and looks correct. |  |" -Message "Updater did not clear evidence when returning a gate to PENDING."
 
     Assert-Fails -ExpectedMessage "Evidence is required when setting DISPLAY-SLEEP to PASS." -Action {
         & $updaterPath -ChecklistPath $tempPath -Id DISPLAY-SLEEP -Status PASS *> $null

@@ -1,7 +1,4 @@
 using System.Windows;
-using BluetoothBatteryWidget.App.Services;
-using BluetoothBatteryWidget.App.ViewModels;
-using BluetoothBatteryWidget.Core.Services;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,49 +42,7 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        var settingsStore = new WidgetSettingsStore();
-        var autostartService = new AutostartService();
-        var steamTritonReader = new SteamControllerTritonHidReader();
-        var connectedDeviceProvider = new CompositeConnectedDeviceProvider(
-            new WinRtConnectedDeviceProvider(),
-            new PlayStationUsbConnectedDeviceProvider(),
-            new SteamControllerTritonConnectedDeviceProvider(steamTritonReader));
-        var setupApiBatteryLevelProvider = new SetupApiBatteryLevelProvider();
-        var profileStore = new GamepadProfileStore();
-        var pendingCandidateStore = new PendingGamepadCandidateStore();
-        var observationStore = new BatteryObservationStore();
-        var calibrationStore = new CalibrationStore();
-        var evidenceResolver = new BatteryEvidenceResolver(observationStore, calibrationStore);
-        var gameInputBatteryProvider = new GameInputBatteryProvider();
-        var learnedHidBatteryLevelProvider = new LearnedHidBatteryLevelProvider(profileStore);
-        var sonyHidBatteryLevelProvider = new SonyHidBatteryLevelProvider();
-        var xInputBatteryLevelProvider = new XInputBatteryLevelProvider();
-        var hidFeatureBatteryProvider = new HidFeatureBatteryProvider();
-        var bleBatteryServiceProvider = new BleBatteryServiceProvider();
-        var steamTritonBatteryProvider = new SteamControllerTritonBatteryProvider(steamTritonReader);
-        var batteryLevelProvider = new CompositeBatteryLevelProvider(
-            setupApiBatteryLevelProvider,
-            gameInputBatteryProvider,
-            learnedHidBatteryLevelProvider,
-            sonyHidBatteryLevelProvider,
-            xInputBatteryLevelProvider,
-            hidFeatureBatteryProvider,
-            bleBatteryServiceProvider,
-            steamTritonBatteryProvider,
-            evidenceResolver);
-        var gamepadProbeService = new GamepadProbeService(profileStore, pendingCandidateStore);
-        var iconResolver = new IconResolver();
-        var snapshotComposer = new DeviceSnapshotComposer(iconResolver);
-
-        var viewModel = new MainViewModel(
-            connectedDeviceProvider,
-            batteryLevelProvider,
-            snapshotComposer,
-            settingsStore,
-            autostartService,
-            gamepadProbeService,
-            calibrationStore);
-
+        var viewModel = AppCompositionRoot.CreateMainViewModel();
         viewModel.LoadSettingsOnce();
 
         var mainWindow = new MainWindow(viewModel);

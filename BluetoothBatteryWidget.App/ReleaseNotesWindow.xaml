@@ -271,7 +271,7 @@
 
                         <StackPanel>
                             <TextBlock x:Name="VersionText"
-                                       Text="Bloss 1.0.7"
+                                       Text="Bloss"
                                        FontSize="18"
                                        FontWeight="SemiBold"
                                        Foreground="#FFFFB8B8" />
@@ -285,16 +285,16 @@
 
                         <StackPanel Grid.Row="2">
                             <TextBlock x:Name="CleanupAutostartText"
-                                       Text="삭제 후 시작프로그램 찌꺼기 정리"
+                                       Text="절전모드/화면꺼짐 관련 구조개선"
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="SleepGuardText"
-                                       Text="모니터 자동꺼짐 방해 방지"
+                                       Text="기타 자잘한 버그 수정"
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="CustomGuideTriggerText"
-                                       Text="배터리 알림 버튼 사용자 지정"
+                                       Text=""
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="InstallUpdateValidationText"
-                                       Text="설치/업데이트 검증 강화"
+                                       Text=""
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                         </StackPanel>
 

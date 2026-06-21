@@ -9,8 +9,24 @@ $oldInstallerVersions = @("1.0.4", "1.0.5", "1.0.6")
 $autostartValueNames = @("Bloss", "BluetoothBatteryWidget")
 $autostartRunKeyPath = "Software\Microsoft\Windows\CurrentVersion\Run"
 
+function Get-ManualChecklistPath {
+    if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
+        return [System.IO.Path]::GetFullPath($env:BLOSS_MANUAL_CHECKLIST_PATH)
+    }
+
+    return (Join-Path $projectRoot "manual-verification-v107.md")
+}
+
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $projectRoot "artifacts\manual-gate-evidence\v107-manual-gate-evidence.md"
+    $manualChecklistName = Split-Path -Leaf (Get-ManualChecklistPath)
+    $evidenceName = if ($manualChecklistName -eq "manual-verification-v108.md") {
+        "v108-manual-gate-evidence.md"
+    }
+    else {
+        "v107-manual-gate-evidence.md"
+    }
+
+    $OutputPath = Join-Path $projectRoot "artifacts\manual-gate-evidence\$evidenceName"
 }
 
 function Resolve-ExistingDirectory {
@@ -165,7 +181,7 @@ function Get-RecommendedOldInstallerCandidates {
 }
 
 function Get-ChecklistRows {
-    $checklistPath = Join-Path $projectRoot "manual-verification-v107.md"
+    $checklistPath = Get-ManualChecklistPath
     if (-not (Test-Path -LiteralPath $checklistPath -PathType Leaf)) {
         throw "Manual verification checklist not found: $checklistPath"
     }
@@ -211,9 +227,9 @@ $searchRoots = @($projectRoot, $parentRoot) |
     Select-Object -Unique
 
 $releaseArtifacts = @(
-    New-ArtifactRow -Name "v1.0.7 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.7"
-    New-ArtifactRow -Name "v1.0.7 installer hash file" -RelativePath "release\installer\setup.exe.sha256"
-    New-ArtifactRow -Name "portable test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.7"
+    New-ArtifactRow -Name "v1.0.8 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.8"
+    New-ArtifactRow -Name "v1.0.8 installer hash file" -RelativePath "release\installer\setup.exe.sha256"
+    New-ArtifactRow -Name "portable test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.8"
     New-ArtifactRow -Name "release notes preview" -RelativePath "artifacts\release-notes-previews\release-notes-window.png"
 )
 
@@ -226,9 +242,12 @@ $checklistRows = @(Get-ChecklistRows)
 $runningProcesses = @(Get-Process | Where-Object { $_.ProcessName -in @("test", "Bloss") } | Select-Object Id, ProcessName, Path)
 $currentAutostartValues = @(Get-CurrentUserAutostartValues)
 $presentAutostartValues = @($currentAutostartValues | Where-Object { $_.Present })
+$gitSafetySummaryPath = Join-Path $projectRoot "artifacts\manual-gate-evidence\git-publish-safety.json"
+& (Join-Path $PSScriptRoot "verify-git-publish-safety.ps1") -SummaryPath $gitSafetySummaryPath | Out-Host
+$gitSafetySummary = Get-Content -LiteralPath $gitSafetySummaryPath -Raw | ConvertFrom-Json
 
 $lines = [System.Collections.Generic.List[string]]::new()
-$lines.Add("# v1.0.7 Manual Gate Evidence")
+$lines.Add("# v1.0.8 Manual Gate Evidence")
 $lines.Add("")
 $lines.Add("- GeneratedAt: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss K')")
 $lines.Add("- ProjectRoot: $projectRoot")
@@ -270,6 +289,16 @@ Add-MarkdownTable -Lines $lines -Headers @("Root", "SubKey", "ValueName", "Prese
     @($row.Root, $row.SubKey, $row.ValueName, $row.Present, $row.Data)
 }
 $lines.Add("")
+$lines.Add("## Git Publish Safety")
+$lines.Add("")
+$lines.Add("- TrackedFileCount: $($gitSafetySummary.TrackedFileCount)")
+$lines.Add("- ForbiddenTrackedFiles: $($gitSafetySummary.ForbiddenTrackedFiles)")
+$lines.Add("- MissingIgnoreRules: $($gitSafetySummary.MissingIgnoreRules)")
+$lines.Add("- TrackedEmailFindings: $($gitSafetySummary.TrackedEmailFindings)")
+$lines.Add("- UnexpectedEmails: $($gitSafetySummary.UnexpectedEmails)")
+$lines.Add("- AllowedEmails: $($gitSafetySummary.AllowedEmails -join ', ')")
+$lines.Add("- SummaryPath: $gitSafetySummaryPath")
+$lines.Add("")
 $lines.Add("## Useful Commands")
 $lines.Add("")
 $lines.Add('```powershell')
@@ -290,6 +319,8 @@ New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
     ManualGateCount = $checklistRows.Count
     RunningBlossOrTestProcesses = $runningProcesses.Count
     CurrentUserAutostartValues = $presentAutostartValues.Count
+    ForbiddenTrackedFiles = $gitSafetySummary.ForbiddenTrackedFiles
+    UnexpectedEmails = $gitSafetySummary.UnexpectedEmails
     NonDestructive = $true
 } | Format-List
 

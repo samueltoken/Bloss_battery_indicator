@@ -8,11 +8,54 @@ param(
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$checklistPath = Join-Path $projectRoot "manual-verification-v107.md"
-$setGateScript = ".\scripts\set-v107-manual-gate.ps1"
-$oldInstallerRoot = Join-Path $projectRoot "artifacts\manual-gate-old-builds"
+$checklistPath = if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
+    [System.IO.Path]::GetFullPath($env:BLOSS_MANUAL_CHECKLIST_PATH)
+}
+else {
+    Join-Path $projectRoot "manual-verification-v107.md"
+}
+$manualScriptVersion = if ((Split-Path -Leaf $checklistPath) -eq "manual-verification-v108.md") {
+    "v108"
+}
+else {
+    "v107"
+}
+$setGateScript = ".\scripts\set-$manualScriptVersion-manual-gate.ps1"
+$manualPrereqScript = ".\scripts\check-$manualScriptVersion-manual-gate-prereqs.ps1"
 $autostartValueNames = @("Bloss", "BluetoothBatteryWidget")
 $autostartRunKeyPath = "Software\Microsoft\Windows\CurrentVersion\Run"
+
+function Resolve-ExistingDirectory {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        $fullPath = [System.IO.Path]::GetFullPath($Path)
+    }
+    catch {
+        return $null
+    }
+
+    if (Test-Path -LiteralPath $fullPath -PathType Container) {
+        return $fullPath
+    }
+
+    return $null
+}
+
+function Get-OldInstallerSearchRoots {
+    $parentRoot = Split-Path -Parent $projectRoot
+    @(
+        $projectRoot
+        $parentRoot
+    ) |
+        ForEach-Object { Resolve-ExistingDirectory -Path $_ } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -Unique
+}
 
 function New-GatePlan {
     param(
@@ -73,15 +116,28 @@ function Get-Sha256OrEmpty {
 function Get-RecommendedOldInstallerEvidence {
     param([string]$Version)
 
-    if ([string]::IsNullOrWhiteSpace($Version) -or
-        -not (Test-Path -LiteralPath $oldInstallerRoot -PathType Container)) {
+    if ([string]::IsNullOrWhiteSpace($Version)) {
         return "recommended v$Version setup.exe SHA256 <hash>"
     }
 
+    $searchRoots = @(Get-OldInstallerSearchRoots)
+    if ($searchRoots.Count -eq 0) {
+        return "recommended v$Version setup.exe SHA256 <hash>"
+    }
+
+    $candidates = @(
+        foreach ($root in $searchRoots) {
+            Get-ChildItem -LiteralPath $root -Recurse -File -Filter setup.exe -ErrorAction SilentlyContinue |
+                Where-Object { (Get-TrimmedVersion -Path $_.FullName) -eq $Version }
+        }
+    )
+
     $candidate = @(
-        Get-ChildItem -LiteralPath $oldInstallerRoot -Recurse -File -Filter setup.exe -ErrorAction SilentlyContinue |
-            Where-Object { (Get-TrimmedVersion -Path $_.FullName) -eq $Version } |
-            Sort-Object @{ Expression = "LastWriteTime"; Descending = $true }, @{ Expression = "FullName"; Descending = $false }
+        $candidates |
+            Sort-Object `
+                @{ Expression = { if ($_.FullName -like "*\artifacts\manual-gate-old-builds\*") { 0 } else { 1 } } },
+                @{ Expression = "LastWriteTime"; Descending = $true },
+                @{ Expression = "FullName"; Descending = $false }
     ) | Select-Object -First 1
 
     if ($null -eq $candidate) {
@@ -181,31 +237,31 @@ function Get-ChecklistRows {
 }
 
 $gatePlans = @(
-    New-GatePlan -Id "UPDATE-104" -Title "v1.0.4 in-app update reaches 1.0.7 and restarts" -Checks @(
-        "Run powershell -ExecutionPolicy Bypass -File .\scripts\check-v107-manual-gate-prereqs.ps1 -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
+    New-GatePlan -Id "UPDATE-104" -Title "v1.0.4 in-app update reaches 1.0.8 and restarts" -Checks @(
+        "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
         "Install the recommended old v1.0.4 setup.exe shown by that prerequisite check on a real Windows account.",
         "Open Bloss and start the in-app update flow.",
-        "Confirm the app restarts after setup and the visible app/ProductVersion is 1.0.7.",
+        "Confirm the app restarts after setup and the visible app/ProductVersion is 1.0.8.",
         "Keep the old setup.exe path, SHA256, installer/update log path, or a short note with machine name and date."
-    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, in-app update completed, Bloss restarted, visible/ProductVersion 1.0.7 confirmed" -OldInstallerVersion "1.0.4"
-    New-GatePlan -Id "UPDATE-105" -Title "v1.0.5 in-app update reaches 1.0.7 and restarts" -Checks @(
-        "Run powershell -ExecutionPolicy Bypass -File .\scripts\check-v107-manual-gate-prereqs.ps1 -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
+    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, in-app update completed, Bloss restarted, visible/ProductVersion 1.0.8 confirmed" -OldInstallerVersion "1.0.4"
+    New-GatePlan -Id "UPDATE-105" -Title "v1.0.5 in-app update reaches 1.0.8 and restarts" -Checks @(
+        "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
         "Install the recommended old v1.0.5 setup.exe shown by that prerequisite check on a real Windows account.",
         "Open Bloss and start the in-app update flow.",
-        "Confirm the app restarts after setup and the visible app/ProductVersion is 1.0.7.",
+        "Confirm the app restarts after setup and the visible app/ProductVersion is 1.0.8.",
         "Watch for the old silent-update/antivirus abort failure returning."
-    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, in-app update completed, Bloss restarted, visible/ProductVersion 1.0.7 confirmed" -OldInstallerVersion "1.0.5"
+    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, in-app update completed, Bloss restarted, visible/ProductVersion 1.0.8 confirmed" -OldInstallerVersion "1.0.5"
     New-GatePlan -Id "UPDATE-106-NOTES" -Title "v1.0.6 update release notes one-time behavior" -Checks @(
-        "Run powershell -ExecutionPolicy Bypass -File .\scripts\check-v107-manual-gate-prereqs.ps1 -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
+        "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
         "Install the recommended old v1.0.6 setup.exe shown by that prerequisite check on a real Windows account.",
-        "Update to v1.0.7 from inside Bloss.",
-        "Confirm the 1.0.7 release notes popup appears on first app start.",
+        "Update to v1.0.8 from inside Bloss.",
+        "Confirm the 1.0.8 release notes popup appears on first app start.",
         "Close/confirm the popup, restart Bloss, and confirm the popup does not appear again."
-    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, updated to 1.0.7, release notes appeared once after update, did not reappear after restart" -OldInstallerVersion "1.0.6"
+    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, updated to 1.0.8, release notes appeared once after update, did not reappear after restart" -OldInstallerVersion "1.0.6"
     New-GatePlan -Id "CLEAN-INSTALL-NOTES" -Title "clean install release notes one-time behavior" -Checks @(
-        "Run powershell -ExecutionPolicy Bypass -File .\scripts\check-v107-manual-gate-prereqs.ps1 -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
+        "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
         "Install release\installer\setup.exe on a clean or reset Windows account.",
-        "Open Bloss and confirm the 1.0.7 release notes popup appears once.",
+        "Open Bloss and confirm the 1.0.8 release notes popup appears once.",
         "Close/confirm the popup, restart Bloss, and confirm the popup does not appear again.",
         "Do not use artifacts\portable\test.exe for this gate because test.exe intentionally shows the popup every run."
     ) -EvidenceTemplate "{Date} <machine>: clean install release\installer\setup.exe, release notes appeared once, did not reappear after restart"
@@ -218,10 +274,12 @@ $gatePlans = @(
         "Run powershell -ExecutionPolicy Bypass -File .\scripts\check-display-sleep-readiness.ps1 -NoFail and note the current power mode.",
         "If that snapshot says powercfg /requests or /waketimers needs administrator rights, rerun the snapshot from PowerShell as Administrator before judging Bloss.",
         "Set Windows display-off timeout to 1 minute, or system sleep to a short test value, for that current power mode.",
-        "Run Bloss normally, do not move input devices, and wait at least 90 seconds.",
-        "Wake the screen, put Bloss in tray, wait again, and confirm the same display-off or sleep behavior.",
+        "Run Bloss normally with no gamepad input, do not move input devices, and wait at least 90 seconds.",
+        "Repeat with a real DualSense/Pico2W, Steam Controller, and third-party gamepad connected but untouched; confirm connected idle does not block display-off.",
+        "Wake the screen, press a real guide/PS input, and confirm Bloss guide handling resumes without keeping the display awake permanently.",
+        "Put Bloss in tray, wait again, and confirm the same display-off or sleep behavior.",
         "Restore the user's preferred Windows power setting after the test."
-    ) -EvidenceTemplate "{Date} <machine>: check-display-sleep-readiness snapshot captured current power mode, Windows display-off 1 minute test passed with Bloss normal and tray, setting restored"
+    ) -EvidenceTemplate "{Date} <machine>: check-display-sleep-readiness snapshot captured current power mode, Windows display-off 1 minute test passed with no gamepad plus real DualSense/Pico2W, Steam Controller, and third-party gamepad connected but untouched; guide/PS wake/resume checked; setting restored"
     New-GatePlan -Id "STEAM-CONTROLLER" -Title "real Steam Controller guide/power/custom/Quick Access stability/rename checks" -Checks @(
         "Run dotnet test BluetoothBatteryWidget.sln --configuration Release first.",
         "Run artifacts\portable\test.exe with a real Steam Controller connected.",
@@ -233,7 +291,7 @@ $gatePlans = @(
         "Use .\scripts\show-guide-button-events.ps1 -SteamPowerOffCheck while checking logs if behavior is unclear."
     ) -EvidenceTemplate "{Date} <machine>: real Steam Controller short press repeated, long power hold suppressed toast, Quick Access custom trigger stayed open and highlighted lower square, custom/rename behavior confirmed, show-guide-button-events.ps1 -SteamPowerOffCheck checked"
     New-GatePlan -Id "UNINSTALL-AUTOSTART" -Title "uninstall removes Bloss startup values" -Checks @(
-        "Run powershell -ExecutionPolicy Bypass -File .\scripts\check-v107-manual-gate-prereqs.ps1 -RequireNoRunningProcesses -RequireNoCurrentAutostart before starting the uninstall gate.",
+        "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireNoRunningProcesses -RequireNoCurrentAutostart before starting the uninstall gate.",
         "Install Bloss in the normal way for the current Windows account.",
         "Uninstall from Windows Apps or run the generated uninstall.exe.",
         "Run powershell -ExecutionPolicy Bypass -File .\scripts\check-autostart-cleanup.ps1.",
@@ -302,6 +360,8 @@ if ($ValidateOnly) {
 }
 
 Write-Host "This helper only prints manual check instructions. It does not install, uninstall, edit registry, or change Windows power settings."
+Write-Host "Run the printed commands from this project folder:"
+Write-Host "Set-Location -LiteralPath `"$projectRoot`""
 Write-Host ""
 
 $currentBlockers = @(Get-CurrentManualGateBlockers)
@@ -312,7 +372,7 @@ if ($currentBlockers.Count -gt 0) {
     }
 
     Write-Host "Do not start install/update/uninstall manual gates until these are intentionally cleared or explicitly recorded."
-    Write-Host "Run .\scripts\check-v107-manual-gate-prereqs.ps1 -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart before those gates."
+    Write-Host "Run $manualPrereqScript -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart before those gates."
     Write-Host "Use .\scripts\check-autostart-cleanup.ps1 -Delete only when intentionally cleaning this developer PC before a manual gate; never count that as uninstall proof."
     Write-Host ""
 }

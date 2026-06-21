@@ -44,7 +44,7 @@ public static class PowerIdlePolicy
         return ShouldPauseBackgroundWork(
             idleDelay,
             systemIdleDuration,
-            localIdleDuration: TimeSpan.Zero,
+            localIdleDuration: null,
             isProbeRunning,
             isRefreshRunning);
     }
@@ -56,13 +56,36 @@ public static class PowerIdlePolicy
         bool isProbeRunning,
         bool isRefreshRunning)
     {
+        return ShouldPauseBackgroundWork(
+            idleDelay,
+            systemIdleDuration,
+            (TimeSpan?)localIdleDuration,
+            isProbeRunning,
+            isRefreshRunning);
+    }
+
+    private static bool ShouldPauseBackgroundWork(
+        TimeSpan? idleDelay,
+        TimeSpan systemIdleDuration,
+        TimeSpan? localIdleDuration,
+        bool isProbeRunning,
+        bool isRefreshRunning)
+    {
         if (idleDelay is null || idleDelay.Value <= TimeSpan.Zero || isProbeRunning || isRefreshRunning)
         {
             return false;
         }
 
+        // If the app saw real local/gamepad activity recently, keep the light guide
+        // path alive. Otherwise, allow display-sleep protection even when controller
+        // drivers keep resetting Windows' global idle clock.
+        if (localIdleDuration.HasValue && localIdleDuration.Value < idleDelay.Value)
+        {
+            return false;
+        }
+
         return systemIdleDuration >= idleDelay.Value ||
-               localIdleDuration >= idleDelay.Value;
+               (localIdleDuration.HasValue && localIdleDuration.Value >= idleDelay.Value);
     }
 
     public static TimeSpan? ResolveIdleDelay(int configuredIdleMinutes, TimeSpan? displayIdleTimeout)
@@ -97,4 +120,5 @@ public static class PowerIdlePolicy
             ? MinimumAutoPauseDelay
             : resolvedDelay;
     }
+
 }

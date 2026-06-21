@@ -61,9 +61,9 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("BLoss", xaml);
         Assert.Contains("업데이트 내역", xaml);
         Assert.DoesNotContain("이번 업데이트", xaml);
-        Assert.Contains("삭제 후 시작프로그램 찌꺼기 정리", xaml);
-        Assert.Contains("모니터 자동꺼짐 방해 방지", xaml);
-        Assert.Contains("배터리 알림 버튼 사용자 지정", xaml);
+        Assert.Contains("절전모드/화면꺼짐 관련 구조개선", xaml);
+        Assert.Contains("기타 자잘한 버그 수정", xaml);
+        Assert.Contains("SetReleaseNoteText", code);
         Assert.Contains("ReleaseNoteConfirmButtonStyle", xaml);
         Assert.Contains("ReleaseNoteCloseButtonStyle", xaml);
         Assert.Contains("CornerRadius=\"13\"", xaml);
@@ -72,6 +72,8 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("Text=\"&#xE711;\"", xaml);
         Assert.Contains("UiLanguageCatalog.GetExtraText(language, \"ReleaseNotesHeading\")", code);
         Assert.Contains("ReleaseNotesWindow(string version, string? language = null)", code);
+        Assert.Contains("AppVersionInfo.DisplayVersion", code);
+        Assert.DoesNotContain("Bloss 1.0.8", xaml);
         Assert.Equal("Update details", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesHeading"));
         Assert.Equal("업데이트 내역", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesHeading"));
         Assert.Contains("BuildQuietTiles", code);
@@ -290,14 +292,14 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void ReleaseNotes_ShowOnceForReleaseButEveryRunForTestExe()
     {
-        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.0.7", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.0.7", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.6", "1.0.7", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.7", "1.0.7", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.0.7\r\n", "1.0.7", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.7", "", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.7", "1.0.7", forceEveryRun: true));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.7", "", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.0.8", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.0.8", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.7", "1.0.8", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.8", "1.0.8", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.0.8\r\n", "1.0.8", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.8", "", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.8", "1.0.8", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.8", "", forceEveryRun: true));
         Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\test.exe"));
         Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\TEST.EXE"));
         Assert.False(MainWindow.IsPortableTestExecutablePath(@"C:\temp\Bloss.exe"));
@@ -525,8 +527,18 @@ public sealed class MainWindowXamlBindingTests
             "BluetoothBatteryWidget.App",
             "Services",
             "AutostartService.cs"));
+        var trayIconServiceSource = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "Services",
+            "TrayIconService.cs"));
 
-        Assert.Contains("_trayResetPositionMenuItem", mainWindowSource);
+        Assert.Contains("_resetPositionMenuItem", trayIconServiceSource);
+        Assert.Contains("TrayIconService", mainWindowSource);
         Assert.Contains("ResetWidgetPositionToCurrentMonitor", mainWindowSource);
         Assert.Contains("CenterWindowInArea(GetWorkingAreaFromCurrentCursor())", mainWindowSource);
         Assert.Contains("Forms.Screen.FromPoint(Forms.Cursor.Position)", mainWindowSource);
@@ -583,7 +595,7 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void TrayMenu_CanToggleAutostartAndStartMinimized()
     {
-        var source = File.ReadAllText(Path.Combine(
+        var mainWindowSource = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
             "..",
             "..",
@@ -591,13 +603,22 @@ public sealed class MainWindowXamlBindingTests
             "..",
             "BluetoothBatteryWidget.App",
             "MainWindow.xaml.cs"));
+        var trayIconServiceSource = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "Services",
+            "TrayIconService.cs"));
 
-        Assert.Contains("_trayAutostartMenuItem", source);
-        Assert.Contains("_trayStartMinimizedToTrayMenuItem", source);
-        Assert.Contains("ToggleAutostartFromTray", source);
-        Assert.Contains("ToggleStartMinimizedToTrayFromTray", source);
-        Assert.Contains("_trayAutostartMenuItem.Checked = _viewModel.AutostartEnabled", source);
-        Assert.Contains("_trayStartMinimizedToTrayMenuItem.Checked = _viewModel.StartMinimizedToTrayEnabled", source);
+        Assert.Contains("_autostartMenuItem", trayIconServiceSource);
+        Assert.Contains("_startMinimizedToTrayMenuItem", trayIconServiceSource);
+        Assert.Contains("ToggleAutostartFromTray", mainWindowSource);
+        Assert.Contains("ToggleStartMinimizedToTrayFromTray", mainWindowSource);
+        Assert.Contains("_autostartMenuItem.Checked = texts.AutostartEnabled", trayIconServiceSource);
+        Assert.Contains("_startMinimizedToTrayMenuItem.Checked = texts.StartMinimizedToTrayEnabled", trayIconServiceSource);
     }
 
     [Fact]
@@ -877,7 +898,7 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
-    public void LabsWindow_UsesFullscreenPaintTunnelAndAutoClose()
+    public void LabsWindow_UsesCodeCityAnimationAndAutoClose()
     {
         var source = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
@@ -893,25 +914,23 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("CodeCityView", source);
         Assert.Contains("CompositionTarget.Rendering", source);
         Assert.Contains("DrawTunnel", source);
-        Assert.Contains("DrawSeedAndScan", source);
-        Assert.Contains("DrawSpeedLines", source);
         Assert.Contains("DrawCityDrive", source);
         Assert.Contains("DrawFarCity", source);
-        Assert.Contains("DrawRoad", source);
         Assert.Contains("DrawBuildingCanyon", source);
-        Assert.Contains("DrawFinalBlackout", source);
-        Assert.Contains("ApplyFullScreenBounds", source);
-        Assert.Contains("SystemParameters.VirtualScreenWidth", source);
+        Assert.Contains("DrawRoadReflections", source);
+        Assert.Contains("DrawCityAtmosphere", source);
         Assert.Contains("BeginAnimation", source);
-        Assert.Contains("TargetFrameMilliseconds", source);
-        Assert.Contains("BuildCodeMarks", source);
-        Assert.Contains("BuildSpeedLines", source);
+        Assert.Contains("CodeMarkCount", source);
         Assert.Contains("TunnelGreen", source);
         Assert.Contains("CityTeal", source);
+        Assert.Contains("brush.Freeze()", source);
+        Assert.Contains("CreateSolidBrush", source);
+        Assert.Contains("SmoothSeconds", source);
         Assert.Contains("CityAmber", source);
         Assert.Contains("RoadBlue", source);
-        Assert.Contains("SmoothSeconds", source);
-        Assert.DoesNotContain("HyperspacePortalView", source);
+        Assert.Contains("DrawStreetLights", source);
+        Assert.Contains("BuildCodeMarks", source);
+        Assert.DoesNotContain("EnergyPalette", source);
         Assert.DoesNotContain("DrawAccretionDisk", source);
         Assert.DoesNotContain("BuildPaintStrokeLayer", source);
         Assert.DoesNotContain("DropShadowEffect", source);
@@ -1265,10 +1284,13 @@ public sealed class MainWindowXamlBindingTests
         var languageCatalogSource = File.ReadAllText(Path.Combine(appRoot, "Services", "UiLanguageCatalog.cs"));
         var systemDisplayIdleTimeoutSource = File.ReadAllText(Path.Combine(appRoot, "Services", "SystemDisplayIdleTimeout.cs"));
         var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+        var mainWindowXaml = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml"));
+        var compositionSource = File.ReadAllText(Path.Combine(appRoot, "AppCompositionRoot.cs"));
 
         Assert.Contains("TextPowerIdlePause => UiLanguageCatalog.GetExtraText(Settings.Language, \"PowerIdlePause\")", viewModelSource);
         Assert.Contains("TextWindowsDisplayOff => UiLanguageCatalog.GetExtraText(Settings.Language, \"WindowsDisplayOff\")", viewModelSource);
-        Assert.Contains("StatusText = UiLanguageCatalog.GetExtraText(Settings.Language, \"PowerIdlePauseActive\")", viewModelSource);
+        Assert.Contains("StatusText = connectionOnlyForPowerIdle", viewModelSource);
+        Assert.Contains("UiLanguageCatalog.GetExtraText(Settings.Language, \"PowerIdlePauseActive\")", viewModelSource);
         Assert.Contains("\"PowerIdlePause\" => \"절전 보호\"", languageCatalogSource);
         Assert.Contains("\"PowerIdlePauseActive\" => \"절전 보호 활성화\"", languageCatalogSource);
         Assert.Contains("\"PowerIdlePauseAuto\" => \"자동(Windows 설정)\"", languageCatalogSource);
@@ -1287,7 +1309,13 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("new[] { 1, 5, 10, 15, 30, 45, 60, 120, 180, 240, 300 }", viewModelSource);
         Assert.Contains("FormatPowerDurationLabel", viewModelSource);
         Assert.Contains("GetLocalIdleDuration()", viewModelSource);
+        Assert.Contains("GetGamepadIdleDuration()", viewModelSource);
+        Assert.Contains("GetGamepadTelemetryIdleDuration()", viewModelSource);
+        Assert.Contains("GetLocalOrGamepadIdleDuration()", viewModelSource);
         Assert.Contains("public void MarkUserActivity()", viewModelSource);
+        Assert.Contains("public void MarkGamepadActivity()", viewModelSource);
+        Assert.Contains("public void MarkIntentionalGamepadActivity()", viewModelSource);
+        Assert.Contains("public void MarkGamepadTelemetryActivity()", viewModelSource);
         Assert.Contains("ProbeUnsupportedGamepadAsync(string address, bool markUserActivity = true)", viewModelSource);
         Assert.Contains("ApplyProbeProgress(string address, ProbeProgress progress, bool markUserActivity = true)", viewModelSource);
         Assert.Contains("ApplyProbeProgress(normalizedAddress, progress, markUserActivity)", viewModelSource);
@@ -1297,6 +1325,17 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("_ = ProbeUnsupportedGamepadAsync(address, markUserActivity: false);", viewModelSource);
         Assert.Contains("_ = ProbeUnsupportedGamepadAsync(normalized, markUserActivity: false);", viewModelSource);
         Assert.Contains("SystemDisplayIdleTimeout.GetCurrentDisplayOrSleepTimeout()", viewModelSource);
+        Assert.Contains("RefreshAsync(bool forceFullRefresh = false)", viewModelSource);
+        Assert.Contains("connectionOnlyForPowerIdle", viewModelSource);
+        Assert.Contains("connectedDevices = BuildPowerIdleConnectedDevicesSnapshot();", viewModelSource);
+        Assert.Contains("connectedDevices = await _connectedDeviceProvider", viewModelSource);
+        Assert.Contains("BuildPowerIdleConnectedDevicesSnapshot()", viewModelSource);
+        Assert.Contains("PowerIdleCachedDeviceIdPrefix", viewModelSource);
+        Assert.Contains("if (!connectionOnlyForPowerIdle && connectedDevices.Count > 0)", viewModelSource);
+        Assert.Contains("if (!connectionOnlyForPowerIdle &&", viewModelSource);
+        Assert.Contains("autoProbeTarget = connectionOnlyForPowerIdle", viewModelSource);
+        Assert.Contains("var winRtConnectedDeviceProvider = new WinRtConnectedDeviceProvider();", compositionSource);
+        Assert.Contains("winRtConnectedDeviceProvider,", compositionSource);
         Assert.Contains("OnPropertyChanged(nameof(PowerIdlePauseOptions))", viewModelSource);
         Assert.Contains("OnPropertyChanged(nameof(WindowsDisplayOffOptions))", viewModelSource);
         Assert.Contains("RefreshPowerIdlePauseOptions", mainWindowSource);
@@ -1304,10 +1343,203 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("RefreshWindowsDisplayOffOptions", mainWindowSource);
         Assert.Contains("public bool IsAnyProbeRunning => _isAnyProbeRunning;", viewModelSource);
         Assert.Contains("public bool IsRefreshRunning => _isRefreshRunning;", viewModelSource);
+        Assert.Contains("public bool IsDisplaySleepPreparationActive => _isDisplaySleepPreparationActive;", viewModelSource);
+        Assert.Contains("public void SetDisplaySleepPreparationActive(bool isActive)", viewModelSource);
+        Assert.Contains("if (_isDisplaySleepPreparationActive)", viewModelSource);
         Assert.Contains("_viewModel.IsAnyProbeRunning || _isBatteryGuideTriggerCaptureActive", mainWindowSource);
         Assert.Contains("_viewModel.IsRefreshRunning", mainWindowSource);
-        Assert.Contains("_viewModel.GetLocalIdleDuration()", mainWindowSource);
+        Assert.Contains("_powerIdleMonitorTimer.Interval = TimeSpan.FromSeconds(1)", mainWindowSource);
+        Assert.Contains("_viewModel.GetGamepadIdleDuration()", mainWindowSource);
+        Assert.Contains("_viewModel.GetLocalOrGamepadIdleDuration()", mainWindowSource);
         Assert.Contains("_viewModel.MarkUserActivity();", mainWindowSource);
+        Assert.Contains("_viewModel.MarkIntentionalGamepadActivity();", mainWindowSource);
+        Assert.Contains("_viewModel.MarkGamepadTelemetryActivity();", mainWindowSource);
+        Assert.Contains("isRefreshRunning: false);", mainWindowSource);
+        Assert.Contains("SystemDisplayIdleTimeout.GetCurrentDisplayOrSleepTimeout()", mainWindowSource);
+        Assert.DoesNotContain("shouldForceDisplayOff", mainWindowSource);
+        Assert.DoesNotContain("forceDisplayOff=", File.ReadAllText(Path.Combine(
+            appRoot,
+            "Services",
+            "PowerIdleDebugLog.cs")));
+        Assert.Contains("PowerIdleRuntimeMode.PreDisplaySleep", mainWindowSource);
+        Assert.Contains("PowerIdleRuntimeMode.DisplayOffWakeOnly", mainWindowSource);
+        Assert.Contains("PowerIdleRuntimeMode.WakeRecovery", mainWindowSource);
+        Assert.Contains("PowerIdleRuntimeMode.ExternalInputBlocked", mainWindowSource);
+        Assert.Contains("ResolvePowerIdleRuntimeMode(", mainWindowSource);
+        Assert.DoesNotContain("TryRestoreActiveFromExternalSystemInput(", mainWindowSource);
+        Assert.DoesNotContain("external_system_input_restored_active", mainWindowSource);
+        Assert.Contains("ShouldEnterPreDisplaySleep(", mainWindowSource);
+        Assert.Contains("ResolveQuietPreparationStart(", mainWindowSource);
+        Assert.Contains("QuietPreparationStartMinimum", mainWindowSource);
+        Assert.Contains("QuietPreparationStartMaximum", mainWindowSource);
+        Assert.Contains("ShortDisplayTimeoutQuietPreparationStart", mainWindowSource);
+        Assert.Contains("ShortDisplayTimeoutQuietPreparationLead", mainWindowSource);
+        Assert.Contains("NormalGamepadMonitoringGrace", mainWindowSource);
+        Assert.Contains("ExternalInputBlockProbeWindow", mainWindowSource);
+        Assert.Contains("ShortDisplayTimeoutExternalInputProbeWindow", mainWindowSource);
+        Assert.Contains("LongDisplayTimeoutExternalInputProbeWindowMaximum", mainWindowSource);
+        Assert.Contains("ResolveExternalInputBlockProbeWindow(", mainWindowSource);
+        Assert.Contains("ExternalInputBlockRetryCooldown", mainWindowSource);
+        Assert.DoesNotContain("PreDisplaySleepQuietLeadTime", mainWindowSource);
+        Assert.DoesNotContain("MinimumPreDisplaySleepQuietPoint", mainWindowSource);
+        var updatePowerIdleMethodStart = mainWindowSource.IndexOf("private void UpdatePowerIdleGuideMonitoring()", StringComparison.Ordinal);
+        var updatePowerIdleMethodEnd = mainWindowSource.IndexOf("private PowerIdleRuntimeMode ResolvePowerIdleRuntimeMode", updatePowerIdleMethodStart, StringComparison.Ordinal);
+        Assert.True(updatePowerIdleMethodStart >= 0);
+        Assert.True(updatePowerIdleMethodEnd > updatePowerIdleMethodStart);
+        var updatePowerIdleMethod = mainWindowSource[updatePowerIdleMethodStart..updatePowerIdleMethodEnd];
+        Assert.DoesNotContain("PowerIdlePolicy.ShouldForceDisplayOffFallback(", updatePowerIdleMethod);
+        Assert.DoesNotContain("TryForceDisplayOffFallback(", updatePowerIdleMethod);
+        Assert.DoesNotContain("TryTurnDisplayOff(", mainWindowSource);
+        Assert.DoesNotContain("display_off_fallback", mainWindowSource);
+        Assert.Contains("SystemDisplayPower.TryTurnDisplayOn(_steamRawInputWindowHandle)", mainWindowSource);
+        Assert.Contains("DisplayPowerCoordinator", mainWindowSource);
+        Assert.Contains("_displayPowerCoordinator.Register(_steamRawInputWindowHandle)", mainWindowSource);
+        Assert.Contains("DisplayPowerCoordinator_StateChanged", mainWindowSource);
+        Assert.Contains("display_on_fallback_sent", mainWindowSource);
+        Assert.Contains("ShouldSendDisplayWakeForInput(reason)", mainWindowSource);
+        var displayStateChangedMethod = mainWindowSource[
+            mainWindowSource.IndexOf("private void DisplayPowerCoordinator_StateChanged", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("private void PowerIdleMonitorTimer_Tick", StringComparison.Ordinal)];
+        Assert.Contains("_viewModel.MarkUserActivity();", displayStateChangedMethod);
+        Assert.Contains("ArmNormalGamepadMonitoring(\"display_state_on\", requireActiveMode: false);", displayStateChangedMethod);
+        Assert.True(
+            displayStateChangedMethod.IndexOf("_viewModel.MarkUserActivity();", StringComparison.Ordinal) <
+            displayStateChangedMethod.IndexOf("if (ShouldBypassWakeRecoveryAfterVerifiedInput(now))", StringComparison.Ordinal));
+        Assert.Contains("VerifiedInputWakeRecoveryBypassDuration", mainWindowSource);
+        Assert.Contains("_verifiedInputWakeRecoveryBypassUntilUtc", mainWindowSource);
+        Assert.Contains("ArmWakeRecoveryBypassAfterVerifiedInput(reason)", mainWindowSource);
+        Assert.Contains("ShouldBypassWakeRecoveryAfterVerifiedInput(now)", mainWindowSource);
+        Assert.Contains("wake recovery skipped after verified gamepad input", mainWindowSource);
+        Assert.Contains("DisplayWakeGuideToastHold", mainWindowSource);
+        Assert.Contains("QueueBatteryGuideToastAfterDisplayWake(e)", mainWindowSource);
+        Assert.Contains("FlushPendingDisplayWakeGuideToast(now)", mainWindowSource);
+        Assert.Contains("guide_toast_deferred_until_display_wake", mainWindowSource);
+        Assert.Contains("DisplayOffSettleWindow", mainWindowSource);
+        Assert.Contains("_lastDisplayOffStateAtUtc", mainWindowSource);
+        Assert.Contains("currentState is not (DisplayPowerState.Off or DisplayPowerState.Dimmed)", mainWindowSource);
+        Assert.Contains("ApplyPowerIdleMonitorState(mode, shouldPause)", mainWindowSource);
+        Assert.Contains("ApplyPowerIdleMonitorState(PowerIdleRuntimeMode.DisplayOffWakeOnly, shouldPause: true)", mainWindowSource);
+        Assert.Contains("ApplyPowerIdleMonitorState(PowerIdleRuntimeMode.WakeRecovery, shouldPause: true)", mainWindowSource);
+        Assert.Contains("StopPowerIdleGuideOnlyMonitor();", mainWindowSource);
+        Assert.Contains("StartPowerIdleRawInputActivityMonitor();", mainWindowSource);
+        Assert.Contains("ApplyPreDisplaySleepQuietMonitorState();", mainWindowSource);
+        Assert.Contains("StartScreenOnXInputActivityMonitor();", mainWindowSource);
+        Assert.Contains("StopNormalHidRawInputMonitors();", mainWindowSource);
+        Assert.Contains("_viewModel.SetDisplaySleepPreparationActive(shouldPause);", mainWindowSource);
+        Assert.Contains("_viewModel.SetDisplaySleepPreparationActive(true);", mainWindowSource);
+        Assert.Contains("EnterPreDisplaySleepQuietMode();", mainWindowSource);
+        Assert.Contains("private void EnterPreDisplaySleepQuietMode()", mainWindowSource);
+        Assert.DoesNotContain("StartPreDisplaySleepGuideOnlyMonitors", mainWindowSource);
+        var preDisplayQuietMethod = mainWindowSource[
+            mainWindowSource.IndexOf("private void EnterPreDisplaySleepQuietMode()", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("private void EnterExternalInputBlockedQuietMode()", StringComparison.Ordinal)];
+        Assert.Contains("ApplyPreDisplaySleepQuietMonitorState();", preDisplayQuietMethod);
+        Assert.DoesNotContain("ShouldRunPowerIdleGuideOnlyMonitoring(DateTimeOffset.UtcNow)", mainWindowSource);
+        Assert.DoesNotContain("StartPowerIdleGuideOnlyMonitor();", preDisplayQuietMethod);
+        Assert.Contains("now <= _normalGamepadMonitoringAllowedUntilUtc", mainWindowSource);
+        Assert.Contains("StartPowerIdleXInputActivityMonitor();", mainWindowSource);
+        Assert.Contains("StartPowerIdleRawInputActivityMonitor();", mainWindowSource);
+        var preDisplaySleepQuietMethod = mainWindowSource[
+            mainWindowSource.IndexOf("private void ApplyPreDisplaySleepQuietMonitorState()", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("private void StartPowerIdleGuideOnlyMonitor()", StringComparison.Ordinal)];
+        Assert.Contains("StopPowerIdleGuideOnlyMonitor();", preDisplaySleepQuietMethod);
+        Assert.Contains("StopNormalInputMonitors();", preDisplaySleepQuietMethod);
+        Assert.Contains("StopWakeOnlyInputMonitors();", preDisplaySleepQuietMethod);
+        Assert.DoesNotContain("StartPowerIdleGuideOnlyMonitor();", preDisplaySleepQuietMethod);
+        Assert.DoesNotContain("StartPowerIdleRawInputActivityMonitor();", preDisplaySleepQuietMethod);
+        Assert.DoesNotContain("StartPowerIdleXInputActivityMonitor();", preDisplaySleepQuietMethod);
+        var powerIdleXInputMethod = mainWindowSource[
+            mainWindowSource.IndexOf("private void StartPowerIdleXInputActivityMonitor()", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("private void StartPowerIdleRawInputActivityMonitor()", StringComparison.Ordinal)];
+        Assert.Contains("_xInputActivityMonitor.StartWakeOnly();", powerIdleXInputMethod);
+        Assert.DoesNotContain("_xInputActivityMonitor.Start();", powerIdleXInputMethod);
+        var shouldRunNormalMethod = mainWindowSource[
+            mainWindowSource.IndexOf("private bool ShouldRunNormalGamepadMonitoring", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("private bool IsAnyNormalGamepadMonitorRunning", StringComparison.Ordinal)];
+        Assert.Contains("_powerIdleMode == PowerIdleRuntimeMode.Active", shouldRunNormalMethod);
+        Assert.Contains("now <= _normalGamepadMonitoringAllowedUntilUtc", shouldRunNormalMethod);
+        Assert.DoesNotContain("return _powerIdleMode == PowerIdleRuntimeMode.Active ||", shouldRunNormalMethod);
+        var activeModeBranch = mainWindowSource[
+            mainWindowSource.IndexOf("case PowerIdleRuntimeMode.Active:", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("case PowerIdleRuntimeMode.PreDisplaySleep:", StringComparison.Ordinal)];
+        Assert.Contains("StopNormalHidRawInputMonitors();", activeModeBranch);
+        Assert.Contains("StartScreenOnXInputActivityMonitor();", activeModeBranch);
+        Assert.DoesNotContain("ApplyPreDisplaySleepQuietMonitorState();", activeModeBranch);
+        var startNormalInputMonitorsMethod = mainWindowSource[
+            mainWindowSource.IndexOf("private void StartNormalInputMonitors()", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("private void StartScreenOnXInputActivityMonitor()", StringComparison.Ordinal)];
+        Assert.Contains("StopNormalHidRawInputMonitors();", startNormalInputMonitorsMethod);
+        Assert.Contains("StartScreenOnXInputActivityMonitor();", startNormalInputMonitorsMethod);
+        Assert.DoesNotContain("StopNormalInputMonitors();", startNormalInputMonitorsMethod);
+        Assert.DoesNotContain("StopNormalInputMonitors(waitForExit: true);", preDisplayQuietMethod);
+        Assert.DoesNotContain("StopWakeOnlyInputMonitors(waitForExit: true);", preDisplayQuietMethod);
+        Assert.Contains("EnterExternalInputBlockedQuietMode();", mainWindowSource);
+        Assert.Contains("private void EnterExternalInputBlockedQuietMode()", mainWindowSource);
+        var externalInputBlockedQuietMethod = mainWindowSource[
+            mainWindowSource.IndexOf("private void EnterExternalInputBlockedQuietMode()", StringComparison.Ordinal)..
+            mainWindowSource.IndexOf("private void StopNormalInputMonitors(", StringComparison.Ordinal)];
+        Assert.Contains("StopNormalInputMonitors(waitForExit: true);", externalInputBlockedQuietMethod);
+        Assert.Contains("StopWakeOnlyInputMonitors(waitForExit: true);", externalInputBlockedQuietMethod);
+        Assert.Contains("_guideButtonMonitor.SetPowerIdlePollingPaused(false)", mainWindowSource);
+        Assert.Contains("_guideButtonMonitor.SetPowerIdlePollingPaused(true)", mainWindowSource);
+        Assert.Contains("_guideButtonMonitor.Start();", mainWindowSource);
+        Assert.Contains("ArmNormalGamepadMonitoring(\"startup\")", mainWindowSource);
+        Assert.Contains("ArmNormalGamepadMonitoring(\"local_mouse_input\", requireActiveMode: false)", mainWindowSource);
+        Assert.Contains("ArmNormalGamepadMonitoring(\"local_keyboard_input\", requireActiveMode: false)", mainWindowSource);
+        Assert.DoesNotContain("StartPowerIdleHumanInputMonitor();", mainWindowSource);
+        Assert.Contains("IsHumanInputOnlyMode", File.ReadAllText(Path.Combine(appRoot, "Services", "SteamControllerRawInputMonitorService.cs")));
+        Assert.Contains("BuildHumanInputOnlyRawInputDevices", File.ReadAllText(Path.Combine(appRoot, "Services", "SteamControllerRawInputMonitorService.cs")));
+        Assert.DoesNotContain("ArmNormalGamepadMonitoring(\"external_system_input\")", mainWindowSource);
+        Assert.DoesNotContain("TryArmNormalMonitoringFromExternalSystemInput(systemIdle, now)", mainWindowSource);
+        Assert.DoesNotContain("IsAnyDisplaySleepSensitiveNormalMonitorRunning()", mainWindowSource);
+        Assert.Contains("PreviewKeyDown=\"Window_PreviewKeyDown\"", mainWindowXaml);
+        Assert.DoesNotContain("ArmNormalGamepadMonitoring(\"display_on\")", mainWindowSource);
+        Assert.DoesNotContain("ArmNormalGamepadMonitoringFromSystemInputIfNeeded(systemIdle, DateTimeOffset.UtcNow)", mainWindowSource);
+        Assert.Contains("ShouldRunNormalGamepadMonitoring(DateTimeOffset.UtcNow)", mainWindowSource);
+        Assert.Contains("_steamRawInputMonitor.Start(_steamRawInputWindowHandle)", mainWindowSource);
+        Assert.Contains("_steamRawInputMonitor.StartWakeOnly(_steamRawInputWindowHandle)", mainWindowSource);
+        Assert.Contains("_xInputActivityMonitor.StartWakeOnly();", mainWindowSource);
+        Assert.Contains("!_xInputActivityMonitor.IsRunning || _xInputActivityMonitor.IsWakeOnlyMode", mainWindowSource);
+        Assert.Contains("_xInputActivityMonitor.IsRunning && !_xInputActivityMonitor.IsWakeOnlyMode", mainWindowSource);
+        Assert.Contains("_xInputActivityMonitor.IsRunning", mainWindowSource);
+        Assert.Contains("GlobalHumanInputReceived += SteamRawInputMonitor_GlobalHumanInputReceived", mainWindowSource);
+        Assert.Contains("GlobalHumanInputReceived -= SteamRawInputMonitor_GlobalHumanInputReceived", mainWindowSource);
+        Assert.Contains("private void SteamRawInputMonitor_GlobalHumanInputReceived", mainWindowSource);
+        Assert.Contains("ArmNormalGamepadMonitoring(e.Source, requireActiveMode: false)", mainWindowSource);
+        Assert.Contains("_guideButtonMonitor.Stop();", mainWindowSource);
+        Assert.Contains("_guideButtonMonitor.StopForPowerIdle();", mainWindowSource);
+        Assert.Contains("_steamRawInputMonitor.Stop();", mainWindowSource);
+        Assert.Contains("_xInputActivityMonitor.Stop();", mainWindowSource);
+        Assert.Contains("_xInputActivityMonitor.StopForPowerIdle();", mainWindowSource);
+        Assert.DoesNotContain("_steamRawInputMonitor.Start(_windowMessageSource.Handle);", mainWindowSource);
+        Assert.DoesNotContain("_guideButtonMonitor.Start();\r\n        _xInputActivityMonitor.Start();", mainWindowSource);
+        Assert.DoesNotContain("case PowerIdleRuntimeMode.ExternalInputBlocked:\r\n                _viewModel.SetDisplaySleepPreparationActive(false);", mainWindowSource);
+        Assert.DoesNotContain("StartNormalInputMonitors(shouldPause: false);", mainWindowSource);
+        Assert.Contains("display_sleep_external_input_suspected", mainWindowSource);
+        Assert.Contains("display_sleep_external_input_blocked", mainWindowSource);
+        Assert.Contains("PowerIdleDebugLog.Write(", mainWindowSource);
+        Assert.Contains("GetRawInputModeForDiagnostics()", mainWindowSource);
+        Assert.Contains("GetXInputModeForDiagnostics()", mainWindowSource);
+        Assert.Contains("GetNormalGamepadMonitoringRemaining(now)", mainWindowSource);
+        Assert.Contains("rawInputMode=", File.ReadAllText(Path.Combine(
+            appRoot,
+            "Services",
+            "PowerIdleDebugLog.cs")));
+        Assert.Contains("xInputMode=", File.ReadAllText(Path.Combine(
+            appRoot,
+            "Services",
+            "PowerIdleDebugLog.cs")));
+        Assert.Contains("normalMonitorRemaining=", File.ReadAllText(Path.Combine(
+            appRoot,
+            "Services",
+            "PowerIdleDebugLog.cs")));
+        Assert.Contains("IsRegistered", mainWindowSource);
+        Assert.Contains("IsWakeOnlyMode", mainWindowSource);
+        Assert.Contains("IsPowerIdlePollingPausedForDiagnostics", mainWindowSource);
+        Assert.DoesNotContain("PausePowerIdleHidMonitoring()", mainWindowSource);
+        Assert.DoesNotContain("ResumePowerIdleHidMonitoring()", mainWindowSource);
+        Assert.DoesNotContain("PausePowerIdleInputMonitoring()", mainWindowSource);
+        Assert.DoesNotContain("ResumePowerIdleInputMonitoring()", mainWindowSource);
         Assert.Contains("GetCurrentSleepTimeout", systemDisplayIdleTimeoutSource);
         Assert.Contains("GetCurrentDisplayOrSleepTimeout", systemDisplayIdleTimeoutSource);
         Assert.Contains("PowerWriteACValueIndex", systemDisplayIdleTimeoutSource);
@@ -1316,6 +1548,7 @@ public sealed class MainWindowXamlBindingTests
         Assert.DoesNotContain(
             "SystemIdleMonitor.GetIdleDuration(),\r\n            isProbeRunning: false,\r\n            isRefreshRunning: false",
             mainWindowSource);
+        Assert.DoesNotContain("_isPowerIdleInputMonitoringPaused", mainWindowSource);
     }
 
     [Fact]
@@ -1730,6 +1963,225 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
+    public void GamepadInput_MarksLocalActivityBeforeGuideSuppressionPaths()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+
+        var guidePressedMethod = source[
+            source.IndexOf("private void GuideButtonMonitor_GuideButtonPressed", StringComparison.Ordinal)..
+            source.IndexOf("private void GuideButtonMonitor_InputReportReceived", StringComparison.Ordinal)];
+        var inputReportMethod = source[
+            source.IndexOf("private void GuideButtonMonitor_InputReportReceived", StringComparison.Ordinal)..
+            source.IndexOf("private void GuideButtonHidMonitor_InputActivityReceived", StringComparison.Ordinal)];
+        var hidInputActivityMethod = source[
+            source.IndexOf("private void GuideButtonHidMonitor_InputActivityReceived", StringComparison.Ordinal)..
+            source.IndexOf("private void GuideButtonMonitor_InputActivityReceived", StringComparison.Ordinal)];
+        var inputActivityMethod = source[
+            source.IndexOf("private void GuideButtonMonitor_InputActivityReceived", StringComparison.Ordinal)..
+            source.IndexOf("private void XInputActivityMonitor_InputActivityReceived", StringComparison.Ordinal)];
+        var xInputActivityMethod = source[
+            source.IndexOf("private void XInputActivityMonitor_InputActivityReceived", StringComparison.Ordinal)..
+            source.IndexOf("private void HandleBatteryGuideInputReport", StringComparison.Ordinal)];
+        var shouldTreatInputReportMethod = source[
+            source.IndexOf("private bool ShouldTreatInputReportAsIntentionalGamepadActivity", StringComparison.Ordinal)..
+            source.IndexOf("private bool TryHandleDefaultGuideButtonToastFromInputReport", StringComparison.Ordinal)];
+        var defaultGuideInputReportMethod = source[
+            source.IndexOf("private bool TryHandleDefaultGuideButtonToastFromInputReport", StringComparison.Ordinal)..
+            source.IndexOf("private void WriteGamepadActivityDiagnosticIfNeeded", StringComparison.Ordinal)];
+
+        Assert.Contains(
+            "_steamRawInputMonitor.InputActivityReceived += GuideButtonMonitor_InputActivityReceived",
+            source);
+        Assert.Contains(
+            "_guideButtonMonitor.InputActivityReceived += GuideButtonHidMonitor_InputActivityReceived",
+            source);
+        Assert.Contains(
+            "_steamRawInputMonitor.InputActivityReceived -= GuideButtonMonitor_InputActivityReceived",
+            source);
+        Assert.Contains(
+            "_guideButtonMonitor.InputActivityReceived -= GuideButtonHidMonitor_InputActivityReceived",
+            source);
+        Assert.Contains("_xInputActivityMonitor.Start();", source);
+        Assert.Contains(
+            "_xInputActivityMonitor.InputActivityReceived += XInputActivityMonitor_InputActivityReceived",
+            source);
+        Assert.Contains(
+            "_xInputActivityMonitor.InputActivityReceived -= XInputActivityMonitor_InputActivityReceived",
+            source);
+        Assert.Contains("_xInputActivityMonitor.Dispose();", source);
+        Assert.Contains("WriteGamepadActivityDiagnosticIfNeeded(", source);
+        Assert.Contains("\"hid_button_input\"", source);
+        Assert.Contains("\"hid_state_telemetry\"", source);
+        Assert.Contains("\"steam_raw_input_telemetry\"", source);
+        Assert.Contains("\"xinput_button_input\"", source);
+        Assert.Contains("\"xinput_telemetry\"", source);
+        Assert.DoesNotContain("\"hid_input_activity\"", source);
+        Assert.Contains("\"xinput\"", File.ReadAllText(Path.Combine(
+            Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory,
+                "..",
+                "..",
+                "..",
+                "..",
+                "BluetoothBatteryWidget.App")),
+            "Services",
+            "XInputActivityMonitorService.cs")));
+        Assert.Contains("ShowBatteryGuideAfterGamepadActivityRefreshAsync(e)", guidePressedMethod);
+        Assert.DoesNotContain("RequestRefreshAfterGamepadActivity();", guidePressedMethod);
+        Assert.Contains("MarkIntentionalGamepadInputAndExitQuietMode(\"guide_button_press\")", guidePressedMethod);
+        Assert.Contains("ShouldSuppressGuideButtonPressAfterInputReportFallback(e)", guidePressedMethod);
+        Assert.Contains("ShouldTreatInputReportAsIntentionalGamepadActivity(e)", inputReportMethod);
+        Assert.Contains("TryHandleDefaultGuideButtonToastFromInputReport(e)", inputReportMethod);
+        Assert.True(
+            inputReportMethod.IndexOf("ShouldTreatInputReportAsIntentionalGamepadActivity(e)", StringComparison.Ordinal) <
+            inputReportMethod.IndexOf("MarkIntentionalGamepadInputAndExitQuietMode(\"hid_button_input\")", StringComparison.Ordinal));
+        Assert.True(
+            inputReportMethod.IndexOf("MarkIntentionalGamepadInputAndExitQuietMode(\"hid_button_input\")", StringComparison.Ordinal) <
+            inputReportMethod.IndexOf("TryWakeDisplayAfterVerifiedInput(\"hid_button_input\")", StringComparison.Ordinal));
+        Assert.True(
+            inputReportMethod.IndexOf("TryWakeDisplayAfterVerifiedInput(\"hid_button_input\")", StringComparison.Ordinal) <
+            inputReportMethod.IndexOf("RequestRefreshAfterGamepadActivity();", StringComparison.Ordinal));
+        Assert.Contains("if (!isDisplayOffWake)", inputReportMethod);
+        Assert.DoesNotContain("_viewModel.MarkGamepadTelemetryActivity();", inputReportMethod);
+        Assert.DoesNotContain("TryWakeDisplayAfterVerifiedInput(\"hid_button_input\");\r\n                }\r\n                else", inputReportMethod);
+        Assert.True(
+            inputReportMethod.IndexOf("RequestRefreshAfterGamepadActivity();", StringComparison.Ordinal) <
+            inputReportMethod.IndexOf("HandleBatteryGuideInputReport(e);", StringComparison.Ordinal));
+        Assert.Contains("_viewModel.MarkGamepadTelemetryActivity();", hidInputActivityMethod);
+        Assert.Contains("RequestTelemetryRefreshIfAllowed();", hidInputActivityMethod);
+        Assert.Contains("TryWakeDisplayAfterVerifiedInput(\"steam_raw_input_activity\")", inputActivityMethod);
+        Assert.Contains("MarkIntentionalGamepadInputAndExitQuietMode(eventName);", xInputActivityMethod);
+        Assert.Contains("_viewModel.MarkGamepadTelemetryActivity();", xInputActivityMethod);
+        Assert.Contains("var countsAsUserActivity = e.CountsAsUserActivity || e.HasStick;", xInputActivityMethod);
+        Assert.DoesNotContain("e.HasStick && !isDisplayOffWake", xInputActivityMethod);
+        Assert.True(
+            xInputActivityMethod.IndexOf("MarkIntentionalGamepadInputAndExitQuietMode(eventName);", StringComparison.Ordinal) <
+            xInputActivityMethod.IndexOf("TryWakeDisplayAfterVerifiedInput(eventName)", StringComparison.Ordinal));
+        Assert.Contains("if (e.IsWakeEligible)", xInputActivityMethod);
+        Assert.Contains("TryWakeDisplayAfterVerifiedInput(eventName)", xInputActivityMethod);
+        Assert.Contains("RequestRefreshAfterGamepadActivity();", xInputActivityMethod);
+        Assert.Contains("RequestTelemetryRefreshIfAllowed();", xInputActivityMethod);
+        Assert.Contains("GamepadActivityRefreshCooldown", source);
+        Assert.Contains("TelemetryPowerIdleUpdateCooldown", source);
+        Assert.Contains("_lastTelemetryPowerIdleUpdateAtUtc", source);
+        Assert.Contains("UpdatePowerIdleGuideMonitoring();", source);
+        Assert.Contains("private void MarkIntentionalGamepadInputAndExitQuietMode", source);
+        Assert.Contains("private void NotifyDisplayIdleTimerAfterVerifiedGamepadInput", source);
+        Assert.Contains("GamepadDisplayIdlePulseCooldown", source);
+        Assert.Contains("SystemDisplayPower.TryNotifyDisplayUserActivity()", source);
+        Assert.Contains("display_idle_timer_pulsed", source);
+        Assert.Contains("private void ArmNormalGamepadMonitoring(string reason, bool requireActiveMode = true)", source);
+        Assert.Contains("_naturalSleepRetryBlockedUntilUtc = DateTimeOffset.MinValue;", source);
+        Assert.DoesNotContain("_naturalSleepRetryBlockedUntilUtc = DateTimeOffset.UtcNow + QuietModeIntentionalInputCooldown", source);
+        Assert.Contains("intentional_gamepad_input", source);
+        Assert.Contains("private async Task ShowBatteryGuideAfterGamepadActivityRefreshAsync", source);
+        Assert.Contains("FindGuideButtonDevice(e) is null", source);
+        Assert.Contains("RefreshAfterGamepadActivityAsync(force: true)", source);
+        Assert.Contains("_lastPowerIdleInputReportByDevice", source);
+        Assert.Contains("_lastDefaultGuideButtonPressedByInputReport", source);
+        Assert.Contains("_inputReportGuideFallbackSuppressRegularUntilByDevice", source);
+        Assert.DoesNotContain("GuideButtonReportParser.TryParseGuideButton(e.DeviceKind, e.Report", shouldTreatInputReportMethod);
+        Assert.Contains("BatteryGuideTriggerParser.HasButtonDownEdgeForPowerIdleActivity(", shouldTreatInputReportMethod);
+        Assert.DoesNotContain("BatteryGuideTriggerParser.CreateNeutralReportForCapture(e.DeviceKind, e.Report)", shouldTreatInputReportMethod);
+        Assert.DoesNotContain("BatteryGuideTriggerParser.TryCapture(e.DeviceKind, previousReport, e.Report, out _)", shouldTreatInputReportMethod);
+        Assert.DoesNotContain("BatteryGuideTriggerParser.TryCaptureButtonsOnly(e.DeviceKind, previousReport, e.Report, out _)", shouldTreatInputReportMethod);
+        Assert.Contains("ShouldTreatInputReportAsDefaultGuideButtonPress(e)", defaultGuideInputReportMethod);
+        Assert.Contains("GuideButtonReportParser.TryParseGuideButton(e.DeviceKind, e.Report, out var isPressed)", defaultGuideInputReportMethod);
+        Assert.Contains("GuideButtonGesture.ShortPress", defaultGuideInputReportMethod);
+        Assert.Contains("guide_button_input_report", defaultGuideInputReportMethod);
+        Assert.Contains("ShowBatteryGuideAfterGamepadActivityRefreshAsync(args)", defaultGuideInputReportMethod);
+        Assert.Contains("MarkGuideButtonInputReportFallbackHandled(args)", defaultGuideInputReportMethod);
+        Assert.Contains("input_report_fallback_press_suppressed", source);
+        Assert.DoesNotContain("if (e.DeviceKind == GuideButtonDeviceKind.DualSense)\r\n        {\r\n            return true;\r\n        }", source);
+
+        var markIntentionalMethod = source[
+            source.IndexOf("private void MarkIntentionalGamepadInputAndExitQuietMode", StringComparison.Ordinal)..
+            source.IndexOf("private void SteamRawInputMonitor_GlobalHumanInputReceived", StringComparison.Ordinal)];
+        Assert.Contains("NotifyDisplayIdleTimerAfterVerifiedGamepadInput(reason);", markIntentionalMethod);
+        Assert.True(
+            markIntentionalMethod.IndexOf("_viewModel.MarkIntentionalGamepadActivity();", StringComparison.Ordinal) <
+            markIntentionalMethod.IndexOf("NotifyDisplayIdleTimerAfterVerifiedGamepadInput(reason);", StringComparison.Ordinal));
+        Assert.True(
+            markIntentionalMethod.IndexOf("NotifyDisplayIdleTimerAfterVerifiedGamepadInput(reason);", StringComparison.Ordinal) <
+            markIntentionalMethod.IndexOf("ArmNormalGamepadMonitoring(reason, requireActiveMode: false);", StringComparison.Ordinal));
+        Assert.Contains("ArmNormalGamepadMonitoring(reason, requireActiveMode: false);", markIntentionalMethod);
+        Assert.True(
+            markIntentionalMethod.IndexOf("ArmNormalGamepadMonitoring(reason, requireActiveMode: false);", StringComparison.Ordinal) <
+            markIntentionalMethod.IndexOf("ApplyPowerIdleMonitorState(PowerIdleRuntimeMode.Active, shouldPause: false)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GamepadInputReports_AreForwardedFromHidAndSteamRawInputMonitors()
+    {
+        var appRoot = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App"));
+        var guideMonitorSource = File.ReadAllText(Path.Combine(appRoot, "Services", "GuideButtonMonitorService.cs"));
+        var steamRawInputSource = File.ReadAllText(Path.Combine(appRoot, "Services", "SteamControllerRawInputMonitorService.cs"));
+        var keyboardInputMethod = steamRawInputSource[
+            steamRawInputSource.IndexOf("private void ProcessKeyboardInput", StringComparison.Ordinal)..
+            steamRawInputSource.IndexOf("private void ProcessMouseInput", StringComparison.Ordinal)];
+        var mouseInputMethod = steamRawInputSource[
+            steamRawInputSource.IndexOf("private void ProcessMouseInput", StringComparison.Ordinal)..
+            steamRawInputSource.IndexOf("private void ProcessHidInput", StringComparison.Ordinal)];
+        var suppressedHidBlock = steamRawInputSource[
+            steamRawInputSource.IndexOf("if (ShouldSuppressGuideInputReport(device, report))", StringComparison.Ordinal)..
+            steamRawInputSource.IndexOf("InputReportReceived?.Invoke(", StringComparison.Ordinal)];
+
+        Assert.Contains("InputReportReceived?.Invoke(", guideMonitorSource);
+        Assert.Contains("new GuideButtonInputReportEventArgs(", guideMonitorSource);
+        Assert.Contains("InputActivityReceived?.Invoke(", guideMonitorSource);
+        Assert.Contains("RaiseInputActivityReceived(endpoint);", guideMonitorSource);
+        Assert.Contains("SetPowerIdlePollingPaused(bool isPaused)", guideMonitorSource);
+        Assert.Contains("!IsPowerIdlePollingPaused()", guideMonitorSource);
+        Assert.Contains("out var timedOut", guideMonitorSource);
+        Assert.Contains("if (!timedOut)", guideMonitorSource);
+        Assert.Contains("\"monitor_read_failed\"", guideMonitorSource);
+        Assert.Contains("\"monitor_idle_quiet\"", guideMonitorSource);
+        Assert.Contains("staying open and waiting", guideMonitorSource);
+        Assert.DoesNotContain("\"monitor_idle_timeout\"", guideMonitorSource);
+        Assert.Contains("InputReportReceived?.Invoke(", steamRawInputSource);
+        Assert.Contains("GuideButtonDeviceKind.SteamController", steamRawInputSource);
+        Assert.Contains("new GuideButtonInputReportEventArgs(", steamRawInputSource);
+        Assert.Contains("InputActivityReceived?.Invoke(", steamRawInputSource);
+        Assert.Contains("GlobalHumanInputReceived?.Invoke(", steamRawInputSource);
+        Assert.Contains("TryCreateGlobalHumanInputEvent(buffer, headerSize, header.Type, out var globalInput)", steamRawInputSource);
+        Assert.Contains("!isSteamCandidate", steamRawInputSource);
+        Assert.Contains("!isWakeOnly", steamRawInputSource);
+        Assert.Contains("StartWakeOnly(IntPtr windowHandle)", steamRawInputSource);
+        Assert.Contains("BuildWakeOnlyRawInputDevices", steamRawInputSource);
+        Assert.True(
+            steamRawInputSource.IndexOf("TryCreateGlobalHumanInputEvent(buffer, headerSize, header.Type, out var globalInput)", StringComparison.Ordinal) <
+            steamRawInputSource.IndexOf("if (!TryResolveSteamDevice(deviceName", StringComparison.Ordinal));
+        Assert.True(
+            steamRawInputSource.IndexOf("var isSteamCandidate = IsSteamCandidateDeviceName(deviceName, knownSteamDevices)", StringComparison.Ordinal) <
+            steamRawInputSource.IndexOf("TryCreateGlobalHumanInputEvent(buffer, headerSize, header.Type, out var globalInput)", StringComparison.Ordinal));
+        Assert.Contains("TryGetHidInputActivity(device, report, out var countsAsUserActivity, out var isWakeEligible)", steamRawInputSource);
+        Assert.Contains("BatteryGuideTriggerParser.TryCaptureButtonsOnly(", steamRawInputSource);
+        Assert.Contains("raw_keyboard_seen", steamRawInputSource);
+        Assert.Contains("raw_mouse_button_seen", steamRawInputSource);
+        Assert.Contains("raw_mouse_move_seen", steamRawInputSource);
+        Assert.DoesNotContain("ShouldRaiseMouseMovementActivity(device, mouse.LastX, mouse.LastY)", mouseInputMethod);
+        Assert.DoesNotContain("ComputeRawMouseMovementDistance(int deltaX, int deltaY)", steamRawInputSource);
+        Assert.DoesNotContain("RaiseInputActivityReceived(device);", keyboardInputMethod);
+        Assert.DoesNotContain("RaiseInputActivityReceived(device);", mouseInputMethod);
+        Assert.DoesNotContain("RaiseInputActivityReceived(device);", suppressedHidBlock);
+        Assert.Contains("new GuideButtonKnownDevice(", steamRawInputSource);
+        Assert.DoesNotContain("IsSteamRawInputVidPid(vendorId, productId) &&\r\n            knownDevices.Count == 1", steamRawInputSource);
+    }
+
+    [Fact]
     public void SteamControllerGuideToast_SuppressesConnectionAndRefreshCarryoverSignals()
     {
         var source = File.ReadAllText(Path.Combine(
@@ -1745,16 +2197,44 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("SteamGuideToastRefreshSuppressDuration", source);
         Assert.Contains("RefreshFromUserCommandAsync()", source);
         Assert.Contains("SuppressSteamGuideToasts(SteamGuideToastRefreshSuppressDuration, \"manual_refresh_started\")", source);
+        Assert.Contains("_viewModel.RefreshAsync(forceFullRefresh: true)", source);
         Assert.Contains("SuppressSteamGuideToasts(SteamGuideToastRefreshSuppressDuration, \"manual_refresh_completed\")", source);
         Assert.Contains("SuppressGuideInputForKnownDevices(duration, reason)", source);
         Assert.Contains("steam_battery_toast_refresh_suppressed", source);
-        Assert.Contains("_trayRefreshMenuItem.Click += (_, _) => Dispatcher.Invoke(() => _ = RefreshFromUserCommandAsync())", source);
+        Assert.Contains("() => Dispatcher.Invoke(() => _ = RefreshFromUserCommandAsync())", source);
         Assert.Contains("UpdateSteamGuideConnectionSuppressState(item, \"steam_device_added\")", source);
         Assert.Contains("ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, \"guide_button_press\")", source);
         Assert.Contains("ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, \"custom_trigger_input\")", source);
         Assert.Contains("ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, \"secondary_fallback\")", source);
         Assert.Contains("steam_guide_toast_refresh_suppressed", source);
         Assert.Contains("steam_guide_toast_startup_suppressed", source);
+    }
+
+    [Fact]
+    public void AutomaticBatteryToast_WritesDiagnosticEventForManualIdleVerification()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App",
+            "MainWindow.xaml.cs"));
+
+        var method = source[
+            source.IndexOf("private void CheckLowBatteryToast", StringComparison.Ordinal)..
+            source.IndexOf("private bool ShouldSuppressSteamBatteryToastDuringSettling", StringComparison.Ordinal)];
+
+        var toastIndex = method.IndexOf("ShowBatteryToast(item.Snapshot, automatic: true);", StringComparison.Ordinal);
+        var logIndex = method.IndexOf("\"automatic_battery_toast_shown\"", StringComparison.Ordinal);
+
+        Assert.True(toastIndex >= 0);
+        Assert.True(logIndex > toastIndex);
+        Assert.Contains("item.Category.ToString()", method);
+        Assert.Contains("item.Address", method);
+        Assert.Contains("item.DisplayName", method);
+        Assert.Contains("threshold={targetThreshold}", method);
     }
 
     [Fact]

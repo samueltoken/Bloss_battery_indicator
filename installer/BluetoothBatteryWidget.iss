@@ -1,6 +1,6 @@
 ﻿#define MyAppName "Bloss"
 #ifndef AppVersion
-  #define AppVersion "1.0.7"
+  #define AppVersion "1.0.8"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\artifacts\staging\installer-publish"

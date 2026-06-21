@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Text.Json;
+using System.Diagnostics;
 using BluetoothBatteryWidget.Core.Models;
 using BluetoothBatteryWidget.Core.Services;
 
@@ -56,8 +57,10 @@ public sealed class WidgetSettingsStore
             var loaded = JsonSerializer.Deserialize<WidgetSettings>(json, JsonOptions);
             return NormalizeLoaded(loaded ?? new WidgetSettings());
         }
-        catch
+        catch (Exception ex)
         {
+            Trace.TraceWarning($"settings_load_failed path={_settingsPath} error={ex.GetType().Name}: {ex.Message}");
+            BackupUnreadableSettingsFile();
             return new WidgetSettings();
         }
     }
@@ -81,6 +84,32 @@ public sealed class WidgetSettingsStore
         var directory = Path.GetDirectoryName(_settingsPath)!;
         Directory.CreateDirectory(directory);
         File.Copy(_legacySettingsPath, _settingsPath, overwrite: false);
+    }
+
+    private void BackupUnreadableSettingsFile()
+    {
+        try
+        {
+            if (!File.Exists(_settingsPath))
+            {
+                return;
+            }
+
+            var backupPath = BuildUnreadableBackupPath(_settingsPath, DateTimeOffset.Now);
+            File.Copy(_settingsPath, backupPath, overwrite: false);
+        }
+        catch
+        {
+            // Loading must still recover even when the backup cannot be written.
+        }
+    }
+
+    internal static string BuildUnreadableBackupPath(string settingsPath, DateTimeOffset now)
+    {
+        var directory = Path.GetDirectoryName(settingsPath) ?? string.Empty;
+        var fileName = Path.GetFileName(settingsPath);
+        var timestamp = now.ToString("yyyyMMdd-HHmmss-fff");
+        return Path.Combine(directory, $"{fileName}.corrupt-{timestamp}.bak");
     }
 
     private static WidgetSettings Normalize(WidgetSettings settings)
