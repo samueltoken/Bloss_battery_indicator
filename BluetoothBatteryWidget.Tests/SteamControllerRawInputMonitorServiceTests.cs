@@ -102,6 +102,27 @@ public sealed class SteamControllerRawInputMonitorServiceTests
     }
 
     [Fact]
+    public void RawInputHidPath_DoesNotPromoteInitialPressedStateAsGuidePress()
+    {
+        Assert.False(SteamControllerRawInputMonitorService.ShouldRaiseRawHidGuidePressEdge(
+            hasPrevious: false,
+            previousPressed: false,
+            currentPressed: true));
+        Assert.False(SteamControllerRawInputMonitorService.ShouldRaiseRawHidGuidePressEdge(
+            hasPrevious: true,
+            previousPressed: false,
+            currentPressed: false));
+        Assert.True(SteamControllerRawInputMonitorService.ShouldRaiseRawHidGuidePressEdge(
+            hasPrevious: true,
+            previousPressed: false,
+            currentPressed: true));
+        Assert.False(SteamControllerRawInputMonitorService.ShouldRaiseRawHidGuidePressEdge(
+            hasPrevious: true,
+            previousPressed: true,
+            currentPressed: true));
+    }
+
+    [Fact]
     public void RawInputHidPath_DoesNotApplySteamFirstInputGuardInWakeOnlyMode()
     {
         var appRoot = Path.Combine(

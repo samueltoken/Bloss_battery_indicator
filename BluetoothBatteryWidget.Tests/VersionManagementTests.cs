@@ -337,7 +337,7 @@ public sealed class VersionManagementTests
         Assert.Contains("Load_MigratesLegacyPowerIdleOneMinuteDefaultToWindowsAuto", verifyV107Ready);
         Assert.Contains("Load_PreservesCurrentSchemaPowerIdleOneMinuteUserChoice", verifyV107Ready);
         Assert.Contains("PowerIdleSourceSafetyTests.cs", verifyV107Ready);
-        Assert.Contains("TryNotifyDisplayUserActivity", verifyV107Ready);
+        Assert.Contains("Assert.DoesNotContain(\"TryNotifyDisplayUserActivity\"", verifyV107Ready);
         Assert.Contains("ES_CONTINUOUS", verifyV107Ready);
         Assert.Contains("ES_SYSTEM_REQUIRED", verifyV107Ready);
         Assert.Contains("PowerSetRequest", verifyV107Ready);

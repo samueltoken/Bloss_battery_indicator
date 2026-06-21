@@ -4,6 +4,8 @@ namespace BluetoothBatteryWidget.App.Services;
 
 internal static class GuideButtonEventLog
 {
+    internal const long MaxLogBytes = 4L * 1024L * 1024L;
+    internal const long KeepLogBytes = 2L * 1024L * 1024L;
     private static readonly object Sync = new();
     private static readonly string EventsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -32,6 +34,7 @@ internal static class GuideButtonEventLog
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(EventsPath)!);
                 File.AppendAllText(EventsPath, line + Environment.NewLine);
+                DiagnosticLogFileTrimmer.TrimIfNeeded(EventsPath, MaxLogBytes, KeepLogBytes);
             }
         }
         catch

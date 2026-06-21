@@ -5,6 +5,8 @@ namespace BluetoothBatteryWidget.App.Services;
 
 internal static class PowerIdleDebugLog
 {
+    internal const long MaxLogBytes = 2L * 1024L * 1024L;
+    internal const long KeepLogBytes = 1L * 1024L * 1024L;
     private static readonly object Sync = new();
     private static readonly string EventsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -24,6 +26,7 @@ internal static class PowerIdleDebugLog
         bool isGuideCaptureActive,
         bool guideRunning,
         bool guidePollingPaused,
+        bool guideInitialPressedAllowed,
         bool rawInputRegistered,
         bool xInputRunning,
         string rawInputMode,
@@ -47,6 +50,7 @@ internal static class PowerIdleDebugLog
                 $"guideCapture={isGuideCaptureActive}",
                 $"guideRunning={guideRunning}",
                 $"guidePollingPaused={guidePollingPaused}",
+                $"guideInitialPressedAllowed={guideInitialPressedAllowed}",
                 $"rawInputRegistered={rawInputRegistered}",
                 $"xInputRunning={xInputRunning}",
                 $"rawInputMode={rawInputMode}",
@@ -57,6 +61,7 @@ internal static class PowerIdleDebugLog
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(EventsPath)!);
                 File.AppendAllText(EventsPath, line + Environment.NewLine);
+                DiagnosticLogFileTrimmer.TrimIfNeeded(EventsPath, MaxLogBytes, KeepLogBytes);
             }
         }
         catch

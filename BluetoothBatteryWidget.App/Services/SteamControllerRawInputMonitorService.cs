@@ -50,14 +50,13 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
     private static readonly TimeSpan RawHidCautiousReleaseStabilityDelay = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan RawHidStalePressedResetGap = TimeSpan.FromMilliseconds(1800);
     private static readonly TimeSpan RawHidMissedReleaseRecoveryGap = TimeSpan.FromMilliseconds(700);
-    private static readonly TimeSpan RawHidFirstInputSettlingDuration = TimeSpan.FromSeconds(6);
 
     private readonly object _sync = new();
     private readonly Dictionary<string, DateTimeOffset> _lastPressByAddress = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, DateTimeOffset> _guideInputSuppressedUntilByAddress = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _seenRawHidInputByAddress = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]> _lastRawHidReportByAddress = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> _lastRawHidGuidePressedByAddress = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _rawHidGuideNeutralReportCountByAddress = new(StringComparer.OrdinalIgnoreCase);
     private readonly SteamRawHidGuideButtonStateTracker _rawHidGuideButtonStateTracker = new(
         ShortPressMinimumDuration,
         ShortPressMaximumDuration,
@@ -158,16 +157,17 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         }
     }
 
-    public void SuppressGuideInputForKnownDevices(TimeSpan duration, string reason)
+    public bool HasStableNeutralGuideBaseline(string address)
     {
-        if (duration <= TimeSpan.Zero)
+        address = AddressNormalizer.NormalizeAddress(address);
+        if (string.IsNullOrWhiteSpace(address))
         {
-            return;
+            return false;
         }
 
-        foreach (var device in ReadKnownSteamDevices())
+        lock (_sync)
         {
-            SuppressGuideInput(device.Address, duration, reason, device.DisplayName);
+            return _rawHidGuideNeutralReportCountByAddress.TryGetValue(address, out var count) && count >= 2;
         }
     }
 
@@ -259,10 +259,10 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             _isRegistered = false;
             _monitorMode = RawInputMonitorMode.None;
             _lastPressByAddress.Clear();
-            _guideInputSuppressedUntilByAddress.Clear();
             _seenRawHidInputByAddress.Clear();
             _lastRawHidReportByAddress.Clear();
             _lastRawHidGuidePressedByAddress.Clear();
+            _rawHidGuideNeutralReportCountByAddress.Clear();
             _rawHidGuideButtonStateTracker.Clear();
         }
 
@@ -324,10 +324,10 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             _monitorMode = RawInputMonitorMode.None;
             _knownDeviceProvider = static () => [];
             _lastPressByAddress.Clear();
-            _guideInputSuppressedUntilByAddress.Clear();
             _seenRawHidInputByAddress.Clear();
             _lastRawHidReportByAddress.Clear();
             _lastRawHidGuidePressedByAddress.Clear();
+            _rawHidGuideNeutralReportCountByAddress.Clear();
             _rawHidGuideButtonStateTracker.Clear();
             _lastDiagnosticByKey.Clear();
         }
@@ -589,36 +589,6 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
                 isWakeEligible));
     }
 
-    private void SuppressGuideInput(string address, TimeSpan duration, string reason, string displayName)
-    {
-        address = AddressNormalizer.NormalizeAddress(address);
-        if (string.IsNullOrWhiteSpace(address) || duration <= TimeSpan.Zero)
-        {
-            return;
-        }
-
-        var now = DateTimeOffset.Now;
-        var suppressUntil = now + duration;
-        lock (_sync)
-        {
-            if (!_guideInputSuppressedUntilByAddress.TryGetValue(address, out var existingUntil) ||
-                suppressUntil > existingUntil)
-            {
-                _guideInputSuppressedUntilByAddress[address] = suppressUntil;
-            }
-
-            _lastPressByAddress.Remove(address);
-            _rawHidGuideButtonStateTracker.ClearActivity(address, now);
-            _lastRawHidGuidePressedByAddress.Remove(address);
-        }
-
-        WriteDiagnostic(
-            $"raw_hid_input_guard_armed:{address}:{reason}",
-            "raw_hid_input_guard_armed",
-            new GuideButtonKnownDevice(address, displayName, GuideButtonDeviceKind.SteamController),
-            $"Steam Controller raw HID input guard armed. reason={reason}; durationMs={(int)duration.TotalMilliseconds}.");
-    }
-
     private bool ShouldSuppressGuideInputReport(GuideButtonKnownDevice device, ReadOnlySpan<byte> report)
     {
         if (IsWakeOnlyMode)
@@ -638,40 +608,33 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
         }
 
         var now = DateTimeOffset.Now;
-        var firstInputForDevice = false;
-        DateTimeOffset suppressUntil;
+        bool isFirstInputForDevice;
+        var reportCopy = report.ToArray();
+        var hasGuideState = GuideButtonReportParser.TryParseGuideButton(
+            device.DeviceKind,
+            report,
+            out var pressed);
         lock (_sync)
         {
-            firstInputForDevice = _seenRawHidInputByAddress.Add(address);
-            if (firstInputForDevice)
+            isFirstInputForDevice = _seenRawHidInputByAddress.Add(address);
+            if (!isFirstInputForDevice)
             {
-                var firstInputSuppressUntil = now + RawHidFirstInputSettlingDuration;
-                if (!_guideInputSuppressedUntilByAddress.TryGetValue(address, out var existingUntil) ||
-                    firstInputSuppressUntil > existingUntil)
-                {
-                    _guideInputSuppressedUntilByAddress[address] = firstInputSuppressUntil;
-                }
-
-                _lastPressByAddress.Remove(address);
-                _lastRawHidReportByAddress.Remove(address);
-                _lastRawHidGuidePressedByAddress.Remove(address);
-                _rawHidGuideButtonStateTracker.ClearActivity(address, now);
-            }
-
-            if (!_guideInputSuppressedUntilByAddress.TryGetValue(address, out suppressUntil))
-            {
-                return false;
-            }
-
-            if (now >= suppressUntil)
-            {
-                _guideInputSuppressedUntilByAddress.Remove(address);
                 return false;
             }
 
             _lastPressByAddress.Remove(address);
-            _lastRawHidReportByAddress.Remove(address);
-            _lastRawHidGuidePressedByAddress.Remove(address);
+            _lastRawHidReportByAddress[address] = reportCopy;
+            if (hasGuideState)
+            {
+                _lastRawHidGuidePressedByAddress[address] = pressed;
+                UpdateRawHidGuideNeutralReportCountLocked(address, pressed);
+            }
+            else
+            {
+                _lastRawHidGuidePressedByAddress.Remove(address);
+                _rawHidGuideNeutralReportCountByAddress.Remove(address);
+            }
+
             _rawHidGuideButtonStateTracker.ClearActivity(address, now);
         }
 
@@ -679,20 +642,11 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             address,
             string.IsNullOrWhiteSpace(device.DisplayName) ? "Steam Controller" : device.DisplayName,
             GuideButtonDeviceKind.SteamController);
-        if (firstInputForDevice)
-        {
-            WriteDiagnostic(
-                $"raw_hid_input_guard_armed:{address}:first_raw_hid_input",
-                "raw_hid_input_guard_armed",
-                knownDevice,
-                $"Steam Controller raw HID input guard armed. reason=first_raw_hid_input; durationMs={(int)RawHidFirstInputSettlingDuration.TotalMilliseconds}.");
-        }
-
         WriteDiagnostic(
-            $"raw_hid_input_guard_suppressed:{address}:{BuildReportSignature(report)}",
-            "raw_hid_input_guard_suppressed",
+            $"raw_hid_initial_baseline:{address}:{BuildReportSignature(report)}",
+            "raw_hid_initial_baseline",
             knownDevice,
-            $"Steam Controller raw HID input was ignored while the device settled after connection/refresh. remainingMs={(int)Math.Max(0, (suppressUntil - now).TotalMilliseconds)}; {FormatReportSample(report)}");
+            $"Steam Controller first raw HID report was stored as baseline without showing a guide toast. pressed={pressed}; parsed={hasGuideState}; {FormatReportSample(report)}");
         return true;
     }
 
@@ -704,18 +658,51 @@ internal sealed class SteamControllerRawInputMonitorService : IDisposable
             return false;
         }
 
-        var wasPressed = false;
         lock (_sync)
         {
-            if (_lastRawHidGuidePressedByAddress.TryGetValue(address, out var previousPressed))
+            if (!_lastRawHidGuidePressedByAddress.TryGetValue(address, out var previousPressed))
             {
-                wasPressed = previousPressed;
+                _lastRawHidGuidePressedByAddress[address] = pressed;
+                UpdateRawHidGuideNeutralReportCountLocked(address, pressed);
+                return false;
             }
 
             _lastRawHidGuidePressedByAddress[address] = pressed;
+            var neutralReportCount = UpdateRawHidGuideNeutralReportCountLocked(address, pressed);
+            if (neutralReportCount < 2)
+            {
+                return false;
+            }
+
+            return ShouldRaiseRawHidGuidePressEdge(
+                hasPrevious: true,
+                previousPressed,
+                pressed);
+        }
+    }
+
+    private int UpdateRawHidGuideNeutralReportCountLocked(string address, bool pressed)
+    {
+        if (pressed)
+        {
+            return _rawHidGuideNeutralReportCountByAddress.TryGetValue(address, out var count)
+                ? count
+                : 0;
         }
 
-        return pressed && !wasPressed;
+        var nextCount = _rawHidGuideNeutralReportCountByAddress.TryGetValue(address, out var previousCount)
+            ? Math.Min(2, previousCount + 1)
+            : 1;
+        _rawHidGuideNeutralReportCountByAddress[address] = nextCount;
+        return nextCount;
+    }
+
+    internal static bool ShouldRaiseRawHidGuidePressEdge(
+        bool hasPrevious,
+        bool previousPressed,
+        bool currentPressed)
+    {
+        return hasPrevious && currentPressed && !previousPressed;
     }
 
     private bool TryGetHidInputActivity(

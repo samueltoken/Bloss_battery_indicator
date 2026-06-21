@@ -29,15 +29,6 @@ using WpfToggleButton = System.Windows.Controls.Primitives.ToggleButton;
 
 namespace BluetoothBatteryWidget.App;
 
-internal enum PowerIdleRuntimeMode
-{
-    Active,
-    PreDisplaySleep,
-    DisplayOffWakeOnly,
-    WakeRecovery,
-    ExternalInputBlocked
-}
-
 public partial class MainWindow : Window
 {
     private const double CompactHeightThreshold = 430d;
@@ -70,31 +61,19 @@ public partial class MainWindow : Window
     private const string AppDisplayName = "Bloss";
     private static readonly TimeSpan GuideButtonGlobalDebounce = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan SteamGuideButtonToastCooldown = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan SteamGuideToastConnectionSuppressDuration = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan SteamGuideToastRefreshSuppressDuration = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan CustomBatteryGuideTriggerToastCooldown = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan SteamCustomBatteryGuideTriggerToastCooldown = TimeSpan.FromMilliseconds(3000);
-    private static readonly TimeSpan SteamGuideToastConnectionSuppressDuration = TimeSpan.FromSeconds(8);
-    private static readonly TimeSpan SteamGuideToastRefreshSuppressDuration = TimeSpan.FromSeconds(8);
-    private static readonly TimeSpan AutomaticBatteryToastStartupSuppressDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan GamepadActivityDiagnosticInterval = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan GamepadActivityRefreshCooldown = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan GamepadDisplayIdlePulseCooldown = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DisplayWakePulseCooldown = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan DisplayOffSettleWindow = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan TelemetryPowerIdleUpdateCooldown = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan NormalGamepadMonitoringGrace = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan QuietPreparationStartMinimum = TimeSpan.FromSeconds(8);
-    private static readonly TimeSpan QuietPreparationStartMaximum = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan ShortDisplayTimeoutQuietPreparationStart = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan ShortDisplayTimeoutQuietPreparationLead = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan ExternalInputBlockProbeWindow = TimeSpan.FromSeconds(25);
-    private static readonly TimeSpan ShortDisplayTimeoutExternalInputProbeWindow = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan LongDisplayTimeoutExternalInputProbeWindowMaximum = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan ExternalInputBlockRetryCooldown = TimeSpan.FromMinutes(3);
-    private static readonly TimeSpan QuietModeIntentionalInputCooldown = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DisplayWakeRecoveryDuration = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan VerifiedInputWakeRecoveryBypassDuration = TimeSpan.FromSeconds(7);
     private static readonly TimeSpan DisplayWakeGuideToastHold = TimeSpan.FromSeconds(7);
-    private static readonly TimeSpan DisplaySleepBlockedDiagnosticInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SteamRawInputPreferredWindow = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan SteamSecondaryFallbackDelay = TimeSpan.FromMilliseconds(120);
     private static readonly TimeSpan SteamSecondaryFallbackRawHidRecheckDelay = TimeSpan.FromMilliseconds(120);
@@ -157,12 +136,12 @@ public partial class MainWindow : Window
     private Storyboard? _glassWaveStoryboard;
     private readonly HttpClient _httpClient = new();
     private readonly UpdateService _updateService;
-    private readonly DateTimeOffset _automaticBatteryToastStartupSuppressUntilUtc =
-        DateTimeOffset.UtcNow.Add(AutomaticBatteryToastStartupSuppressDuration);
     private readonly GuideButtonMonitorService _guideButtonMonitor = new();
     private readonly SteamControllerRawInputMonitorService _steamRawInputMonitor = new();
     private readonly XInputActivityMonitorService _xInputActivityMonitor = new();
     private readonly DisplayPowerCoordinator _displayPowerCoordinator = new();
+    private readonly DisplayIdleCoordinator _displayIdleCoordinator = new();
+    private readonly GamepadPresenceService _gamepadPresenceService = new();
     private readonly BatteryGuideChimePlayer _batteryGuideChimePlayer = new(BatteryGuideChimeWave);
     private readonly System.Windows.Threading.DispatcherTimer _guideSoundPreviewResetTimer = new();
     private readonly System.Windows.Threading.DispatcherTimer _settingsAutoCloseTimer = new();
@@ -174,16 +153,18 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, byte[]> _lastBatteryGuideTriggerReportByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]> _lastPowerIdleInputReportByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> _lastDefaultGuideButtonPressedByInputReport = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _defaultGuideNeutralReportCountByInputReport = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _defaultGuidePressedReportKeysByToastKey = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<string>> _customBatteryGuideTriggerPressedReportKeysByBinding = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PendingSteamSecondaryGuideFallback> _pendingSteamSecondaryGuideFallbackByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _steamSecondaryGuideFallbackBlockedUntilByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _inputReportGuideFallbackSuppressRegularUntilByDevice = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, bool> _steamGuideConnectionStableByDevice = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<FrameworkElement, int> _settingsAccordionAnimationTokens = new();
     private readonly Dictionary<WpfControls.TextBlock, (double FontSize, FontWeight FontWeight)> _settingsTextBlockDefaults = new();
     private readonly Dictionary<WpfControls.Control, (double FontSize, FontWeight FontWeight)> _settingsControlTextDefaults = new();
     private readonly object _guideButtonToastSync = new();
     private readonly HashSet<string> _lowBatteryToastKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _batteryAlertInitializedDeviceKeys = new(StringComparer.OrdinalIgnoreCase);
     private BatteryToastWindow? _activeBatteryToastWindow;
     private LabsWindow? _labsWindow;
     private HwndSource? _windowMessageSource;
@@ -193,21 +174,17 @@ public partial class MainWindow : Window
     private bool _isPicoFirmwareUpdating;
     private bool _isBatteryGuideTriggerCaptureActive;
     private bool _batteryGuideTriggerSelectMouseToggleRequested;
-    private DateTimeOffset _steamGuideToastsSuppressedUntilUtc =
-        DateTimeOffset.UtcNow.Add(SteamGuideToastConnectionSuppressDuration);
     private readonly Dictionary<string, DateTimeOffset> _lastGamepadActivityDiagnosticAtUtcByKind = new(StringComparer.OrdinalIgnoreCase);
     private DateTimeOffset _lastGamepadActivityRefreshRequestedAtUtc = DateTimeOffset.MinValue;
-    private DateTimeOffset _lastGamepadDisplayIdlePulseAtUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDisplayWakePulseAtUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDisplayOffStateAtUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastTelemetryPowerIdleUpdateAtUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _wakeRecoveryUntilUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _verifiedInputWakeRecoveryBypassUntilUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _pendingDisplayWakeGuideToastUntilUtc = DateTimeOffset.MinValue;
-    private DateTimeOffset _preDisplaySleepEnteredAtUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _steamGuideToastsSuppressedUntilUtc =
+        DateTimeOffset.UtcNow.Add(SteamGuideToastConnectionSuppressDuration);
     private DateTimeOffset _normalGamepadMonitoringAllowedUntilUtc = DateTimeOffset.MinValue;
-    private DateTimeOffset _naturalSleepRetryBlockedUntilUtc = DateTimeOffset.MinValue;
-    private DateTimeOffset _lastDisplaySleepBlockedDiagnosticAtUtc = DateTimeOffset.MinValue;
     private PowerIdleRuntimeMode _powerIdleMode = PowerIdleRuntimeMode.Active;
     private BatteryAlertThresholdsWindow? _batteryAlertThresholdsWindow;
     private BatteryGuideTriggerCaptureWindow? _batteryGuideTriggerCaptureWindow;
@@ -2557,27 +2534,26 @@ public partial class MainWindow : Window
     private void UpdatePowerIdleGuideMonitoring()
     {
         var now = DateTimeOffset.UtcNow;
-        var delay = _viewModel.GetPowerIdlePauseDelay();
         var displayTimeout = SystemDisplayIdleTimeout.GetCurrentDisplayOrSleepTimeout();
         var systemIdle = SystemIdleMonitor.GetIdleDuration();
         var localIdle = _viewModel.GetLocalIdleDuration();
         var gamepadIdle = _viewModel.GetGamepadIdleDuration();
-        var localOrGamepadIdle = _viewModel.GetLocalOrGamepadIdleDuration();
-        var isProbeOrCaptureRunning = _viewModel.IsAnyProbeRunning || _isBatteryGuideTriggerCaptureActive;
-        var shouldPause = PowerIdlePolicy.ShouldPauseBackgroundWork(
-            delay,
-            systemIdle,
-            localOrGamepadIdle,
-            isProbeOrCaptureRunning,
-            isRefreshRunning: false);
-        var mode = ResolvePowerIdleRuntimeMode(
+        var delay = (TimeSpan?)null;
+        var shouldPause = false;
+        _gamepadPresenceService.Refresh(_viewModel.Devices.Select(device => device.Snapshot));
+
+        var mode = _displayIdleCoordinator.ResolveMode(
+            now,
+            _displayPowerCoordinator.CurrentState,
+            _wakeRecoveryUntilUtc,
             displayTimeout,
             systemIdle,
-            localOrGamepadIdle,
-            isProbeOrCaptureRunning,
-            now);
+            localIdle,
+            _isBatteryGuideTriggerCaptureActive,
+            _viewModel.IsRefreshRunning,
+            _viewModel.IsAnyProbeRunning,
+            _gamepadPresenceService.HasConnectedGamepad);
         ApplyPowerIdleMonitorState(mode, shouldPause);
-        WriteDisplaySleepBlockedDiagnosticIfNeeded(displayTimeout, systemIdle, localOrGamepadIdle, mode);
         PowerIdleDebugLog.Write(
             mode.ToString(),
             delay,
@@ -2591,6 +2567,7 @@ public partial class MainWindow : Window
             _isBatteryGuideTriggerCaptureActive,
             _guideButtonMonitor.IsRunning,
             _guideButtonMonitor.IsPowerIdlePollingPausedForDiagnostics,
+            _guideButtonMonitor.AllowsInitialPressedPowerIdleInputForDiagnostics,
             _steamRawInputMonitor.IsRegistered,
             _xInputActivityMonitor.IsRunning,
             GetRawInputModeForDiagnostics(),
@@ -2643,106 +2620,6 @@ public partial class MainWindow : Window
         return _normalGamepadMonitoringAllowedUntilUtc - now;
     }
 
-    private PowerIdleRuntimeMode ResolvePowerIdleRuntimeMode(
-        TimeSpan? displayTimeout,
-        TimeSpan systemIdle,
-        TimeSpan localOrGamepadIdle,
-        bool isProbeOrCaptureRunning,
-        DateTimeOffset now)
-    {
-        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
-        {
-            return PowerIdleRuntimeMode.DisplayOffWakeOnly;
-        }
-
-        if (now < _wakeRecoveryUntilUtc)
-        {
-            return PowerIdleRuntimeMode.WakeRecovery;
-        }
-
-        if (displayTimeout is null ||
-            displayTimeout.Value <= TimeSpan.Zero ||
-            isProbeOrCaptureRunning)
-        {
-            return PowerIdleRuntimeMode.Active;
-        }
-
-        if (now < _naturalSleepRetryBlockedUntilUtc)
-        {
-            return PowerIdleRuntimeMode.ExternalInputBlocked;
-        }
-
-        if (!ShouldEnterPreDisplaySleep(displayTimeout, localOrGamepadIdle, isProbeOrCaptureRunning))
-        {
-            return PowerIdleRuntimeMode.Active;
-        }
-
-        if (_powerIdleMode == PowerIdleRuntimeMode.PreDisplaySleep &&
-            now - _preDisplaySleepEnteredAtUtc >= ResolveExternalInputBlockProbeWindow(displayTimeout.Value) &&
-            systemIdle < TimeSpan.FromSeconds(5))
-        {
-            _naturalSleepRetryBlockedUntilUtc = now + ExternalInputBlockRetryCooldown;
-            return PowerIdleRuntimeMode.ExternalInputBlocked;
-        }
-
-        return PowerIdleRuntimeMode.PreDisplaySleep;
-    }
-
-    private static bool ShouldEnterPreDisplaySleep(
-        TimeSpan? displayTimeout,
-        TimeSpan localOrGamepadIdle,
-        bool isProbeOrCaptureRunning)
-    {
-        if (displayTimeout is null ||
-            displayTimeout.Value <= TimeSpan.Zero ||
-            localOrGamepadIdle == TimeSpan.MaxValue ||
-            isProbeOrCaptureRunning)
-        {
-            return false;
-        }
-
-        var quietPoint = ResolveQuietPreparationStart(displayTimeout.Value);
-
-        return localOrGamepadIdle >= quietPoint;
-    }
-
-    private static TimeSpan ResolveQuietPreparationStart(TimeSpan displayTimeout)
-    {
-        if (displayTimeout <= TimeSpan.Zero)
-        {
-            return TimeSpan.MaxValue;
-        }
-
-        if (displayTimeout <= QuietPreparationStartMinimum)
-        {
-            return TimeSpan.FromMilliseconds(Math.Max(1000d, displayTimeout.TotalMilliseconds * 0.5d));
-        }
-
-        if (displayTimeout <= TimeSpan.FromMinutes(2))
-        {
-            var seconds = Math.Max(
-                ShortDisplayTimeoutQuietPreparationStart.TotalSeconds,
-                displayTimeout.TotalSeconds - ShortDisplayTimeoutQuietPreparationLead.TotalSeconds);
-            return TimeSpan.FromSeconds(seconds);
-        }
-
-        return NormalGamepadMonitoringGrace;
-    }
-
-    private static TimeSpan ResolveExternalInputBlockProbeWindow(TimeSpan displayTimeout)
-    {
-        if (displayTimeout <= TimeSpan.FromMinutes(2))
-        {
-            return ShortDisplayTimeoutExternalInputProbeWindow;
-        }
-
-        var seconds = Math.Clamp(
-            displayTimeout.TotalSeconds * 0.05d,
-            ExternalInputBlockProbeWindow.TotalSeconds,
-            LongDisplayTimeoutExternalInputProbeWindowMaximum.TotalSeconds);
-        return TimeSpan.FromSeconds(seconds);
-    }
-
     private void ApplyPowerIdleMonitorState(PowerIdleRuntimeMode mode, bool shouldPause)
     {
         var previousMode = _powerIdleMode;
@@ -2750,11 +2627,6 @@ public partial class MainWindow : Window
         if (isModeChanged)
         {
             _powerIdleMode = mode;
-            if (mode == PowerIdleRuntimeMode.PreDisplaySleep)
-            {
-                _preDisplaySleepEnteredAtUtc = DateTimeOffset.UtcNow;
-            }
-
             GuideButtonEventLog.Write(
                 "power_idle_mode_changed",
                 "PowerIdle",
@@ -2763,32 +2635,38 @@ public partial class MainWindow : Window
                 $"Power idle monitor mode changed. previous={previousMode}; current={mode}; shouldPause={shouldPause}.");
         }
 
+        if (mode == PowerIdleRuntimeMode.DisplayIdleQuiet)
+        {
+            _displayIdleCoordinator.Acquire("display_idle_quiet");
+        }
+        else
+        {
+            _displayIdleCoordinator.Release(mode.ToString());
+        }
+
         switch (mode)
         {
             case PowerIdleRuntimeMode.Active:
-                _viewModel.SetDisplaySleepPreparationActive(shouldPause);
+                _viewModel.SetDisplaySleepPreparationActive(false);
                 if (shouldPause)
                 {
-                    StopNormalHidRawInputMonitors();
-                    StopWakeOnlyInputMonitors();
-                    StartScreenOnXInputActivityMonitor();
+                    StartActiveGuideButtonMonitor();
+                    StopNormalNonGuideInputMonitors();
                 }
                 else
                 {
                     StartNormalInputMonitors();
-                    StopWakeOnlyInputMonitors();
-                }
-                break;
-            case PowerIdleRuntimeMode.PreDisplaySleep:
-                _viewModel.SetDisplaySleepPreparationActive(true);
-                if (isModeChanged)
-                {
-                    EnterPreDisplaySleepQuietMode();
                 }
 
+                StopWakeOnlyInputMonitors();
+                break;
+            case PowerIdleRuntimeMode.DisplayIdleQuiet:
+                _viewModel.SetDisplaySleepPreparationActive(true);
+                StopNormalInputMonitors(waitForExit: true);
+                StopWakeOnlyInputMonitors(waitForExit: true);
                 break;
             case PowerIdleRuntimeMode.DisplayOffWakeOnly:
-                _viewModel.SetDisplaySleepPreparationActive(true);
+                _viewModel.SetDisplaySleepPreparationActive(false);
                 if (isModeChanged)
                 {
                     StopNormalInputMonitors();
@@ -2797,20 +2675,12 @@ public partial class MainWindow : Window
                 StartWakeOnlyInputMonitors();
                 break;
             case PowerIdleRuntimeMode.WakeRecovery:
-                _viewModel.SetDisplaySleepPreparationActive(true);
+                _viewModel.SetDisplaySleepPreparationActive(false);
                 if (isModeChanged)
                 {
-                    StopPowerIdleGuideOnlyMonitor();
-                    StopNormalInputMonitors();
-                    StartWakeOnlyInputMonitors();
-                }
-
-                break;
-            case PowerIdleRuntimeMode.ExternalInputBlocked:
-                _viewModel.SetDisplaySleepPreparationActive(true);
-                if (isModeChanged)
-                {
-                    EnterExternalInputBlockedQuietMode();
+                    StartPowerIdleGuideOnlyMonitor(allowInitialPressedInput: false);
+                    StopNormalNonGuideInputMonitors();
+                    StopWakeOnlyNonGuideInputMonitors();
                 }
 
                 break;
@@ -2819,36 +2689,17 @@ public partial class MainWindow : Window
 
     private void StartNormalInputMonitors()
     {
+        StartActiveGuideButtonMonitor();
         if (!ShouldRunNormalGamepadMonitoring(DateTimeOffset.UtcNow))
         {
-            StopNormalHidRawInputMonitors();
-            StartScreenOnXInputActivityMonitor();
+            StopNormalNonGuideInputMonitors();
             return;
-        }
-
-        _guideButtonMonitor.SetPowerIdlePollingPaused(false);
-        if (!_guideButtonMonitor.IsRunning)
-        {
-            _guideButtonMonitor.Start();
         }
 
         if (_steamRawInputWindowHandle != IntPtr.Zero &&
             (!_steamRawInputMonitor.IsRegistered || !_steamRawInputMonitor.IsNormalMode))
         {
             _steamRawInputMonitor.Start(_steamRawInputWindowHandle);
-        }
-
-        if (!_xInputActivityMonitor.IsRunning || _xInputActivityMonitor.IsWakeOnlyMode)
-        {
-            _xInputActivityMonitor.Start();
-        }
-    }
-
-    private void StartScreenOnXInputActivityMonitor()
-    {
-        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
-        {
-            return;
         }
 
         if (!_xInputActivityMonitor.IsRunning || _xInputActivityMonitor.IsWakeOnlyMode)
@@ -2874,6 +2725,20 @@ public partial class MainWindow : Window
         return (_guideButtonMonitor.IsRunning && !_guideButtonMonitor.IsPowerIdlePollingPausedForDiagnostics) ||
                (_steamRawInputMonitor.IsRegistered && _steamRawInputMonitor.IsNormalMode) ||
                (_xInputActivityMonitor.IsRunning && !_xInputActivityMonitor.IsWakeOnlyMode);
+    }
+
+    private void StartActiveGuideButtonMonitor()
+    {
+        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
+        {
+            return;
+        }
+
+        _guideButtonMonitor.SetPowerIdlePollingPaused(false);
+        if (!_guideButtonMonitor.IsRunning)
+        {
+            _guideButtonMonitor.Start();
+        }
     }
 
     private void ArmNormalGamepadMonitoring(string reason, bool requireActiveMode = true)
@@ -2903,17 +2768,6 @@ public partial class MainWindow : Window
             string.Empty,
             AppDisplayName,
             $"Normal gamepad monitoring armed briefly. reason={reason}; durationMs={(int)NormalGamepadMonitoringGrace.TotalMilliseconds}.");
-    }
-
-    private void EnterPreDisplaySleepQuietMode()
-    {
-        ApplyPreDisplaySleepQuietMonitorState();
-    }
-
-    private void EnterExternalInputBlockedQuietMode()
-    {
-        StopNormalInputMonitors(waitForExit: true);
-        StopWakeOnlyInputMonitors(waitForExit: true);
     }
 
     private void StopNormalInputMonitors(bool waitForExit = false)
@@ -2957,30 +2811,9 @@ public partial class MainWindow : Window
 
     }
 
-    private void StopNormalHidRawInputMonitors()
+    private void StartPowerIdleGuideOnlyMonitor(bool allowInitialPressedInput)
     {
-        _guideButtonMonitor.SetPowerIdlePollingPaused(true);
-        if (_guideButtonMonitor.IsRunning)
-        {
-            _guideButtonMonitor.Stop();
-        }
-
-        if (_steamRawInputMonitor.IsRegistered && _steamRawInputMonitor.IsNormalMode)
-        {
-            _steamRawInputMonitor.Stop();
-        }
-    }
-
-    private void ApplyPreDisplaySleepQuietMonitorState()
-    {
-        StopPowerIdleGuideOnlyMonitor();
-        StopNormalInputMonitors();
-        StopWakeOnlyInputMonitors();
-    }
-
-    private void StartPowerIdleGuideOnlyMonitor()
-    {
-        _guideButtonMonitor.SetPowerIdlePollingPaused(true);
+        _guideButtonMonitor.SetPowerIdlePollingPaused(true, allowInitialPressedInput);
         if (!_guideButtonMonitor.IsRunning)
         {
             _guideButtonMonitor.Start();
@@ -2992,6 +2825,19 @@ public partial class MainWindow : Window
         if (_guideButtonMonitor.IsRunning)
         {
             _guideButtonMonitor.Stop();
+        }
+    }
+
+    private void StopNormalNonGuideInputMonitors()
+    {
+        if (_steamRawInputMonitor.IsRegistered && _steamRawInputMonitor.IsNormalMode)
+        {
+            _steamRawInputMonitor.Stop();
+        }
+
+        if (_xInputActivityMonitor.IsRunning && !_xInputActivityMonitor.IsWakeOnlyMode)
+        {
+            _xInputActivityMonitor.Stop();
         }
     }
 
@@ -3014,7 +2860,7 @@ public partial class MainWindow : Window
 
     private void StartWakeOnlyInputMonitors()
     {
-        StopPowerIdleGuideOnlyMonitor();
+        StartPowerIdleGuideOnlyMonitor(allowInitialPressedInput: true);
         StartPowerIdleRawInputActivityMonitor();
         StartPowerIdleXInputActivityMonitor();
     }
@@ -3058,42 +2904,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private void WriteDisplaySleepBlockedDiagnosticIfNeeded(
-        TimeSpan? displayTimeout,
-        TimeSpan systemIdle,
-        TimeSpan localOrGamepadIdle,
-        PowerIdleRuntimeMode mode)
+    private void StopWakeOnlyNonGuideInputMonitors()
     {
-        if (mode is not (PowerIdleRuntimeMode.PreDisplaySleep or PowerIdleRuntimeMode.ExternalInputBlocked) ||
-            displayTimeout is null ||
-            displayTimeout.Value <= TimeSpan.Zero ||
-            systemIdle >= TimeSpan.FromSeconds(5))
+        if (_steamRawInputMonitor.IsRegistered && _steamRawInputMonitor.IsWakeOnlyMode)
         {
-            return;
+            _steamRawInputMonitor.Stop();
         }
 
-        if (mode == PowerIdleRuntimeMode.PreDisplaySleep &&
-            displayTimeout is { } timeout &&
-            DateTimeOffset.UtcNow - _preDisplaySleepEnteredAtUtc < ResolveExternalInputBlockProbeWindow(timeout))
+        if (_xInputActivityMonitor.IsRunning && _xInputActivityMonitor.IsWakeOnlyMode)
         {
-            return;
+            _xInputActivityMonitor.Stop();
         }
-
-        var now = DateTimeOffset.UtcNow;
-        if (now - _lastDisplaySleepBlockedDiagnosticAtUtc < DisplaySleepBlockedDiagnosticInterval)
-        {
-            return;
-        }
-
-        _lastDisplaySleepBlockedDiagnosticAtUtc = now;
-        GuideButtonEventLog.Write(
-            mode == PowerIdleRuntimeMode.ExternalInputBlocked
-                ? "display_sleep_external_input_blocked"
-                : "display_sleep_external_input_suspected",
-            "PowerIdle",
-            string.Empty,
-            AppDisplayName,
-            $"Bloss reduced noisy monitoring for display sleep, but Windows idle remains low. mode={mode}; displayTimeout={FormatPowerIdleSeconds(displayTimeout)}, systemIdle={FormatPowerIdleSeconds(systemIdle)}, localOrGamepadIdle={FormatPowerIdleSeconds(localOrGamepadIdle)}.");
     }
 
     private void TryWakeDisplayAfterVerifiedInput(string reason)
@@ -3112,13 +2933,24 @@ public partial class MainWindow : Window
         }
 
         _lastDisplayWakePulseAtUtc = now;
-        var success = SystemDisplayPower.TryTurnDisplayOn(_steamRawInputWindowHandle);
+        var success = SystemDisplayPower.TryTurnDisplayOn(ResolveDisplayWakeWindowHandle());
         GuideButtonEventLog.Write(
             success ? "display_on_fallback_sent" : "display_on_fallback_failed",
             "PowerIdle",
             string.Empty,
             AppDisplayName,
             $"Display-on fallback {(success ? "sent" : "failed")}. reason={reason}.");
+    }
+
+    private IntPtr ResolveDisplayWakeWindowHandle()
+    {
+        if (_steamRawInputWindowHandle != IntPtr.Zero)
+        {
+            return _steamRawInputWindowHandle;
+        }
+
+        var handle = new WindowInteropHelper(this).Handle;
+        return handle == IntPtr.Zero ? IntPtr.Zero : handle;
     }
 
     private bool ShouldSendDisplayWakeForInput(string reason)
@@ -5352,8 +5184,11 @@ public partial class MainWindow : Window
         try
         {
             var shouldDeferToastUntilDisplayWake = ShouldDeferBatteryGuideToastUntilDisplayWake();
-            MarkIntentionalGamepadInputAndExitQuietMode("guide_button_press");
-            TryWakeDisplayAfterVerifiedInput("guide_button_press");
+            if (e.DeviceKind != GuideButtonDeviceKind.SteamController || shouldDeferToastUntilDisplayWake)
+            {
+                MarkIntentionalGamepadInputAndExitQuietMode("guide_button_press");
+                TryWakeDisplayAfterVerifiedInput("guide_button_press");
+            }
 
             if (_isBatteryGuideTriggerCaptureActive)
             {
@@ -5391,7 +5226,16 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _ = Dispatcher.BeginInvoke(new Action(() => _ = ShowBatteryGuideAfterGamepadActivityRefreshAsync(e)));
+            _ = Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (e.DeviceKind == GuideButtonDeviceKind.SteamController)
+                {
+                    ShowBatteryGuide(e);
+                    return;
+                }
+
+                _ = ShowBatteryGuideAfterGamepadActivityRefreshAsync(e);
+            }));
         }
         catch
         {
@@ -5406,6 +5250,11 @@ public partial class MainWindow : Window
             if (!Dispatcher.CheckAccess())
             {
                 _ = Dispatcher.BeginInvoke(new Action(() => GuideButtonMonitor_InputReportReceived(sender, e)));
+                return;
+            }
+
+            if (TryHandleDefaultGuideButtonToastFromInputReport(e))
+            {
                 return;
             }
 
@@ -5426,11 +5275,6 @@ public partial class MainWindow : Window
                     e.Address,
                     e.DisplayName,
                     "Intentional HID controller button input refreshed Bloss local idle tracking.");
-            }
-
-            if (TryHandleDefaultGuideButtonToastFromInputReport(e))
-            {
-                return;
             }
 
             if (_powerIdleMode != PowerIdleRuntimeMode.DisplayOffWakeOnly &&
@@ -5455,9 +5299,10 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (e.CountsAsUserActivity)
+            var classification = GamepadInputClassifier.ClassifyHidActivity(e);
+            if (classification.CountsAsUserActivity)
             {
-                MarkIntentionalGamepadInputAndExitQuietMode("steam_raw_input_telemetry");
+                MarkIntentionalGamepadInputAndExitQuietMode("hid_button_activity");
                 if (_powerIdleMode == PowerIdleRuntimeMode.Active)
                 {
                     RequestRefreshAfterGamepadActivity();
@@ -5472,21 +5317,19 @@ public partial class MainWindow : Window
                 }
             }
 
-            if (e.IsWakeEligible &&
+            if (classification.IsWakeEligible &&
                 (_powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly ||
                  _powerIdleMode == PowerIdleRuntimeMode.WakeRecovery))
             {
-                TryWakeDisplayAfterVerifiedInput("steam_raw_input_telemetry");
+                TryWakeDisplayAfterVerifiedInput("hid_button_activity");
             }
 
             WriteGamepadActivityDiagnosticIfNeeded(
-                "hid_state_telemetry",
+                classification.EventName,
                 e.DeviceKind.ToString(),
                 e.Address,
                 e.DisplayName,
-                e.CountsAsUserActivity
-                    ? "HID controller state changed as user activity."
-                    : "HID controller state changed, but it was treated as telemetry for display-sleep safety.");
+                classification.DiagnosticMessage);
         }
         catch
         {
@@ -5504,7 +5347,8 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (e.CountsAsUserActivity)
+            var classification = GamepadInputClassifier.ClassifySteamRawInputActivity(e);
+            if (classification.CountsAsUserActivity)
             {
                 MarkIntentionalGamepadInputAndExitQuietMode("steam_raw_input_activity");
                 if (_powerIdleMode == PowerIdleRuntimeMode.Active)
@@ -5521,7 +5365,7 @@ public partial class MainWindow : Window
                 }
             }
 
-            if (e.IsWakeEligible &&
+            if (classification.IsWakeEligible &&
                 (_powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly ||
                  _powerIdleMode == PowerIdleRuntimeMode.WakeRecovery))
             {
@@ -5529,13 +5373,11 @@ public partial class MainWindow : Window
             }
 
             WriteGamepadActivityDiagnosticIfNeeded(
-                "steam_raw_input_activity",
+                classification.EventName,
                 e.DeviceKind.ToString(),
                 e.Address,
                 e.DisplayName,
-                e.CountsAsUserActivity
-                    ? "Steam RawInput controller activity treated as intentional input."
-                    : "Steam RawInput activity changed, but it was treated as telemetry for display-sleep safety.");
+                classification.DiagnosticMessage);
         }
         catch
         {
@@ -5555,13 +5397,9 @@ public partial class MainWindow : Window
 
             var isDisplayOffWake = _powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly ||
                 _powerIdleMode == PowerIdleRuntimeMode.WakeRecovery;
-            var countsAsUserActivity = e.CountsAsUserActivity || e.HasStick;
-            var eventName = countsAsUserActivity
-                ? e.HasStick && !e.CountsAsUserActivity
-                    ? "xinput_stick_input"
-                    : "xinput_button_input"
-                : "xinput_telemetry";
-            if (countsAsUserActivity)
+            var classification = GamepadInputClassifier.ClassifyXInputActivity(e);
+            var eventName = classification.EventName;
+            if (classification.CountsAsUserActivity)
             {
                 MarkIntentionalGamepadInputAndExitQuietMode(eventName);
             }
@@ -5570,12 +5408,12 @@ public partial class MainWindow : Window
                 _viewModel.MarkGamepadTelemetryActivity();
             }
 
-            if (e.IsWakeEligible)
+            if (classification.IsWakeEligible)
             {
                 TryWakeDisplayAfterVerifiedInput(eventName);
             }
 
-            if (countsAsUserActivity)
+            if (classification.CountsAsUserActivity)
             {
                 if (!isDisplayOffWake)
                 {
@@ -5592,9 +5430,7 @@ public partial class MainWindow : Window
                 "XInput",
                 string.Empty,
                 "XInput Gamepad",
-                countsAsUserActivity
-                    ? "Intentional XInput controller input refreshed Bloss local idle tracking."
-                    : "XInput controller stick/noise activity was treated as telemetry for display-sleep safety.");
+                classification.DiagnosticMessage);
         }
         catch
         {
@@ -5605,9 +5441,7 @@ public partial class MainWindow : Window
     private void MarkIntentionalGamepadInputAndExitQuietMode(string reason)
     {
         _viewModel.MarkIntentionalGamepadActivity();
-        NotifyDisplayIdleTimerAfterVerifiedGamepadInput(reason);
         ArmNormalGamepadMonitoring(reason, requireActiveMode: false);
-        _naturalSleepRetryBlockedUntilUtc = DateTimeOffset.MinValue;
 
         if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed ||
             _powerIdleMode == PowerIdleRuntimeMode.DisplayOffWakeOnly)
@@ -5616,10 +5450,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_powerIdleMode is not (
-                PowerIdleRuntimeMode.PreDisplaySleep or
-                PowerIdleRuntimeMode.WakeRecovery or
-                PowerIdleRuntimeMode.ExternalInputBlocked))
+        if (_powerIdleMode != PowerIdleRuntimeMode.WakeRecovery)
         {
             return;
         }
@@ -5633,29 +5464,6 @@ public partial class MainWindow : Window
             string.Empty,
             AppDisplayName,
             $"Intentional gamepad input restored active monitoring. reason={reason}.");
-    }
-
-    private void NotifyDisplayIdleTimerAfterVerifiedGamepadInput(string reason)
-    {
-        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
-        {
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        if (now - _lastGamepadDisplayIdlePulseAtUtc < GamepadDisplayIdlePulseCooldown)
-        {
-            return;
-        }
-
-        _lastGamepadDisplayIdlePulseAtUtc = now;
-        var success = SystemDisplayPower.TryNotifyDisplayUserActivity();
-        GuideButtonEventLog.Write(
-            success ? "display_idle_timer_pulsed" : "display_idle_timer_pulse_failed",
-            "PowerIdle",
-            string.Empty,
-            AppDisplayName,
-            $"Windows display idle timer pulse {(success ? "sent" : "failed")} after verified gamepad input. reason={reason}.");
     }
 
     private void SteamRawInputMonitor_GlobalHumanInputReceived(object? sender, GlobalHumanInputEventArgs e)
@@ -5774,48 +5582,19 @@ public partial class MainWindow : Window
 
     private bool TryHandleDefaultGuideButtonToastFromInputReport(GuideButtonInputReportEventArgs e)
     {
-        if (_isBatteryGuideTriggerCaptureActive ||
-            _viewModel.HasCustomBatteryGuideTriggerForDevice(e.DeviceKind) ||
-            !ShouldTreatInputReportAsDefaultGuideButtonPress(e))
+        if (!_isBatteryGuideTriggerCaptureActive &&
+            !_viewModel.HasCustomBatteryGuideTriggerForDevice(e.DeviceKind) &&
+            ShouldTreatInputReportAsDefaultGuideButtonPress(e))
         {
-            return false;
+            GuideButtonEventLog.Write(
+                "guide_input_report_fallback_disabled",
+                e.DeviceKind.ToString(),
+                e.Address,
+                e.DisplayName,
+                "Default guide input-report fallback was ignored; the regular guide-button press path must own the toast.");
         }
 
-        MarkIntentionalGamepadInputAndExitQuietMode("guide_button_input_report");
-        TryWakeDisplayAfterVerifiedInput("guide_button_input_report");
-
-        var args = new GuideButtonPressedEventArgs(
-            e.Address,
-            e.DisplayName,
-            e.DeviceKind,
-            GuideButtonGesture.ShortPress);
-
-        if (ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, "guide_button_input_report"))
-        {
-            return true;
-        }
-
-        if (ShouldSuppressDuplicateGuideButtonToast(args))
-        {
-            return true;
-        }
-
-        MarkGuideButtonInputReportFallbackHandled(args);
-        GuideButtonEventLog.Write(
-            "guide_input_report_fallback",
-            e.DeviceKind.ToString(),
-            e.Address,
-            e.DisplayName,
-            "Guide button input report was promoted to the default battery guide toast because the press event path did not fire first.");
-
-        if (ShouldDeferBatteryGuideToastUntilDisplayWake())
-        {
-            QueueBatteryGuideToastAfterDisplayWake(args);
-            return true;
-        }
-
-        _ = Dispatcher.BeginInvoke(new Action(() => _ = ShowBatteryGuideAfterGamepadActivityRefreshAsync(args)));
-        return true;
+        return false;
     }
 
     private bool ShouldTreatInputReportAsDefaultGuideButtonPress(GuideButtonInputReportEventArgs e)
@@ -5825,15 +5604,102 @@ public partial class MainWindow : Window
             return false;
         }
 
-        var key = BuildBatteryGuideInputReportKey(e);
-        if (!_lastDefaultGuideButtonPressedByInputReport.TryGetValue(key, out var wasPressed))
+        var reportKey = BuildBatteryGuideInputReportKey(e);
+        var toastKey = BuildGuideButtonToastKey(new GuideButtonPressedEventArgs(
+            e.Address,
+            e.DisplayName,
+            e.DeviceKind,
+            GuideButtonGesture.ShortPress));
+        if (!_lastDefaultGuideButtonPressedByInputReport.TryGetValue(reportKey, out var wasPressed))
         {
-            _lastDefaultGuideButtonPressedByInputReport[key] = isPressed;
+            _lastDefaultGuideButtonPressedByInputReport[reportKey] = isPressed;
+            UpdateDefaultGuideNeutralReportCount(reportKey, isPressed);
+            UpdateDefaultGuidePressedReportKey(toastKey, reportKey, isPressed);
             return false;
         }
 
-        _lastDefaultGuideButtonPressedByInputReport[key] = isPressed;
-        return isPressed && !wasPressed;
+        _lastDefaultGuideButtonPressedByInputReport[reportKey] = isPressed;
+        var neutralReportCount = UpdateDefaultGuideNeutralReportCount(reportKey, isPressed);
+        lock (_guideButtonToastSync)
+        {
+            if (!_defaultGuidePressedReportKeysByToastKey.TryGetValue(toastKey, out var pressedReportKeys))
+            {
+                pressedReportKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                _defaultGuidePressedReportKeysByToastKey[toastKey] = pressedReportKeys;
+            }
+
+            if (!isPressed)
+            {
+                pressedReportKeys.Remove(reportKey);
+                if (pressedReportKeys.Count == 0)
+                {
+                    _defaultGuidePressedReportKeysByToastKey.Remove(toastKey);
+                }
+
+                return false;
+            }
+
+            if (wasPressed)
+            {
+                pressedReportKeys.Add(reportKey);
+                return false;
+            }
+
+            if (neutralReportCount < 2)
+            {
+                pressedReportKeys.Add(reportKey);
+                return false;
+            }
+
+            var isFirstPressedReportForToast = pressedReportKeys.Count == 0;
+            pressedReportKeys.Add(reportKey);
+            return isFirstPressedReportForToast;
+        }
+    }
+
+    private int UpdateDefaultGuideNeutralReportCount(string reportKey, bool isPressed)
+    {
+        if (isPressed)
+        {
+            return _defaultGuideNeutralReportCountByInputReport.TryGetValue(reportKey, out var count)
+                ? count
+                : 0;
+        }
+
+        var nextCount = _defaultGuideNeutralReportCountByInputReport.TryGetValue(reportKey, out var previousCount)
+            ? Math.Min(2, previousCount + 1)
+            : 1;
+        _defaultGuideNeutralReportCountByInputReport[reportKey] = nextCount;
+        return nextCount;
+    }
+
+    private void UpdateDefaultGuidePressedReportKey(string toastKey, string reportKey, bool isPressed)
+    {
+        lock (_guideButtonToastSync)
+        {
+            if (!_defaultGuidePressedReportKeysByToastKey.TryGetValue(toastKey, out var pressedReportKeys))
+            {
+                if (!isPressed)
+                {
+                    return;
+                }
+
+                pressedReportKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                _defaultGuidePressedReportKeysByToastKey[toastKey] = pressedReportKeys;
+            }
+
+            if (isPressed)
+            {
+                pressedReportKeys.Add(reportKey);
+                return;
+            }
+
+            pressedReportKeys.Remove(reportKey);
+            if (pressedReportKeys.Count == 0)
+            {
+                _defaultGuidePressedReportKeysByToastKey.Remove(toastKey);
+            }
+        }
     }
 
     private void WriteGamepadActivityDiagnosticIfNeeded(
@@ -5909,12 +5775,6 @@ public partial class MainWindow : Window
                 hasAnyTriggerBitPressed,
                 _customBatteryGuideTriggerPressedReportKeysByBinding))
         {
-            return;
-        }
-
-        if (ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, "custom_trigger_input"))
-        {
-            RemoveCustomBatteryGuideTriggerReportKey(key);
             return;
         }
 
@@ -6172,7 +6032,6 @@ public partial class MainWindow : Window
             string.Empty,
             "Steam Controller",
             $"Steam Controller guide toast guard armed. reason={reason}; durationMs={(int)duration.TotalMilliseconds}.");
-        _steamRawInputMonitor.SuppressGuideInputForKnownDevices(duration, reason);
     }
 
     private bool ShouldSuppressSteamGuideToast(
@@ -6281,6 +6140,17 @@ public partial class MainWindow : Window
             if (_steamSecondaryGuideFallbackBlockedUntilByDevice.ContainsKey(key))
             {
                 _steamSecondaryGuideFallbackBlockedUntilByDevice.Remove(key);
+            }
+
+            if (!_steamRawInputMonitor.HasStableNeutralGuideBaseline(e.Address))
+            {
+                GuideButtonEventLog.Write(
+                    "secondary_fallback_neutral_baseline_missing",
+                    e.DeviceKind.ToString(),
+                    e.Address,
+                    e.DisplayName,
+                    "Secondary Steam HID monitor event was ignored because Raw HID has not seen a stable neutral guide-button baseline yet.");
+                return true;
             }
 
             if (_pendingSteamSecondaryGuideFallbackByDevice.ContainsKey(key))
@@ -6549,12 +6419,12 @@ public partial class MainWindow : Window
             break;
         }
 
-        if (ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, "secondary_fallback"))
+        if (ShouldSuppressDuplicateGuideButtonToast(e))
         {
             return;
         }
 
-        if (ShouldSuppressDuplicateGuideButtonToast(e))
+        if (ShouldSuppressSteamGuideToast(e.DeviceKind, e.Address, e.DisplayName, "secondary_fallback"))
         {
             return;
         }
@@ -6571,7 +6441,7 @@ public partial class MainWindow : Window
             e.DisplayName,
             "Secondary Steam HID monitor event was used because RawInput did not produce a toast for this press.");
 
-        _ = Dispatcher.BeginInvoke(new Action(() => _ = ShowBatteryGuideAfterGamepadActivityRefreshAsync(e)));
+        _ = Dispatcher.BeginInvoke(new Action(() => ShowBatteryGuide(e)));
     }
 
     private bool ShouldSuppressSteamSecondaryFallbackForCustomBatteryGuideTrigger(GuideButtonPressedEventArgs e)
@@ -6710,6 +6580,11 @@ public partial class MainWindow : Window
 
     private static string BuildGuideButtonToastKey(GuideButtonPressedEventArgs e)
     {
+        if (e.DeviceKind == GuideButtonDeviceKind.DualSense)
+        {
+            return $"{e.DeviceKind}:DEFAULT";
+        }
+
         var address = AddressNormalizer.NormalizeAddress(e.Address);
         return string.IsNullOrWhiteSpace(address)
             ? $"{e.DeviceKind}:{e.DisplayName}"
@@ -6767,7 +6642,6 @@ public partial class MainWindow : Window
             foreach (DeviceItemViewModel item in e.OldItems)
             {
                 item.PropertyChanged -= DeviceItem_PropertyChanged;
-                _steamGuideConnectionStableByDevice.Remove(BuildSteamDeviceStateKey(item));
                 RemoveBatteryAlertToastKeysForDevice(item);
             }
         }
@@ -6777,8 +6651,7 @@ public partial class MainWindow : Window
             foreach (DeviceItemViewModel item in e.NewItems)
             {
                 item.PropertyChanged += DeviceItem_PropertyChanged;
-                UpdateSteamGuideConnectionSuppressState(item, "steam_device_added");
-                CheckLowBatteryToast(item);
+                PrimeBatteryAlertToastKeyForNewDevice(item);
             }
         }
     }
@@ -6795,45 +6668,17 @@ public partial class MainWindow : Window
             nameof(DeviceItemViewModel.IsBatteryConnecting) or
             nameof(DeviceItemViewModel.IsStale))
         {
-            if (e.PropertyName is nameof(DeviceItemViewModel.IsConnected) or
-                nameof(DeviceItemViewModel.IsBatteryConnecting) or
-                nameof(DeviceItemViewModel.IsStale))
-            {
-                UpdateSteamGuideConnectionSuppressState(item, $"steam_device_{e.PropertyName}");
-            }
-
             CheckLowBatteryToast(item);
         }
     }
 
-    private void UpdateSteamGuideConnectionSuppressState(DeviceItemViewModel item, string reason)
+    private void CheckLowBatteryToast(DeviceItemViewModel item)
     {
-        if (!IsSteamControllerDevice(item))
+        if (_viewModel.IsDisplaySleepPreparationActive)
         {
             return;
         }
 
-        var key = BuildSteamDeviceStateKey(item);
-        var stableNow = item.IsConnected && !item.IsStale && !item.IsBatteryConnecting;
-        var wasStable = _steamGuideConnectionStableByDevice.TryGetValue(key, out var recordedStable) && recordedStable;
-        _steamGuideConnectionStableByDevice[key] = stableNow;
-
-        if (stableNow && !wasStable)
-        {
-            SuppressSteamGuideToasts(SteamGuideToastConnectionSuppressDuration, reason);
-        }
-    }
-
-    private static string BuildSteamDeviceStateKey(DeviceItemViewModel item)
-    {
-        var address = AddressNormalizer.NormalizeAddress(item.Address);
-        return string.IsNullOrWhiteSpace(address)
-            ? item.DeviceId
-            : address;
-    }
-
-    private void CheckLowBatteryToast(DeviceItemViewModel item)
-    {
         if (!item.IsConnected || item.IsStale || item.IsBatteryConnecting || item.BatteryPercent is not int percent)
         {
             RemoveBatteryAlertToastKeysForDevice(item);
@@ -6849,21 +6694,27 @@ public partial class MainWindow : Window
         var targetThreshold = ResolveBatteryAlertThresholdToShow(percent, thresholds);
         if (targetThreshold <= 0)
         {
+            _batteryAlertInitializedDeviceKeys.Add(BuildBatteryToastKey(item));
             return;
         }
 
+        var deviceKey = BuildBatteryToastKey(item);
         var key = BuildBatteryAlertToastKey(item, targetThreshold);
+        var isFirstValidBatteryReading = _batteryAlertInitializedDeviceKeys.Add(deviceKey);
+        if (isFirstValidBatteryReading &&
+            targetThreshold > WidgetSettings.ForcedBatteryAlertThresholdPercent)
+        {
+            _lowBatteryToastKeys.Add(key);
+            GuideButtonEventLog.Write(
+                "automatic_battery_toast_baselined",
+                item.Category.ToString(),
+                item.Address,
+                item.DisplayName,
+                $"Automatic battery toast was baselined without showing on first sight. percent={percent}; threshold={targetThreshold}.");
+            return;
+        }
+
         if (!_lowBatteryToastKeys.Add(key))
-        {
-            return;
-        }
-
-        if (ShouldSuppressAutomaticBatteryToastOnStartup(DateTimeOffset.UtcNow, _automaticBatteryToastStartupSuppressUntilUtc))
-        {
-            return;
-        }
-
-        if (ShouldSuppressSteamBatteryToastDuringSettling(item, targetThreshold))
         {
             return;
         }
@@ -6877,45 +6728,46 @@ public partial class MainWindow : Window
             $"Automatic battery toast was shown. percent={percent}; threshold={targetThreshold}.");
     }
 
-    private bool ShouldSuppressSteamBatteryToastDuringSettling(DeviceItemViewModel item, int threshold)
+    private void PrimeBatteryAlertToastKeyForNewDevice(DeviceItemViewModel item)
     {
-        if (!IsSteamControllerDevice(item))
+        if (_viewModel.IsDisplaySleepPreparationActive)
         {
-            return false;
+            return;
         }
 
-        DateTimeOffset suppressUntil;
-        var now = DateTimeOffset.UtcNow;
-        lock (_guideButtonToastSync)
+        if (!item.IsConnected || item.IsStale || item.IsBatteryConnecting || item.BatteryPercent is not int percent)
         {
-            suppressUntil = _steamGuideToastsSuppressedUntilUtc;
+            return;
         }
 
-        var suppressForRefresh = _viewModel.IsRefreshRunning;
-        if (!suppressForRefresh && now >= suppressUntil)
+        var thresholds = BuildBatteryAlertThresholds(_viewModel.BatteryAlertThresholds);
+        var targetThreshold = ResolveBatteryAlertThresholdToShow(percent, thresholds);
+        _batteryAlertInitializedDeviceKeys.Add(BuildBatteryToastKey(item));
+
+        if (targetThreshold <= 0)
         {
-            return false;
+            return;
         }
 
+        if (targetThreshold <= WidgetSettings.ForcedBatteryAlertThresholdPercent)
+        {
+            CheckLowBatteryToast(item);
+            return;
+        }
+
+        _lowBatteryToastKeys.Add(BuildBatteryAlertToastKey(item, targetThreshold));
         GuideButtonEventLog.Write(
-            suppressForRefresh ? "steam_battery_toast_refresh_suppressed" : "steam_battery_toast_settling_suppressed",
-            GuideButtonDeviceKind.SteamController.ToString(),
+            "automatic_battery_toast_baselined",
+            item.Category.ToString(),
             item.Address,
-            string.IsNullOrWhiteSpace(item.DisplayName) ? "Steam Controller" : item.DisplayName,
-            $"Steam Controller automatic battery toast was ignored during connection/refresh settling. threshold={threshold}; remainingMs={(int)Math.Max(0, (suppressUntil - now).TotalMilliseconds)}.");
-        return true;
-    }
-
-    internal static bool ShouldSuppressAutomaticBatteryToastOnStartup(
-        DateTimeOffset nowUtc,
-        DateTimeOffset suppressUntilUtc)
-    {
-        return nowUtc < suppressUntilUtc;
+            item.DisplayName,
+            $"Automatic battery toast was baselined for a newly visible device. percent={percent}; threshold={targetThreshold}.");
     }
 
     private void ResetBatteryAlertToastKeys()
     {
         _lowBatteryToastKeys.Clear();
+        _batteryAlertInitializedDeviceKeys.Clear();
     }
 
     private void CheckAllLowBatteryToasts()
@@ -6942,6 +6794,8 @@ public partial class MainWindow : Window
             {
                 _lowBatteryToastKeys.Add(BuildBatteryAlertToastKey(item, targetThreshold));
             }
+
+            _batteryAlertInitializedDeviceKeys.Add(BuildBatteryToastKey(item));
         }
     }
 
@@ -6949,6 +6803,7 @@ public partial class MainWindow : Window
     {
         var prefix = BuildBatteryToastKey(item) + "|";
         _lowBatteryToastKeys.RemoveWhere(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        _batteryAlertInitializedDeviceKeys.Remove(BuildBatteryToastKey(item));
     }
 
     internal static IReadOnlyList<int> BuildBatteryAlertThresholds(string? customThresholds)

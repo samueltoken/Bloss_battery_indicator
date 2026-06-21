@@ -229,7 +229,7 @@ try {
         Assert-FileContains -Path $settingsStoreTestsPath -Needle "Load_MigratesLegacyPowerIdleOneMinuteDefaultToWindowsAuto" -Message "Legacy one-minute setting migration test is missing."
         Assert-FileContains -Path $settingsStoreTestsPath -Needle "Load_PreservesCurrentSchemaPowerIdleOneMinuteUserChoice" -Message "Manual one-minute setting preservation test is missing."
         Assert-FileContains -Path $systemDisplayIdleTimeoutTestsPath -Needle "SelectShortestPositiveTimeout_UsesEarlierDisplayOrSleepTimeout" -Message "Windows display/sleep earliest-timeout test is missing."
-        Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "TryNotifyDisplayUserActivity" -Message "Verified gamepad display-idle pulse guard is missing."
+        Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle 'Assert.DoesNotContain("TryNotifyDisplayUserActivity"' -Message "Verified gamepad display-idle pulse removal guard is missing."
         Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "ES_CONTINUOUS" -Message "Continuous display-awake source safety guard is missing ES_CONTINUOUS."
         Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "ES_SYSTEM_REQUIRED" -Message "System-awake source safety guard is missing ES_SYSTEM_REQUIRED."
         Assert-FileContains -Path $powerIdleSourceSafetyTestsPath -Needle "PowerSetRequest" -Message "Power request source safety guard is missing PowerSetRequest."

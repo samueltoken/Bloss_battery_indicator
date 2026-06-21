@@ -115,6 +115,7 @@ function Convert-PowerIdleDebugLine {
         LocalIdle = if ($values.ContainsKey("localIdle")) { $values["localIdle"] } else { "?" }
         GamepadIdle = if ($values.ContainsKey("gamepadIdle")) { $values["gamepadIdle"] } else { "?" }
         GuideRunning = if ($values.ContainsKey("guideRunning")) { $values["guideRunning"] } else { "?" }
+        GuideInitialPressedAllowed = if ($values.ContainsKey("guideInitialPressedAllowed")) { $values["guideInitialPressedAllowed"] } else { "?" }
         RawInputRegistered = if ($values.ContainsKey("rawInputRegistered")) { $values["rawInputRegistered"] } else { "?" }
         XInputRunning = if ($values.ContainsKey("xInputRunning")) { $values["xInputRunning"] } else { "?" }
         RawInputMode = if ($values.ContainsKey("rawInputMode")) { $values["rawInputMode"] } else { "?" }
@@ -138,9 +139,16 @@ $activityEventNames = @(
     "xinput_button_input",
     "xinput_stick_input",
     "hid_button_input",
+    "hid_button_activity",
     "pressed",
     "custom_trigger_capture_candidate",
     "custom_trigger_toast_shown"
+)
+
+$telemetryEventNames = @(
+    "xinput_stick_telemetry",
+    "xinput_telemetry",
+    "hid_state_telemetry"
 )
 
 $popupEventNames = @(
@@ -155,12 +163,24 @@ $autoAlertEventNames = @(
     "automatic_battery_toast_shown"
 )
 
+$wakeEventNames = @(
+    "display_state_changed",
+    "display_on_fallback_sent",
+    "display_on_fallback_failed",
+    "display_on_fallback_suppressed",
+    "wake_recovery_bypass_armed",
+    "guide_toast_deferred_until_display_wake",
+    "guide_toast_deferred_expired",
+    "power_idle_mode_changed"
+)
+
 $startedAt = [DateTimeOffset]::Now
 $deadline = $startedAt.AddSeconds([Math]::Max(1, $TimeoutSeconds))
 $pollDelay = [Math]::Max(250, $PollMilliseconds)
 $sawActivity = $false
 $sawPopup = $false
 $sawAutoAlert = $false
+$sawWakeEvent = $false
 
 Write-Host "Watching Bloss gamepad idle activity for $TimeoutSeconds seconds."
 Write-Host "Do not touch the mouse or keyboard after this starts."
@@ -174,22 +194,24 @@ while ([DateTimeOffset]::Now -lt $deadline) {
     $activityEvents = @($events | Where-Object { $_.Event -in $activityEventNames })
     $popupEvents = @($events | Where-Object { $_.Event -in $popupEventNames })
     $autoAlertEvents = @($events | Where-Object { $_.Event -in $autoAlertEventNames })
+    $wakeEvents = @($events | Where-Object { $_.Event -in $wakeEventNames })
     $sawActivity = $sawActivity -or $activityEvents.Count -gt 0
     $sawPopup = $sawPopup -or $popupEvents.Count -gt 0
     $sawAutoAlert = $sawAutoAlert -or $autoAlertEvents.Count -gt 0
+    $sawWakeEvent = $sawWakeEvent -or $wakeEvents.Count -gt 0
     $latest = $events | Select-Object -Last 1
     $latestText = if ($latest) { "$($latest.Event)/$($latest.Device)" } else { "none" }
     $powerIdle = Get-LatestPowerIdleState
     $powerMode = if ($powerIdle) { $powerIdle.Mode } else { "unknown" }
     $monitorState = if ($powerIdle) {
-        "guide=$($powerIdle.GuideRunning),raw=$($powerIdle.RawInputMode),xinput=$($powerIdle.XInputMode),normalLeft=$($powerIdle.NormalMonitorRemaining)"
+        "guide=$($powerIdle.GuideRunning),guideInitial=$($powerIdle.GuideInitialPressedAllowed),raw=$($powerIdle.RawInputMode),xinput=$($powerIdle.XInputMode),normalLeft=$($powerIdle.NormalMonitorRemaining)"
     } else {
         "guide=?,raw=?,xinput=?,normalLeft=?"
     }
     $idleSeconds = [BlossIdleProbe]::GetIdleSeconds()
     $remaining = [Math]::Max(0, [int]($deadline - [DateTimeOffset]::Now).TotalSeconds)
 
-    Write-Host ("{0} idle={1}s mode={2} monitors={3} activity={4} popup={5} auto={6} latest={7} remaining={8}s" -f `
+    Write-Host ("{0} idle={1}s mode={2} monitors={3} activity={4} popup={5} auto={6} wake={7} latest={8} remaining={9}s" -f `
         (Get-Date -Format "HH:mm:ss"),
         $idleSeconds,
         $powerMode,
@@ -197,6 +219,7 @@ while ([DateTimeOffset]::Now -lt $deadline) {
         $activityEvents.Count,
         $popupEvents.Count,
         $autoAlertEvents.Count,
+        $wakeEvents.Count,
         $latestText,
         $remaining)
 
@@ -207,15 +230,17 @@ $events = Get-RecentGuideEvents -Since $startedAt
 $activityEvents = @($events | Where-Object { $_.Event -in $activityEventNames })
 $popupEvents = @($events | Where-Object { $_.Event -in $popupEventNames })
 $autoAlertEvents = @($events | Where-Object { $_.Event -in $autoAlertEventNames })
+$wakeEvents = @($events | Where-Object { $_.Event -in $wakeEventNames })
 $sawActivity = $sawActivity -or $activityEvents.Count -gt 0
 $sawPopup = $sawPopup -or $popupEvents.Count -gt 0
 $sawAutoAlert = $sawAutoAlert -or $autoAlertEvents.Count -gt 0
+$sawWakeEvent = $sawWakeEvent -or $wakeEvents.Count -gt 0
 
 Write-Host ""
 Write-Host "Latest power idle state:"
 $latestPowerIdle = Get-LatestPowerIdleState
 if ($latestPowerIdle) {
-    $latestPowerIdle | Format-List Time, Mode, SystemIdle, LocalIdle, GamepadIdle, GuideRunning, RawInputRegistered, RawInputMode, XInputRunning, XInputMode, NormalMonitorRemaining
+    $latestPowerIdle | Format-List Time, Mode, SystemIdle, LocalIdle, GamepadIdle, GuideRunning, GuideInitialPressedAllowed, RawInputRegistered, RawInputMode, XInputRunning, XInputMode, NormalMonitorRemaining
 } else {
     Write-Host "No power idle debug log found yet."
 }
@@ -223,7 +248,7 @@ if ($latestPowerIdle) {
 Write-Host ""
 Write-Host "Recent matching events:"
 $events |
-    Where-Object { $_.Event -in ($activityEventNames + $popupEventNames + $autoAlertEventNames) } |
+    Where-Object { $_.Event -in ($activityEventNames + $popupEventNames + $autoAlertEventNames + $wakeEventNames) } |
     Select-Object Time, Event, Device, Message |
     Format-Table -AutoSize -Wrap
 

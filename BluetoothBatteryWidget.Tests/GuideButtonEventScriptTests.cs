@@ -61,8 +61,14 @@ public sealed class GuideButtonEventScriptTests
 
         Assert.Contains("GetLastInputInfo", script);
         Assert.Contains("\"hid_button_input\"", script);
+        Assert.Contains("\"hid_button_activity\"", script);
         Assert.Contains("\"xinput_button_input\"", script);
         Assert.Contains("\"xinput_stick_input\"", script);
+        Assert.Contains("\"xinput_stick_telemetry\"", script);
+        Assert.Contains("\"display_on_fallback_sent\"", script);
+        Assert.Contains("\"display_on_fallback_failed\"", script);
+        Assert.Contains("\"wake_recovery_bypass_armed\"", script);
+        Assert.Contains("\"guide_toast_deferred_until_display_wake\"", script);
         Assert.DoesNotContain("\"hid_input_activity\"", script);
         Assert.DoesNotContain("\"hid_state_activity\"", script);
         Assert.DoesNotContain("\"steam_raw_input_activity\"", script);
@@ -82,7 +88,10 @@ public sealed class GuideButtonEventScriptTests
         Assert.Contains("RawInputMode", script);
         Assert.Contains("XInputMode", script);
         Assert.Contains("NormalMonitorRemaining", script);
+        Assert.Contains("GuideInitialPressedAllowed", script);
         Assert.Contains("normalLeft=", script);
+        Assert.Contains("guideInitial=", script);
+        Assert.Contains("wake={7}", script);
         Assert.Contains("mode={2}", script);
         Assert.Contains("monitors={3}", script);
         Assert.Contains("Latest power idle state:", script);

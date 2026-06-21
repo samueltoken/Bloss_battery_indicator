@@ -6,6 +6,56 @@ namespace BluetoothBatteryWidget.Tests;
 public sealed class GuideButtonReportParserTests
 {
     [Fact]
+    public void ShouldTreatInitialPressedStateAsInput_IgnoresDualSenseStartupSettlingPress()
+    {
+        Assert.False(GuideButtonMonitorService.ShouldTreatInitialPressedStateAsInput(
+            GuideButtonDeviceKind.DualSense,
+            TimeSpan.FromMilliseconds(500),
+            powerIdleGuideOnlyMode: false,
+            allowInitialPowerIdleInput: false));
+    }
+
+    [Fact]
+    public void ShouldTreatInitialPressedStateAsInput_IgnoresDualSenseSettledPressDuringNormalMonitoring()
+    {
+        Assert.False(GuideButtonMonitorService.ShouldTreatInitialPressedStateAsInput(
+            GuideButtonDeviceKind.DualSense,
+            TimeSpan.FromSeconds(3),
+            powerIdleGuideOnlyMode: false,
+            allowInitialPowerIdleInput: false));
+    }
+
+    [Fact]
+    public void ShouldTreatInitialPressedStateAsInput_IgnoresDualSensePressInPowerIdleWithoutWakePermission()
+    {
+        Assert.False(GuideButtonMonitorService.ShouldTreatInitialPressedStateAsInput(
+            GuideButtonDeviceKind.DualSense,
+            TimeSpan.FromSeconds(30),
+            powerIdleGuideOnlyMode: true,
+            allowInitialPowerIdleInput: false));
+    }
+
+    [Fact]
+    public void ShouldTreatInitialPressedStateAsInput_AllowsDualSensePressImmediatelyInDisplayOffWakeOnlyMode()
+    {
+        Assert.True(GuideButtonMonitorService.ShouldTreatInitialPressedStateAsInput(
+            GuideButtonDeviceKind.DualSense,
+            TimeSpan.Zero,
+            powerIdleGuideOnlyMode: true,
+            allowInitialPowerIdleInput: true));
+    }
+
+    [Fact]
+    public void ShouldTreatInitialPressedStateAsInput_KeepsSteamControllerInitialPressSuppressed()
+    {
+        Assert.False(GuideButtonMonitorService.ShouldTreatInitialPressedStateAsInput(
+            GuideButtonDeviceKind.SteamController,
+            TimeSpan.FromSeconds(30),
+            powerIdleGuideOnlyMode: true,
+            allowInitialPowerIdleInput: true));
+    }
+
+    [Fact]
     public void TryParseGuideButton_DualSenseUsbReport_DetectsPsButton()
     {
         var report = new byte[64];

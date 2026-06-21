@@ -94,6 +94,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _isAnyProbeRunning;
     private bool _isRefreshRunning;
     private bool _isDisplaySleepPreparationActive;
+    private bool _backgroundTimersSuspendedForDisplaySleep;
     private double _lastCpuPercent;
     private double _lastRamMb;
     private double _lastPrivateMb;
@@ -489,9 +490,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         string? autoProbeTarget = null;
         var refreshTimedOut = false;
-        var connectionOnlyForPowerIdle = _initialized &&
-                                         !forceFullRefresh &&
-                                         ShouldPauseBackgroundPollingForPowerIdle();
 
         if (!await _refreshLock.WaitAsync(0).ConfigureAwait(true))
         {
@@ -502,47 +500,29 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            StatusText = connectionOnlyForPowerIdle
-                ? UiLanguageCatalog.GetExtraText(Settings.Language, "PowerIdlePauseActive")
-                : CurrentLanguageText.StatusRefreshing;
+            StatusText = CurrentLanguageText.StatusRefreshing;
             using var refreshCts = new CancellationTokenSource(RefreshOperationTimeout);
             var refreshToken = refreshCts.Token;
 
-            IReadOnlyList<ConnectedBluetoothDevice> connectedDevices;
-            if (connectionOnlyForPowerIdle)
-            {
-                connectedDevices = BuildPowerIdleConnectedDevicesSnapshot();
-            }
-            else
-            {
-                connectedDevices = await _connectedDeviceProvider
-                    .GetConnectedDevicesAsync(refreshToken)
-                    .ConfigureAwait(true);
-            }
+            var connectedDevices = await _connectedDeviceProvider
+                .GetConnectedDevicesAsync(refreshToken)
+                .ConfigureAwait(true);
 
-            if (!connectionOnlyForPowerIdle &&
-                FirmwareUpdateOverrideMigration.TryCopyPico2WOverridesToStableAddress(Settings, connectedDevices))
+            if (FirmwareUpdateOverrideMigration.TryCopyPico2WOverridesToStableAddress(Settings, connectedDevices))
             {
                 SaveSettings();
             }
 
-            IReadOnlyList<PnpBatteryReading> rawBatteryLevels = [];
-            if (!connectionOnlyForPowerIdle && connectedDevices.Count > 0)
-            {
-                rawBatteryLevels = await _batteryLevelProvider
+            var rawBatteryLevels = connectedDevices.Count > 0
+                ? await _batteryLevelProvider
                     .GetBatteryLevelsAsync(connectedDevices, refreshToken)
-                    .ConfigureAwait(true);
-            }
+                    .ConfigureAwait(true)
+                : [];
             var connectedAddresses = connectedDevices
                 .Select(device => AddressNormalizer.NormalizeAddress(device.Address))
                 .Where(address => !string.IsNullOrWhiteSpace(address))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var batteryLevels = connectionOnlyForPowerIdle
-                ? _lastBatteryReadingsByAddress
-                    .Where(pair => connectedAddresses.Contains(pair.Key))
-                    .Select(pair => pair.Value)
-                    .ToList()
-                : ApplyBatteryJumpGuard(rawBatteryLevels, DateTimeOffset.Now);
+            var batteryLevels = ApplyBatteryJumpGuard(rawBatteryLevels, DateTimeOffset.Now);
             var overrides = IconOverrideParser.Parse(Settings.IconOverrides);
             var imageOverrides = IconImageOverrideParser.Parse(Settings.IconImageOverrides);
             var nameOverrides = NameOverrideParser.Parse(Settings.NameOverrides);
@@ -554,35 +534,29 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 nameOverrides,
                 DateTimeOffset.Now);
 
-            if (!connectionOnlyForPowerIdle)
+            _lastConnectedDevicesByAddress.Clear();
+            foreach (var connected in connectedDevices)
             {
-                _lastConnectedDevicesByAddress.Clear();
-                foreach (var connected in connectedDevices)
+                var normalized = AddressNormalizer.NormalizeAddress(connected.Address);
+                if (!string.IsNullOrWhiteSpace(normalized))
                 {
-                    var normalized = AddressNormalizer.NormalizeAddress(connected.Address);
-                    if (!string.IsNullOrWhiteSpace(normalized))
-                    {
-                        _lastConnectedDevicesByAddress[normalized] = connected;
-                    }
+                    _lastConnectedDevicesByAddress[normalized] = connected;
                 }
             }
 
-            if (!connectionOnlyForPowerIdle)
+            _lastBatteryReadingsByAddress.Clear();
+            foreach (var reading in batteryLevels)
             {
-                _lastBatteryReadingsByAddress.Clear();
-                foreach (var reading in batteryLevels)
+                var normalizedAddress = AddressNormalizer.NormalizeAddress(reading.Address);
+                if (string.IsNullOrWhiteSpace(normalizedAddress))
                 {
-                    var normalizedAddress = AddressNormalizer.NormalizeAddress(reading.Address);
-                    if (string.IsNullOrWhiteSpace(normalizedAddress))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    if (!_lastBatteryReadingsByAddress.TryGetValue(normalizedAddress, out var existing) ||
-                        (existing.BatteryPercent is null && reading.BatteryPercent is not null))
-                    {
-                        _lastBatteryReadingsByAddress[normalizedAddress] = reading with { Address = normalizedAddress };
-                    }
+                if (!_lastBatteryReadingsByAddress.TryGetValue(normalizedAddress, out var existing) ||
+                    (existing.BatteryPercent is null && reading.BatteryPercent is not null))
+                {
+                    _lastBatteryReadingsByAddress[normalizedAddress] = reading with { Address = normalizedAddress };
                 }
             }
 
@@ -599,13 +573,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 _matchedCount,
                 _naCount);
 
-            StatusText = connectionOnlyForPowerIdle
-                ? UiLanguageCatalog.GetExtraText(Settings.Language, "PowerIdlePauseActive")
-                : UiLanguageCatalog.BuildUpdatedStatus(Settings.Language, DateTime.Now);
+            StatusText = UiLanguageCatalog.BuildUpdatedStatus(Settings.Language, DateTime.Now);
             ProcessMemoryTrimmer.TryTrim(_ownProcess);
-            autoProbeTarget = connectionOnlyForPowerIdle
-                ? null
-                : SelectAutoProbeTarget(DateTime.UtcNow);
+            autoProbeTarget = SelectAutoProbeTarget(DateTime.UtcNow);
         }
         catch (OperationCanceledException)
         {
@@ -1509,7 +1479,45 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _isDisplaySleepPreparationActive = isActive;
+        if (isActive)
+        {
+            SuspendBackgroundTimersForDisplaySleep();
+        }
+        else
+        {
+            ResumeBackgroundTimersAfterDisplaySleep();
+        }
+
         OnPropertyChanged(nameof(IsDisplaySleepPreparationActive));
+    }
+
+    private void SuspendBackgroundTimersForDisplaySleep()
+    {
+        if (_backgroundTimersSuspendedForDisplaySleep)
+        {
+            return;
+        }
+
+        _backgroundTimersSuspendedForDisplaySleep = true;
+        _refreshTimer.Stop();
+        _performanceTimer.Stop();
+    }
+
+    private void ResumeBackgroundTimersAfterDisplaySleep()
+    {
+        if (!_backgroundTimersSuspendedForDisplaySleep)
+        {
+            return;
+        }
+
+        _backgroundTimersSuspendedForDisplaySleep = false;
+        if (!_initialized || _disposed)
+        {
+            return;
+        }
+
+        _refreshTimer.Start();
+        _performanceTimer.Start();
     }
 
     public int GetCurrentWindowsDisplayOffMinutes()
@@ -2510,17 +2518,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private bool ShouldPauseBackgroundPollingForPowerIdle()
     {
-        if (_isDisplaySleepPreparationActive)
-        {
-            return true;
-        }
-
-        return PowerIdlePolicy.ShouldPauseBackgroundWork(
-            GetPowerIdlePauseDelay(),
-            SystemIdleMonitor.GetIdleDuration(),
-            GetLocalOrGamepadIdleDuration(),
-            _isAnyProbeRunning,
-            _isRefreshRunning);
+        return false;
     }
 
     private void UpdatePerformanceSamplingInterval(bool idleMode)

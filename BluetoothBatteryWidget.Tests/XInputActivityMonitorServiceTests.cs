@@ -130,6 +130,26 @@ public sealed class XInputActivityMonitorServiceTests
             packetChanged));
     }
 
+    [Theory]
+    [InlineData(true, false, true, false, true)]
+    [InlineData(true, false, false, true, true)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(true, true, true, false, false)]
+    [InlineData(false, false, true, false, false)]
+    public void ShouldTreatInitialWakeOnlyStateAsActivity_AllowsFirstPressedWakeOnlySnapshot(
+        bool wakeOnly,
+        bool hasPreviousGamepad,
+        bool hasButtonHeld,
+        bool hasTriggerHeld,
+        bool expected)
+    {
+        Assert.Equal(expected, XInputActivityMonitorService.ShouldTreatInitialWakeOnlyStateAsActivity(
+            wakeOnly,
+            hasPreviousGamepad,
+            hasButtonHeld,
+            hasTriggerHeld));
+    }
+
     [Fact]
     public void ShouldRaiseHeldActivity_OnlyRepeatsForActiveHeldInput()
     {
@@ -159,7 +179,7 @@ public sealed class XInputActivityMonitorServiceTests
     }
 
     [Fact]
-    public void GamepadWakeInputEventArgs_TreatsStickAsLocalActivityOnly()
+    public void GamepadWakeInputEventArgs_TreatsDefaultStickAsTelemetryOnly()
     {
         var eventArgs = new GamepadWakeInputEventArgs(
             "xinput",
@@ -169,6 +189,21 @@ public sealed class XInputActivityMonitorServiceTests
             isGuideButton: false);
 
         Assert.False(eventArgs.CountsAsUserActivity);
+        Assert.False(eventArgs.IsWakeEligible);
+    }
+
+    [Fact]
+    public void GamepadWakeInputEventArgs_TreatsExplicitStickMovementAsUserActivityOnly()
+    {
+        var eventArgs = new GamepadWakeInputEventArgs(
+            "xinput",
+            hasButton: false,
+            hasTrigger: false,
+            hasStick: true,
+            isGuideButton: false,
+            countsAsUserActivity: true);
+
+        Assert.True(eventArgs.CountsAsUserActivity);
         Assert.False(eventArgs.IsWakeEligible);
     }
 

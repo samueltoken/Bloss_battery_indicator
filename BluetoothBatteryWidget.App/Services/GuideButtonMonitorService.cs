@@ -109,6 +109,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
     private Task? _supervisorTask;
     private bool _disposed;
     private bool _isPowerIdlePollingPaused;
+    private bool _allowInitialPressedPowerIdleInput;
     private string _lastDiscoveryLogKey = string.Empty;
 
     public event EventHandler<GuideButtonPressedEventArgs>? GuideButtonPressed;
@@ -133,6 +134,17 @@ internal sealed class GuideButtonMonitorService : IDisposable
             lock (_sync)
             {
                 return _isPowerIdlePollingPaused;
+            }
+        }
+    }
+
+    public bool AllowsInitialPressedPowerIdleInputForDiagnostics
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _allowInitialPressedPowerIdleInput;
             }
         }
     }
@@ -165,11 +177,12 @@ internal sealed class GuideButtonMonitorService : IDisposable
         }
     }
 
-    public void SetPowerIdlePollingPaused(bool isPaused)
+    public void SetPowerIdlePollingPaused(bool isPaused, bool allowInitialPressedInput = false)
     {
         lock (_sync)
         {
             _isPowerIdlePollingPaused = isPaused;
+            _allowInitialPressedPowerIdleInput = isPaused && allowInitialPressedInput;
         }
     }
 
@@ -355,11 +368,12 @@ internal sealed class GuideButtonMonitorService : IDisposable
         var minimumReportSize = endpoint.DeviceKind == GuideButtonDeviceKind.DualSense
             ? DualSenseMinimumReportSize
             : SteamMinimumReportSize;
-        var hasSeenNeutralState = endpoint.DeviceKind != GuideButtonDeviceKind.SteamController;
+        var neutralReportCount = 0;
         var lastPressed = false;
         DateTimeOffset? pressedAt = null;
         var emptyReadCount = 0;
         var idleQuietLogged = false;
+        var monitorStartedAt = DateTimeOffset.UtcNow;
 
         using var handle = HidGamepadAccess.OpenHandle(endpoint.DevicePath);
         if (handle.IsInvalid)
@@ -396,7 +410,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
                         "Steam Controller latest input-state polling is active.");
                 }
 
-                HandleGuideButtonState(endpoint, polledPressed, ref hasSeenNeutralState, ref lastPressed, ref pressedAt);
+                HandleGuideButtonState(endpoint, polledPressed, monitorStartedAt, ref neutralReportCount, ref lastPressed, ref pressedAt);
             }
             else if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
                      !string.IsNullOrWhiteSpace(snapshotDiagnostic) &&
@@ -440,7 +454,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
                             "Steam Controller stream was quiet; polling the latest input state instead.");
                     }
 
-                    HandleGuideButtonState(endpoint, snapshotPressed, ref hasSeenNeutralState, ref lastPressed, ref pressedAt);
+                    HandleGuideButtonState(endpoint, snapshotPressed, monitorStartedAt, ref neutralReportCount, ref lastPressed, ref pressedAt);
                     continue;
                 }
 
@@ -476,7 +490,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
                     lastPressed &&
                     GuideButtonReportParser.IsSteamControllerStatusReport(frame.Data))
                 {
-                    HandleGuideButtonState(endpoint, pressed: false, ref hasSeenNeutralState, ref lastPressed, ref pressedAt);
+                    HandleGuideButtonState(endpoint, pressed: false, monitorStartedAt, ref neutralReportCount, ref lastPressed, ref pressedAt);
                     continue;
                 }
 
@@ -493,30 +507,43 @@ internal sealed class GuideButtonMonitorService : IDisposable
                 continue;
             }
 
-            HandleGuideButtonState(endpoint, pressed, ref hasSeenNeutralState, ref lastPressed, ref pressedAt);
+            HandleGuideButtonState(endpoint, pressed, monitorStartedAt, ref neutralReportCount, ref lastPressed, ref pressedAt);
         }
     }
 
     private void HandleGuideButtonState(
         GuideButtonEndpoint endpoint,
         bool pressed,
-        ref bool hasSeenNeutralState,
+        DateTimeOffset monitorStartedAt,
+        ref int neutralReportCount,
         ref bool lastPressed,
         ref DateTimeOffset? pressedAt)
     {
-        if (!hasSeenNeutralState)
+        if (neutralReportCount < 2)
         {
             if (pressed)
             {
-                lastPressed = true;
+                if (!ShouldTreatInitialPressedStateAsInput(
+                        endpoint.DeviceKind,
+                        DateTimeOffset.UtcNow - monitorStartedAt,
+                        IsPowerIdlePollingPaused(),
+                        IsInitialPressedPowerIdleInputAllowed()))
+                {
+                    lastPressed = true;
+                    pressedAt = null;
+                    return;
+                }
+
+                neutralReportCount = 2;
+                lastPressed = false;
+            }
+            else
+            {
+                neutralReportCount++;
+                lastPressed = false;
                 pressedAt = null;
                 return;
             }
-
-            hasSeenNeutralState = true;
-            lastPressed = false;
-            pressedAt = null;
-            return;
         }
 
         var now = DateTimeOffset.Now;
@@ -540,6 +567,18 @@ internal sealed class GuideButtonMonitorService : IDisposable
         lastPressed = pressed;
     }
 
+    internal static bool ShouldTreatInitialPressedStateAsInput(
+        GuideButtonDeviceKind deviceKind,
+        TimeSpan monitorAge,
+        bool powerIdleGuideOnlyMode,
+        bool allowInitialPowerIdleInput)
+    {
+        _ = monitorAge;
+        return powerIdleGuideOnlyMode &&
+               allowInitialPowerIdleInput &&
+               deviceKind == GuideButtonDeviceKind.DualSense;
+    }
+
     private void RaiseInputActivityReceived(GuideButtonEndpoint endpoint)
     {
         InputActivityReceived?.Invoke(
@@ -555,6 +594,14 @@ internal sealed class GuideButtonMonitorService : IDisposable
         lock (_sync)
         {
             return _isPowerIdlePollingPaused;
+        }
+    }
+
+    private bool IsInitialPressedPowerIdleInputAllowed()
+    {
+        lock (_sync)
+        {
+            return _allowInitialPressedPowerIdleInput;
         }
     }
 

@@ -7,7 +7,8 @@ internal sealed class GamepadWakeInputEventArgs(
     bool hasButton,
     bool hasTrigger,
     bool hasStick,
-    bool isGuideButton)
+    bool isGuideButton,
+    bool countsAsUserActivity = false)
     : EventArgs
 {
     public string Source { get; } = source;
@@ -22,7 +23,8 @@ internal sealed class GamepadWakeInputEventArgs(
 
     public bool IsWakeEligible => IsGuideButton || HasButton || HasTrigger;
 
-    public bool CountsAsUserActivity => IsGuideButton || HasButton || HasTrigger;
+    public bool CountsAsUserActivity { get; } =
+        countsAsUserActivity || isGuideButton || hasButton || hasTrigger;
 }
 
 internal sealed class XInputActivityMonitorService : IDisposable
@@ -205,22 +207,31 @@ internal sealed class XInputActivityMonitorService : IDisposable
             }
 
             for (uint userIndex = 0; userIndex < ControllerCount; userIndex++)
-        {
-            if (XInputGetState(userIndex, out var state) != ErrorSuccess)
             {
-                _lastPacketNumbers[userIndex] = null;
-                _lastGamepads[userIndex] = null;
-                continue;
-            }
+                if (XInputGetState(userIndex, out var state) != ErrorSuccess)
+                {
+                    _lastPacketNumbers[userIndex] = null;
+                    _lastGamepads[userIndex] = null;
+                    continue;
+                }
 
                 var previousPacketNumber = _lastPacketNumbers[userIndex];
                 var previousGamepad = _lastGamepads[userIndex];
                 var now = DateTimeOffset.UtcNow;
-                var hasButtonEdge = previousGamepad.HasValue &&
-                    HasButtonDownEdge(previousGamepad.Value.Buttons, state.Gamepad.Buttons);
-                var hasTriggerEdge = previousGamepad.HasValue &&
-                    (HasTriggerPressEdge(previousGamepad.Value.LeftTrigger, state.Gamepad.LeftTrigger) ||
-                     HasTriggerPressEdge(previousGamepad.Value.RightTrigger, state.Gamepad.RightTrigger));
+                var hasButtonHeld = state.Gamepad.Buttons != 0;
+                var hasTriggerHeld = state.Gamepad.LeftTrigger > TriggerThreshold ||
+                                     state.Gamepad.RightTrigger > TriggerThreshold;
+                var initialWakeOnlyInput = ShouldTreatInitialWakeOnlyStateAsActivity(
+                    wakeOnly,
+                    previousGamepad.HasValue,
+                    hasButtonHeld,
+                    hasTriggerHeld);
+                var hasButtonEdge = (initialWakeOnlyInput && hasButtonHeld) ||
+                    (previousGamepad.HasValue && HasButtonDownEdge(previousGamepad.Value.Buttons, state.Gamepad.Buttons));
+                var hasTriggerEdge = (initialWakeOnlyInput && hasTriggerHeld) ||
+                    (previousGamepad.HasValue &&
+                     (HasTriggerPressEdge(previousGamepad.Value.LeftTrigger, state.Gamepad.LeftTrigger) ||
+                      HasTriggerPressEdge(previousGamepad.Value.RightTrigger, state.Gamepad.RightTrigger)));
                 var hasStickMovement = previousGamepad.HasValue &&
                                (HasThumbActivity(
                                     previousGamepad.Value.ThumbLX,
@@ -234,9 +245,6 @@ internal sealed class XInputActivityMonitorService : IDisposable
                                     state.Gamepad.ThumbRX,
                                     state.Gamepad.ThumbRY,
                                     RightThumbDeadZone));
-                var hasButtonHeld = state.Gamepad.Buttons != 0;
-                var hasTriggerHeld = state.Gamepad.LeftTrigger > TriggerThreshold ||
-                                     state.Gamepad.RightTrigger > TriggerThreshold;
                 var hasStickHeld = IsThumbOutsideDeadZone(
                                        state.Gamepad.ThumbLX,
                                        state.Gamepad.ThumbLY,
@@ -248,11 +256,12 @@ internal sealed class XInputActivityMonitorService : IDisposable
                 var edgeInput = hasButtonEdge || hasTriggerEdge || hasStickMovement;
                 var heldInput = hasButtonHeld || hasTriggerHeld || hasStickHeld;
                 var packetChanged = ShouldTreatPacketChangeAsActivity(previousPacketNumber, state.PacketNumber);
+                var packetChangedOrInitialWakeInput = packetChanged || initialWakeOnlyInput;
                 _lastPacketNumbers[userIndex] = state.PacketNumber;
                 _lastGamepads[userIndex] = state.Gamepad;
 
                 var shouldRaiseEdge = wakeOnly
-                    ? ShouldRaiseWakeOnlyActivity(hasButtonEdge, hasTriggerEdge, packetChanged)
+                    ? ShouldRaiseWakeOnlyActivity(hasButtonEdge, hasTriggerEdge, packetChangedOrInitialWakeInput)
                     : ShouldRaiseActivity(edgeInput, packetChanged);
                 var shouldRaiseHeld = !wakeOnly &&
                     !shouldRaiseEdge &&
@@ -275,6 +284,7 @@ internal sealed class XInputActivityMonitorService : IDisposable
                     var eventHasButton = hasButtonEdge || (shouldRaiseHeld && hasButtonHeld);
                     var eventHasTrigger = hasTriggerEdge || (shouldRaiseHeld && hasTriggerHeld);
                     var eventHasStick = hasStickMovement || (shouldRaiseHeld && hasStickHeld);
+                    var eventCountsAsUserActivity = eventHasButton || eventHasTrigger;
                     InputActivityReceived?.Invoke(
                         this,
                         new GamepadWakeInputEventArgs(
@@ -282,7 +292,8 @@ internal sealed class XInputActivityMonitorService : IDisposable
                             eventHasButton,
                             eventHasTrigger,
                             eventHasStick,
-                            isGuideButton: false));
+                            isGuideButton: false,
+                            eventCountsAsUserActivity));
                 }
             }
         }
@@ -341,6 +352,17 @@ internal sealed class XInputActivityMonitorService : IDisposable
         bool packetChanged)
     {
         return packetChanged && (hasButton || hasTrigger);
+    }
+
+    internal static bool ShouldTreatInitialWakeOnlyStateAsActivity(
+        bool wakeOnly,
+        bool hasPreviousGamepad,
+        bool hasButtonHeld,
+        bool hasTriggerHeld)
+    {
+        return wakeOnly &&
+               !hasPreviousGamepad &&
+               (hasButtonHeld || hasTriggerHeld);
     }
 
     internal static bool ShouldRaiseHeldActivity(

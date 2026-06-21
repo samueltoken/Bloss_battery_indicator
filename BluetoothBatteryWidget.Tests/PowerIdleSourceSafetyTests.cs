@@ -51,8 +51,9 @@ public sealed class PowerIdleSourceSafetyTests
             "Services",
             "SystemDisplayPower.cs");
         var systemDisplayPowerSource = File.ReadAllText(systemDisplayPowerPath);
-        Assert.Contains("TryNotifyDisplayUserActivity", systemDisplayPowerSource);
-        Assert.Contains("SetThreadExecutionState(EsDisplayRequired)", systemDisplayPowerSource);
+        Assert.DoesNotContain("TryNotifyDisplayUserActivity", systemDisplayPowerSource);
+        Assert.DoesNotContain("SetThreadExecutionState", systemDisplayPowerSource);
+        Assert.DoesNotContain("EsDisplayRequired", systemDisplayPowerSource);
         Assert.DoesNotContain("ES_CONTINUOUS", systemDisplayPowerSource);
         Assert.DoesNotContain("EsContinuous", systemDisplayPowerSource);
     }
