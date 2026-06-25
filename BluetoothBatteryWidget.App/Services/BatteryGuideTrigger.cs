@@ -431,6 +431,56 @@ internal static class BatteryGuideTriggerParser
             includeSteamAxisPseudoBits: false);
     }
 
+    internal static ulong BuildPressedBitsSignature(
+        BatteryGuideTrigger trigger,
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report)
+    {
+        if (trigger.DeviceKind != deviceKind ||
+            report.Length == 0 ||
+            report[0] != trigger.ReportId)
+        {
+            return 0;
+        }
+
+        var signature = 14695981039346656037UL;
+        foreach (var bit in trigger.Bits)
+        {
+            AddBitState(ref signature, ResolveBitPressed(trigger, deviceKind, report, bit));
+        }
+
+        AddBitState(ref signature, IsMatch(trigger, deviceKind, report));
+        return signature;
+
+        static void AddBitState(ref ulong hash, bool isPressed)
+        {
+            const ulong fnvPrime = 1099511628211UL;
+            hash ^= isPressed ? (byte)1 : (byte)0;
+            hash *= fnvPrime;
+        }
+    }
+
+    private static bool ResolveBitPressed(
+        BatteryGuideTrigger trigger,
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report,
+        BatteryGuideTriggerBit bit)
+    {
+        if (IsAxisPseudoBit(bit))
+        {
+            return IsAxisPseudoBitPressed(trigger.DeviceKind, trigger.ReportId, bit, report);
+        }
+
+        if (IsDualSenseDPadPseudoBit(bit))
+        {
+            return IsDualSenseDPadPseudoBitPressed(trigger.DeviceKind, trigger.ReportId, bit, report);
+        }
+
+        return bit.Offset >= 0 &&
+               bit.Offset < report.Length &&
+               (report[bit.Offset] & bit.Mask) != 0;
+    }
+
     private static bool HasAnyTriggerBitPressedCore(
         BatteryGuideTrigger trigger,
         GuideButtonDeviceKind deviceKind,

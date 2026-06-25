@@ -69,6 +69,8 @@ public sealed class WidgetSettings
     public const int MaximumCustomBatteryAlertThresholdPercent = 80;
     public const int MaximumBatteryAlertThresholdsLength = 64;
     public const string DefaultBatteryAlertThresholds = "30";
+    public const int MaximumBatteryAlertDeviceKeyLength = 160;
+    public const int MaximumBatteryAlertDeviceSettings = 128;
     public const double DefaultSettingsTextFontSize = 13d;
     public const double MinimumSettingsTextFontSize = 11d;
     public const double MaximumSettingsTextFontSize = 18d;
@@ -116,6 +118,8 @@ public sealed class WidgetSettings
     public Dictionary<string, string> BatteryGuideTriggerProfiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public string BatteryAlertThresholds { get; set; } = DefaultBatteryAlertThresholds;
+
+    public Dictionary<string, bool> BatteryAlertDeviceEnabled { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public string LastDs5DongleFirmwareVersion { get; set; } = string.Empty;
 
@@ -467,6 +471,48 @@ public sealed class WidgetSettings
             .OrderBy(percent => percent)
             .Take(8)
             .ToArray();
+    }
+
+    public static string NormalizeBatteryAlertDeviceKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = new string(value
+            .Trim()
+            .Where(character => !char.IsControl(character))
+            .Take(MaximumBatteryAlertDeviceKeyLength)
+            .ToArray());
+        return normalized.Trim();
+    }
+
+    public static Dictionary<string, bool> NormalizeBatteryAlertDeviceEnabled(
+        IDictionary<string, bool>? deviceSettings)
+    {
+        var normalized = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        if (deviceSettings is null)
+        {
+            return normalized;
+        }
+
+        foreach (var pair in deviceSettings)
+        {
+            var key = NormalizeBatteryAlertDeviceKey(pair.Key);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                continue;
+            }
+
+            normalized[key] = pair.Value;
+            if (normalized.Count >= MaximumBatteryAlertDeviceSettings)
+            {
+                break;
+            }
+        }
+
+        return normalized;
     }
 }
 

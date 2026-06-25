@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$OutputPath
 )
 
@@ -19,12 +19,13 @@ function Get-ManualChecklistPath {
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $manualChecklistName = Split-Path -Leaf (Get-ManualChecklistPath)
-    $evidenceName = if ($manualChecklistName -eq "manual-verification-v108.md") {
-        "v108-manual-gate-evidence.md"
+    $manualScriptVersion = if ($manualChecklistName -match '^manual-verification-(v\d+)\.md$') {
+        $Matches[1]
     }
     else {
-        "v107-manual-gate-evidence.md"
+        "v107"
     }
+    $evidenceName = "$manualScriptVersion-manual-gate-evidence.md"
 
     $OutputPath = Join-Path $projectRoot "artifacts\manual-gate-evidence\$evidenceName"
 }
@@ -227,9 +228,9 @@ $searchRoots = @($projectRoot, $parentRoot) |
     Select-Object -Unique
 
 $releaseArtifacts = @(
-    New-ArtifactRow -Name "v1.0.8 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.8"
-    New-ArtifactRow -Name "v1.0.8 installer hash file" -RelativePath "release\installer\setup.exe.sha256"
-    New-ArtifactRow -Name "portable test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.8"
+    New-ArtifactRow -Name "v1.0.9 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.9"
+    New-ArtifactRow -Name "v1.0.9 installer hash file" -RelativePath "release\installer\setup.exe.sha256"
+    New-ArtifactRow -Name "portable test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.9"
     New-ArtifactRow -Name "release notes preview" -RelativePath "artifacts\release-notes-previews\release-notes-window.png"
 )
 
@@ -247,7 +248,7 @@ $gitSafetySummaryPath = Join-Path $projectRoot "artifacts\manual-gate-evidence\g
 $gitSafetySummary = Get-Content -LiteralPath $gitSafetySummaryPath -Raw | ConvertFrom-Json
 
 $lines = [System.Collections.Generic.List[string]]::new()
-$lines.Add("# v1.0.8 Manual Gate Evidence")
+$lines.Add("# v1.0.9 Manual Gate Evidence")
 $lines.Add("")
 $lines.Add("- GeneratedAt: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss K')")
 $lines.Add("- ProjectRoot: $projectRoot")

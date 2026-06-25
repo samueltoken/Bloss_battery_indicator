@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text;
 using BluetoothBatteryWidget.App.Services;
 
@@ -18,7 +18,7 @@ public sealed class UpdateServiceTests
     [Theory]
     [InlineData("1.0.6", "1.0.7", true)]
     [InlineData("1.0.7", "1.0.7", false)]
-    [InlineData("v1.0.7", "v1.0.8", true)]
+    [InlineData("v1.0.7", "v1.0.9", true)]
     public void IsRemoteVersionNewer_ComparesReleaseVersions(string current, string remote, bool expected)
     {
         Assert.Equal(expected, UpdateService.IsRemoteVersionNewer(current, remote));

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string[]]$SearchRoot,
     [switch]$RequireOldInstallers,
     [switch]$RequireNoRunningProcesses,
@@ -189,17 +189,18 @@ $manualChecklistPath = if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_C
 else {
     "manual-verification-v107.md"
 }
-$manualScriptVersion = if ((Split-Path -Leaf $manualChecklistPath) -eq "manual-verification-v108.md") {
-    "v108"
+$manualChecklistName = Split-Path -Leaf $manualChecklistPath
+$manualScriptVersion = if ($manualChecklistName -match '^manual-verification-(v\d+)\.md$') {
+    $Matches[1]
 }
 else {
     "v107"
 }
 
 $requiredFiles = @(
-    New-RequiredFileResult -Name "v1.0.8 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.8"
-    New-RequiredFileResult -Name "v1.0.8 installer hash" -RelativePath "release\installer\setup.exe.sha256"
-    New-RequiredFileResult -Name "portable visual test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.8"
+    New-RequiredFileResult -Name "v1.0.9 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.9"
+    New-RequiredFileResult -Name "v1.0.9 installer hash" -RelativePath "release\installer\setup.exe.sha256"
+    New-RequiredFileResult -Name "portable visual test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.9"
     New-RequiredFileResult -Name "manual verification checklist" -RelativePath $manualChecklistPath
     New-RequiredFileResult -Name "manual gate command helper" -RelativePath "scripts\show-$manualScriptVersion-manual-gate-commands.ps1"
     New-RequiredFileResult -Name "manual gate updater" -RelativePath "scripts\set-$manualScriptVersion-manual-gate.ps1"

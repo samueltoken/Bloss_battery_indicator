@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$TestExePath,
     [string]$ExpectedVersion,
     [switch]$Live,
@@ -225,11 +225,11 @@ foreach ($check in @(
     @{ Path = $mainWindowPath; Needle = "_viewModel.MarkReleaseNotesSeen(version);"; Message = "MainWindow does not mark release notes as seen for release builds." },
     @{ Path = $settingsPath; Needle = "LastSeenReleaseNotesVersion"; Message = "Widget settings do not store the last seen release-notes version." },
     @{ Path = $settingsStorePath; Needle = "NormalizeReleaseNotesVersion"; Message = "Settings store does not normalize the release-notes version field." },
-    @{ Path = $mainWindowTestsPath; Needle = 'ShouldShowReleaseNotes("1.0.7", "1.0.8", forceEveryRun: false)'; Message = "Release notes tests do not cover v1.0.7 update behavior." },
-    @{ Path = $mainWindowTestsPath; Needle = 'ShouldShowReleaseNotes(" 1.0.8\r\n", "1.0.8", forceEveryRun: false)'; Message = "Release notes tests do not cover normalized seen-version behavior." },
-    @{ Path = $mainWindowTestsPath; Needle = 'ShouldShowReleaseNotes("1.0.8", "", forceEveryRun: false)'; Message = "Release notes tests do not cover blank release-version suppression." },
-    @{ Path = $mainWindowTestsPath; Needle = 'ShouldShowReleaseNotes("1.0.8", "", forceEveryRun: true)'; Message = "Release notes tests do not cover test.exe force-every-run behavior." },
-    @{ Path = $previewArtifactTestsPath; Needle = 'new ReleaseNotesWindow("1.0.8")'; Message = "Release notes preview image is not rendered with the current release version." }
+    @{ Path = $mainWindowTestsPath; Needle = 'ShouldShowReleaseNotes("1.0.7", "1.0.9", forceEveryRun: false)'; Message = "Release notes tests do not cover v1.0.7 update behavior." },
+    @{ Path = $mainWindowTestsPath; Needle = 'ShouldShowReleaseNotes(" 1.0.9\r\n", "1.0.9", forceEveryRun: false)'; Message = "Release notes tests do not cover normalized seen-version behavior." },
+    @{ Path = $mainWindowTestsPath; Needle = 'ShouldShowReleaseNotes("1.0.9", "", forceEveryRun: false)'; Message = "Release notes tests do not cover blank release-version suppression." },
+    @{ Path = $mainWindowTestsPath; Needle = 'ShouldShowReleaseNotes("1.0.9", "", forceEveryRun: true)'; Message = "Release notes tests do not cover test.exe force-every-run behavior." },
+    @{ Path = $previewArtifactTestsPath; Needle = 'new ReleaseNotesWindow("1.0.9")'; Message = "Release notes preview image is not rendered with the current release version." }
 )) {
     if (-not (Test-FileContains $check.Path $check.Needle)) {
         Add-Failure $failures $check.Message

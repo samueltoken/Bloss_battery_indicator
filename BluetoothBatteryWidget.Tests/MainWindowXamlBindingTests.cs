@@ -1,4 +1,4 @@
-using BluetoothBatteryWidget.App;
+﻿using BluetoothBatteryWidget.App;
 using BluetoothBatteryWidget.App.Services;
 using BluetoothBatteryWidget.Core.Models;
 using System.Text.RegularExpressions;
@@ -61,8 +61,9 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("BLoss", xaml);
         Assert.Contains("업데이트 내역", xaml);
         Assert.DoesNotContain("이번 업데이트", xaml);
-        Assert.Contains("절전모드/화면꺼짐 관련 구조개선", xaml);
-        Assert.Contains("기타 자잘한 버그 수정", xaml);
+        Assert.Contains("Dual Sense, Steam Controller 사용시의 위젯 CPU 점유율을 낮추고 최적화하였습니다", xaml);
+        Assert.Contains("- 가이드 버튼 / 새로 지정한 버튼 사용 순간에만 일시적으로 점유율이 상승합니다", xaml);
+        Assert.Contains("- 최초 연결시, 연결 해제시 해당 순간에만 일시적으로 점유율이 상승합니다", xaml);
         Assert.Contains("SetReleaseNoteText", code);
         Assert.Contains("ReleaseNoteConfirmButtonStyle", xaml);
         Assert.Contains("ReleaseNoteCloseButtonStyle", xaml);
@@ -73,9 +74,11 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("UiLanguageCatalog.GetExtraText(language, \"ReleaseNotesHeading\")", code);
         Assert.Contains("ReleaseNotesWindow(string version, string? language = null)", code);
         Assert.Contains("AppVersionInfo.DisplayVersion", code);
-        Assert.DoesNotContain("Bloss 1.0.8", xaml);
+        Assert.DoesNotContain("Bloss 1.0.9", xaml);
         Assert.Equal("Update details", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesHeading"));
         Assert.Equal("업데이트 내역", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesHeading"));
+        Assert.Equal("Optimized widget CPU usage when using DualSense / Steam Controller", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesCleanupAutostart"));
+        Assert.Equal("Dual Sense, Steam Controller 사용시의 위젯 CPU 점유율을 낮추고 최적화하였습니다", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesCleanupAutostart"));
         Assert.Contains("BuildQuietTiles", code);
         Assert.Contains("BeginAmbientAnimations", code);
         Assert.Contains("SoftSweepTranslate.BeginAnimation", code);
@@ -292,14 +295,14 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void ReleaseNotes_ShowOnceForReleaseButEveryRunForTestExe()
     {
-        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.0.8", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.0.8", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.7", "1.0.8", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.8", "1.0.8", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.0.8\r\n", "1.0.8", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.8", "", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.8", "1.0.8", forceEveryRun: true));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.8", "", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.0.9", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.0.9", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.7", "1.0.9", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.9", "1.0.9", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.0.9\r\n", "1.0.9", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.9", "", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.9", "1.0.9", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.9", "", forceEveryRun: true));
         Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\test.exe"));
         Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\TEST.EXE"));
         Assert.False(MainWindow.IsPortableTestExecutablePath(@"C:\temp\Bloss.exe"));
@@ -1387,6 +1390,39 @@ public sealed class MainWindowXamlBindingTests
     }
 
     [Fact]
+    public void SteamControllerGuideMonitoring_KeepsOfficialGuidePathAndStopsRawInputWhenIdle()
+    {
+        var appRoot = Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App");
+        var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+
+        Assert.Contains("_steamRawInputMonitor.SteamRawHidBaselineReady += SteamRawInputMonitor_SteamRawHidBaselineReady;", mainWindowSource);
+        Assert.Contains("_steamRawInputMonitor.SteamRawHidBaselineReady -= SteamRawInputMonitor_SteamRawHidBaselineReady;", mainWindowSource);
+        Assert.Contains("private void SyncGuideButtonMonitorSteamPolicy()", mainWindowSource);
+        Assert.Contains("_guideButtonMonitor.SetSteamDirectHidEnabled(allowSteamDirectHid);", mainWindowSource);
+        Assert.Contains("var allowSteamDirectHid = _isBatteryGuideTriggerCaptureActive || !rawSteamMonitorActive;", mainWindowSource);
+        var startNormalStart = mainWindowSource.IndexOf("private void StartNormalInputMonitors()", StringComparison.Ordinal);
+        var startNormalEnd = mainWindowSource.IndexOf("private bool ShouldRunNormalGamepadMonitoring", startNormalStart, StringComparison.Ordinal);
+        var startNormalMethod = mainWindowSource[startNormalStart..startNormalEnd];
+        Assert.True(
+            startNormalMethod.IndexOf("StartActiveGuideButtonMonitor();", StringComparison.Ordinal) <
+            startNormalMethod.IndexOf("StartSteamRawInputPrimaryMonitor();", StringComparison.Ordinal));
+        Assert.True(
+            startNormalMethod.IndexOf("if (!ShouldRunNormalGamepadMonitoring(DateTimeOffset.UtcNow))", StringComparison.Ordinal) <
+            startNormalMethod.IndexOf("StartSteamRawInputPrimaryMonitor();", StringComparison.Ordinal));
+
+        var stopNormalNonGuideStart = mainWindowSource.IndexOf("private void StopNormalNonGuideInputMonitors()", StringComparison.Ordinal);
+        var stopNormalNonGuideEnd = mainWindowSource.IndexOf("private void StartPowerIdleXInputActivityMonitor()", stopNormalNonGuideStart, StringComparison.Ordinal);
+        var stopNormalNonGuideMethod = mainWindowSource[stopNormalNonGuideStart..stopNormalNonGuideEnd];
+        Assert.Contains("_steamRawInputMonitor.Stop();", stopNormalNonGuideMethod);
+    }
+
+    [Fact]
     public void BatteryGuideTriggerCapture_OptionallyLoadsOriginalBlueprintImageAsset()
     {
         var appRoot = Path.Combine(
@@ -2177,7 +2213,11 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("BatteryAlertThresholdsButton_Click", mainWindowXaml);
         Assert.DoesNotContain("BatteryAlertThresholdsTextBox", mainWindowXaml);
         Assert.DoesNotContain("BatteryAlertThresholdsTextBox_LostFocus", mainWindowSource);
-        Assert.Contains("new BatteryAlertThresholdsWindow(_viewModel.BatteryAlertThresholds, _viewModel.Language)", mainWindowSource);
+        Assert.Contains("new BatteryAlertThresholdsWindow(", mainWindowSource);
+        Assert.Contains("BuildBatteryAlertDeviceOptions()", mainWindowSource);
+        Assert.Contains("_viewModel.SetBatteryAlertDeviceEnabled", mainWindowSource);
+        Assert.Contains("IsBatteryAlertEnabledForDevice(item)", mainWindowSource);
+        Assert.Contains("BuildBatteryAlertDeviceSettingKey", mainWindowSource);
         Assert.Contains("ForcedThresholdCheckBox", thresholdWindowXaml);
         Assert.Contains("HeadingTextBlock", thresholdWindowXaml);
         Assert.Contains("DescriptionLine1Run", thresholdWindowXaml);
@@ -2240,6 +2280,25 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("HeaderDragArea_MouseLeftButtonDown", thresholdWindowXaml);
         Assert.Contains("IsEnabled=\"False\"", thresholdWindowXaml);
         Assert.Contains("ThresholdPanel", thresholdWindowXaml);
+        Assert.Contains("DeviceAlertPanel", thresholdWindowXaml);
+        Assert.Contains("AlertDeviceToggleButtonStyle", thresholdWindowXaml);
+        Assert.Contains("Width=\"760\"", thresholdWindowXaml);
+        Assert.Contains("<ColumnDefinition Width=\"444\" />", thresholdWindowXaml);
+        Assert.Contains("<ColumnDefinition Width=\"16\" />", thresholdWindowXaml);
+        Assert.Contains("Grid.Column=\"2\"", thresholdWindowXaml);
+        Assert.Contains("AlertVerticalScrollBarStyle", thresholdWindowXaml);
+        Assert.Contains("BasedOn=\"{StaticResource AlertVerticalScrollBarStyle}\"", thresholdWindowXaml);
+        Assert.Contains("SwitchTrack", thresholdWindowXaml);
+        Assert.Contains("SwitchKnob", thresholdWindowXaml);
+        Assert.Contains("DeviceSectionHeadingTextBlock", thresholdWindowXaml);
+        Assert.Contains("BatteryAlertDeviceOption", thresholdWindowSource);
+        Assert.Contains("SelectedDeviceAlertSettings", thresholdWindowSource);
+        Assert.Contains("GetSelectedDeviceAlertSettings", thresholdWindowSource);
+        Assert.Contains("BatteryAlertDeviceEnabled", settingsSource);
+        Assert.Contains("NormalizeBatteryAlertDeviceEnabled", settingsSource);
+        Assert.DoesNotContain("MaxHeight=\"120\"", thresholdWindowXaml);
+        Assert.DoesNotContain("DeviceToggle_Click", thresholdWindowSource);
+        Assert.DoesNotContain("Content = option.IsEnabled ? \"ON\" : \"OFF\"", thresholdWindowSource);
         Assert.DoesNotContain("ThresholdGrid", thresholdWindowXaml);
         Assert.Contains("WrapPanel", thresholdWindowXaml);
         Assert.Contains("SelectableThresholds", thresholdWindowSource);

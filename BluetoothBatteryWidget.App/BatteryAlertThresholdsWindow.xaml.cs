@@ -14,16 +14,25 @@ public partial class BatteryAlertThresholdsWindow : Window
 {
     private string _language;
     private bool _isClosingWithPopOut;
+    private readonly IReadOnlyList<BatteryAlertDeviceOption> _deviceOptions;
 
-    public BatteryAlertThresholdsWindow(string currentThresholds, string? language = null)
+    public BatteryAlertThresholdsWindow(
+        string currentThresholds,
+        IEnumerable<BatteryAlertDeviceOption>? deviceOptions = null,
+        string? language = null)
     {
         _language = WidgetSettings.NormalizeLanguage(language);
+        _deviceOptions = deviceOptions?.ToArray() ?? [];
         InitializeComponent();
         ApplyLocalizedText(_language);
         BuildThresholdOptions(currentThresholds);
+        BuildDeviceOptions();
     }
 
     public string SelectedThresholds { get; private set; } = string.Empty;
+
+    public IReadOnlyDictionary<string, bool> SelectedDeviceAlertSettings { get; private set; } =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
     public bool WasAccepted { get; private set; }
 
@@ -39,6 +48,7 @@ public partial class BatteryAlertThresholdsWindow : Window
         DescriptionLine1Run.Text = UiLanguageCatalog.GetExtraText(_language, "BatteryAlertThresholdsDescriptionLine1");
         DescriptionLine2Run.Text = UiLanguageCatalog.GetExtraText(_language, "BatteryAlertThresholdsDescriptionLine2");
         ForcedThresholdCheckBox.Content = UiLanguageCatalog.GetExtraText(_language, "BatteryAlertThresholdsForced");
+        DeviceSectionHeadingTextBlock.Text = GetDeviceSectionHeadingText(_language);
         ClearButton.Content = UiLanguageCatalog.GetExtraText(_language, "BatteryAlertThresholdsClear");
         SaveButton.Content = UiLanguageCatalog.GetExtraText(_language, "BatteryAlertThresholdsSave");
         CancelButton.Content = UiLanguageCatalog.GetExtraText(_language, "BatteryAlertThresholdsCancel");
@@ -58,6 +68,71 @@ public partial class BatteryAlertThresholdsWindow : Window
             };
             checkBox.Click += ThresholdToggle_Click;
             ThresholdPanel.Children.Add(checkBox);
+        }
+    }
+
+    private void BuildDeviceOptions()
+    {
+        DeviceAlertPanel.Children.Clear();
+        if (_deviceOptions.Count == 0)
+        {
+            DeviceAlertPanel.Children.Add(new TextBlock
+            {
+                Text = GetNoDeviceText(_language),
+                Foreground = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0xA8, 0xD2, 0xE4, 0xF5)),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(2, 2, 2, 0)
+            });
+            return;
+        }
+
+        foreach (var option in _deviceOptions)
+        {
+            var row = new Grid
+            {
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var textPanel = new StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Vertical,
+                Margin = new Thickness(0, 0, 12, 0)
+            };
+            textPanel.Children.Add(new TextBlock
+            {
+                Text = option.DisplayName,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = System.Windows.Media.Brushes.White,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+            if (!string.IsNullOrWhiteSpace(option.DetailText))
+            {
+                textPanel.Children.Add(new TextBlock
+                {
+                    Text = option.DetailText,
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x9E, 0xD2, 0xE4, 0xF5)),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+            }
+
+            var toggle = new WpfToggleButton
+            {
+                Tag = option.Key,
+                IsChecked = option.IsEnabled,
+                Style = (Style)FindResource("AlertDeviceToggleButtonStyle"),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            Grid.SetColumn(textPanel, 0);
+            Grid.SetColumn(toggle, 1);
+            row.Children.Add(textPanel);
+            row.Children.Add(toggle);
+            DeviceAlertPanel.Children.Add(row);
         }
     }
 
@@ -127,6 +202,18 @@ public partial class BatteryAlertThresholdsWindow : Window
             .ToArray();
     }
 
+    private IReadOnlyDictionary<string, bool> GetSelectedDeviceAlertSettings()
+    {
+        return DeviceAlertPanel.Children
+            .OfType<Grid>()
+            .SelectMany(row => row.Children.OfType<WpfToggleButton>())
+            .Where(toggle => toggle.Tag is string key && !string.IsNullOrWhiteSpace(key))
+            .ToDictionary(
+                toggle => (string)toggle.Tag,
+                toggle => toggle.IsChecked == true,
+                StringComparer.OrdinalIgnoreCase);
+    }
+
     private void HeaderDragArea_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed)
@@ -185,6 +272,7 @@ public partial class BatteryAlertThresholdsWindow : Window
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
         SelectedThresholds = WidgetSettings.NormalizeBatteryAlertThresholds(string.Join(", ", GetSelectedThresholds()));
+        SelectedDeviceAlertSettings = GetSelectedDeviceAlertSettings();
         CloseWithResult(accepted: true);
     }
 
@@ -205,4 +293,38 @@ public partial class BatteryAlertThresholdsWindow : Window
             Close();
         }
     }
+
+    private static string GetDeviceSectionHeadingText(string language)
+    {
+        return WidgetSettings.NormalizeLanguage(language) switch
+        {
+            WidgetSettings.KoreanLanguage => "자동알림 받을 기기",
+            WidgetSettings.JapaneseLanguage => "通知するデバイス",
+            WidgetSettings.ChineseSimplifiedLanguage => "接收自动通知的设备",
+            WidgetSettings.ChineseTraditionalLanguage => "接收自動通知的裝置",
+            WidgetSettings.FrenchLanguage => "Appareils avec alerte",
+            WidgetSettings.LatinLanguage => "Instrumenta nuntianda",
+            _ => "Alert devices"
+        };
+    }
+
+    private static string GetNoDeviceText(string language)
+    {
+        return WidgetSettings.NormalizeLanguage(language) switch
+        {
+            WidgetSettings.KoreanLanguage => "현재 자동알림을 설정할 수 있는 연결 기기가 없습니다.",
+            WidgetSettings.JapaneseLanguage => "現在、通知を設定できる接続デバイスはありません。",
+            WidgetSettings.ChineseSimplifiedLanguage => "当前没有可设置自动通知的已连接设备。",
+            WidgetSettings.ChineseTraditionalLanguage => "目前沒有可設定自動通知的已連接裝置。",
+            WidgetSettings.FrenchLanguage => "Aucun appareil connecté ne peut recevoir une alerte.",
+            WidgetSettings.LatinLanguage => "Nullum instrumentum coniunctum nuntiari potest.",
+            _ => "No connected alert-capable device is available."
+        };
+    }
 }
+
+public sealed record BatteryAlertDeviceOption(
+    string Key,
+    string DisplayName,
+    string DetailText,
+    bool IsEnabled);

@@ -93,6 +93,12 @@ internal sealed class GuideButtonMonitorService : IDisposable
     private static readonly TimeSpan DiscoveryInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PressDebounce = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan PowerIdleStopWait = TimeSpan.FromMilliseconds(1800);
+    private static readonly TimeSpan MaximumEndpointOpenRetryDelay = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan RepeatedInputReportThrottle = TimeSpan.FromMilliseconds(16);
+    private static readonly TimeSpan ConnectionSettlingRepeatedInputReportThrottle = TimeSpan.FromMilliseconds(24);
+    private static readonly TimeSpan ConnectionSettlingDuration = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan SteamSnapshotPollInterval = TimeSpan.FromSeconds(1);
+    private const short SteamAxisActionThreshold = 6000;
     private const int StreamReadTimeoutMs = 650;
     private const int DualSenseMinimumReportSize = 78;
     private const int SteamMinimumReportSize = 64;
@@ -104,12 +110,17 @@ internal sealed class GuideButtonMonitorService : IDisposable
     private readonly object _sync = new();
     private readonly Dictionary<string, Task> _endpointTasks = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _lastPressByAddress = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, EndpointOpenFailureBackoff> _endpointOpenFailureBackoffByPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ulong> _lastInputReportActionSignatureByEndpoint = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<GuideButtonDeviceKind, BatteryGuideTrigger> _activeBatteryGuideTriggers = new();
     private Func<IReadOnlyList<GuideButtonKnownDevice>> _knownDeviceProvider = static () => [];
     private CancellationTokenSource? _cts;
     private Task? _supervisorTask;
     private bool _disposed;
     private bool _isPowerIdlePollingPaused;
     private bool _allowInitialPressedPowerIdleInput;
+    private bool _isDetailedInputReportMode;
+    private bool _isSteamDirectHidEnabled = true;
     private string _lastDiscoveryLogKey = string.Empty;
 
     public event EventHandler<GuideButtonPressedEventArgs>? GuideButtonPressed;
@@ -186,6 +197,42 @@ internal sealed class GuideButtonMonitorService : IDisposable
         }
     }
 
+    public void SetDetailedInputReportMode(bool isDetailed)
+    {
+        lock (_sync)
+        {
+            _isDetailedInputReportMode = isDetailed;
+        }
+    }
+
+    public void SetSteamDirectHidEnabled(bool isEnabled)
+    {
+        lock (_sync)
+        {
+            if (_isSteamDirectHidEnabled == isEnabled)
+            {
+                return;
+            }
+
+            _isSteamDirectHidEnabled = isEnabled;
+            _lastInputReportActionSignatureByEndpoint.Clear();
+        }
+    }
+
+    public void SetActiveBatteryGuideTriggers(IReadOnlyDictionary<GuideButtonDeviceKind, BatteryGuideTrigger> triggers)
+    {
+        lock (_sync)
+        {
+            _activeBatteryGuideTriggers.Clear();
+            foreach (var pair in triggers)
+            {
+                _activeBatteryGuideTriggers[pair.Key] = pair.Value;
+            }
+
+            _lastInputReportActionSignatureByEndpoint.Clear();
+        }
+    }
+
     public void Stop()
     {
         StopCore(waitForExit: false);
@@ -217,6 +264,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
             _supervisorTask = null;
             _endpointTasks.Clear();
             _lastPressByAddress.Clear();
+            _lastInputReportActionSignatureByEndpoint.Clear();
         }
 
         var waitTasks = supervisorTask is null || supervisorTask.IsCompleted
@@ -263,6 +311,9 @@ internal sealed class GuideButtonMonitorService : IDisposable
             _cts = null;
             _supervisorTask = null;
             _endpointTasks.Clear();
+            _endpointOpenFailureBackoffByPath.Clear();
+            _lastInputReportActionSignatureByEndpoint.Clear();
+            _activeBatteryGuideTriggers.Clear();
         }
 
         try
@@ -287,7 +338,7 @@ internal sealed class GuideButtonMonitorService : IDisposable
             {
                 PruneCompletedEndpointTasks();
                 var knownDevices = ReadKnownDevices();
-                var endpoints = DiscoverEndpoints(cancellationToken, knownDevices);
+                var endpoints = FilterEndpointsForCurrentPolicy(DiscoverEndpoints(cancellationToken, knownDevices));
                 WriteDiscoverySummary(endpoints, knownDevices);
                 foreach (var endpoint in endpoints)
                 {
@@ -350,9 +401,19 @@ internal sealed class GuideButtonMonitorService : IDisposable
             return;
         }
 
+        if (!ShouldMonitorEndpoint(endpoint))
+        {
+            return;
+        }
+
         lock (_sync)
         {
             if (_endpointTasks.TryGetValue(endpoint.DevicePath, out var existing) && !existing.IsCompleted)
+            {
+                return;
+            }
+
+            if (ShouldSkipEndpointOpenRetryLocked(endpoint.DevicePath, DateTimeOffset.UtcNow))
             {
                 return;
             }
@@ -365,6 +426,11 @@ internal sealed class GuideButtonMonitorService : IDisposable
 
     private void MonitorEndpointAsync(GuideButtonEndpoint endpoint, CancellationToken cancellationToken)
     {
+        if (!ShouldMonitorEndpoint(endpoint))
+        {
+            return;
+        }
+
         var minimumReportSize = endpoint.DeviceKind == GuideButtonDeviceKind.DualSense
             ? DualSenseMinimumReportSize
             : SteamMinimumReportSize;
@@ -374,10 +440,13 @@ internal sealed class GuideButtonMonitorService : IDisposable
         var emptyReadCount = 0;
         var idleQuietLogged = false;
         var monitorStartedAt = DateTimeOffset.UtcNow;
+        var reportBuffer = new byte[minimumReportSize];
+        var nextSteamSnapshotPollAtUtc = DateTimeOffset.MinValue;
 
         using var handle = HidGamepadAccess.OpenHandle(endpoint.DevicePath);
         if (handle.IsInvalid)
         {
+            RegisterEndpointOpenFailure(endpoint.DevicePath);
             WriteGuideButtonEvent("open_failed", endpoint, "HID handle could not be opened.");
             return;
         }
@@ -385,10 +454,12 @@ internal sealed class GuideButtonMonitorService : IDisposable
         using var session = new HidInputStreamSession(handle);
         if (!session.IsAvailable)
         {
+            RegisterEndpointOpenFailure(endpoint.DevicePath);
             WriteGuideButtonEvent("stream_unavailable", endpoint, "HID input stream is not available.");
             return;
         }
 
+        ClearEndpointOpenFailure(endpoint.DevicePath);
         WriteGuideButtonEvent("monitor_started", endpoint, "Guide button monitor started.");
         var snapshotFallbackLogged = false;
         var snapshotUnavailableLogged = false;
@@ -396,9 +467,14 @@ internal sealed class GuideButtonMonitorService : IDisposable
         var unparsedReportLogged = false;
         while (!cancellationToken.IsCancellationRequested)
         {
+            if (!ShouldMonitorEndpoint(endpoint))
+            {
+                return;
+            }
+
             var snapshotDiagnostic = string.Empty;
-            if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
-                !IsPowerIdlePollingPaused() &&
+            var nowUtc = DateTimeOffset.UtcNow;
+            if (ShouldPollSteamSnapshot(endpoint, nowUtc, ref nextSteamSnapshotPollAtUtc) &&
                 TryReadSteamGuideSnapshot(handle, out var polledPressed, out snapshotDiagnostic))
             {
                 if (!snapshotFallbackLogged)
@@ -423,15 +499,18 @@ internal sealed class GuideButtonMonitorService : IDisposable
                     $"Steam Controller snapshot polling returned a report, but not the guide state. {snapshotDiagnostic}");
             }
 
-            if (!session.TryReadReport(
+            if (!session.TryReadReportInto(
                     0x00,
                     minimumReportSize,
                     StreamReadTimeoutMs,
-                    out var frame,
+                    reportBuffer,
+                    out var reportLength,
+                    out _,
                     out var timedOut))
             {
                 if (!timedOut)
                 {
+                    RegisterEndpointOpenFailure(endpoint.DevicePath);
                     WriteGuideButtonEvent(
                         "monitor_read_failed",
                         endpoint,
@@ -439,8 +518,8 @@ internal sealed class GuideButtonMonitorService : IDisposable
                     return;
                 }
 
-                if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
-                    !IsPowerIdlePollingPaused() &&
+                nowUtc = DateTimeOffset.UtcNow;
+                if (ShouldPollSteamSnapshot(endpoint, nowUtc, ref nextSteamSnapshotPollAtUtc) &&
                     TryReadSteamGuideSnapshot(handle, out var snapshotPressed, out snapshotDiagnostic))
                 {
                     emptyReadCount = 0;
@@ -483,14 +562,16 @@ internal sealed class GuideButtonMonitorService : IDisposable
 
             emptyReadCount = 0;
             idleQuietLogged = false;
-            RaiseInputReportReceived(endpoint, frame.Data);
-            if (!GuideButtonReportParser.TryParseGuideButton(endpoint.DeviceKind, frame.Data, out var pressed))
+            var report = reportBuffer.AsSpan(0, reportLength);
+            var detailedInputMode = IsDetailedInputReportMode();
+            if (!GuideButtonReportParser.TryParseGuideButton(endpoint.DeviceKind, report, out var pressed))
             {
                 if (endpoint.DeviceKind == GuideButtonDeviceKind.SteamController &&
                     lastPressed &&
-                    GuideButtonReportParser.IsSteamControllerStatusReport(frame.Data))
+                    GuideButtonReportParser.IsSteamControllerStatusReport(report))
                 {
                     HandleGuideButtonState(endpoint, pressed: false, monitorStartedAt, ref neutralReportCount, ref lastPressed, ref pressedAt);
+                    ThrottleRepeatedInputReportIfNeeded(detailedInputMode, monitorStartedAt, cancellationToken);
                     continue;
                 }
 
@@ -501,13 +582,25 @@ internal sealed class GuideButtonMonitorService : IDisposable
                     WriteGuideButtonEvent(
                         "steam_unparsed_report",
                         endpoint,
-                        $"Steam Controller HID report was seen but not recognized as the guide button. {BuildReportSignature(frame.Data)}");
+                        $"Steam Controller HID report was seen but not recognized as the guide button. {BuildReportSignature(report)}");
                 }
 
+                ThrottleRepeatedInputReportIfNeeded(detailedInputMode, monitorStartedAt, cancellationToken);
                 continue;
             }
 
+            var publishedInputReport = false;
+            if (ShouldPublishInputReport(endpoint, report, detailedInputMode))
+            {
+                publishedInputReport = true;
+                RaiseInputReportReceived(endpoint, report);
+            }
+
             HandleGuideButtonState(endpoint, pressed, monitorStartedAt, ref neutralReportCount, ref lastPressed, ref pressedAt);
+            if (!publishedInputReport)
+            {
+                ThrottleRepeatedInputReportIfNeeded(detailedInputMode, monitorStartedAt, cancellationToken);
+            }
         }
     }
 
@@ -605,6 +698,86 @@ internal sealed class GuideButtonMonitorService : IDisposable
         }
     }
 
+    private bool IsDetailedInputReportMode()
+    {
+        lock (_sync)
+        {
+            return _isDetailedInputReportMode;
+        }
+    }
+
+    private bool ShouldPollSteamSnapshot(
+        GuideButtonEndpoint endpoint,
+        DateTimeOffset nowUtc,
+        ref DateTimeOffset nextPollAtUtc)
+    {
+        if (endpoint.DeviceKind != GuideButtonDeviceKind.SteamController ||
+            !ShouldAllowSteamSnapshotPolling() ||
+            nowUtc < nextPollAtUtc)
+        {
+            return false;
+        }
+
+        nextPollAtUtc = nowUtc + SteamSnapshotPollInterval;
+        return true;
+    }
+
+    private IReadOnlyList<GuideButtonEndpoint> FilterEndpointsForCurrentPolicy(IReadOnlyList<GuideButtonEndpoint> endpoints)
+    {
+        if (IsSteamDirectHidEnabled())
+        {
+            return endpoints;
+        }
+
+        return endpoints
+            .Where(endpoint => endpoint.DeviceKind != GuideButtonDeviceKind.SteamController)
+            .ToList();
+    }
+
+    private bool ShouldMonitorEndpoint(GuideButtonEndpoint endpoint)
+    {
+        return endpoint.DeviceKind != GuideButtonDeviceKind.SteamController || IsSteamDirectHidEnabled();
+    }
+
+    private bool IsSteamDirectHidEnabled()
+    {
+        lock (_sync)
+        {
+            return _isSteamDirectHidEnabled;
+        }
+    }
+
+    private bool ShouldAllowSteamSnapshotPolling()
+    {
+        return !IsPowerIdlePollingPaused();
+    }
+
+    private static void ThrottleRepeatedInputReportIfNeeded(
+        bool detailedInputMode,
+        DateTimeOffset monitorStartedAt,
+        CancellationToken cancellationToken)
+    {
+        var delay = ResolveRepeatedInputReportThrottle(detailedInputMode, DateTimeOffset.UtcNow - monitorStartedAt);
+        if (delay <= TimeSpan.Zero || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _ = cancellationToken.WaitHandle.WaitOne(delay);
+    }
+
+    internal static TimeSpan ResolveRepeatedInputReportThrottle(bool detailedInputMode, TimeSpan monitorAge)
+    {
+        if (detailedInputMode)
+        {
+            return TimeSpan.Zero;
+        }
+
+        return monitorAge < ConnectionSettlingDuration
+            ? ConnectionSettlingRepeatedInputReportThrottle
+            : RepeatedInputReportThrottle;
+    }
+
     private void RaiseInputReportReceived(GuideButtonEndpoint endpoint, ReadOnlySpan<byte> report)
     {
         InputReportReceived?.Invoke(
@@ -614,6 +787,185 @@ internal sealed class GuideButtonMonitorService : IDisposable
                 endpoint.DisplayName,
                 endpoint.DeviceKind,
                 report));
+    }
+
+    private bool ShouldPublishInputReport(
+        GuideButtonEndpoint endpoint,
+        ReadOnlySpan<byte> report,
+        bool detailedInputMode)
+    {
+        if (ShouldSuppressNoisySteamStatusInputReport(endpoint.DeviceKind, report))
+        {
+            return false;
+        }
+
+        if (detailedInputMode)
+        {
+            return true;
+        }
+
+        var key = BuildInputReportActionKey(endpoint, report);
+        var trigger = GetActiveBatteryGuideTrigger(endpoint.DeviceKind);
+        var signature = BuildInputReportActionSignature(endpoint.DeviceKind, report, trigger);
+        lock (_sync)
+        {
+            if (_lastInputReportActionSignatureByEndpoint.TryGetValue(key, out var previous) &&
+                previous == signature)
+            {
+                return false;
+            }
+
+            _lastInputReportActionSignatureByEndpoint[key] = signature;
+            return true;
+        }
+    }
+
+    private BatteryGuideTrigger? GetActiveBatteryGuideTrigger(GuideButtonDeviceKind deviceKind)
+    {
+        lock (_sync)
+        {
+            return _activeBatteryGuideTriggers.TryGetValue(deviceKind, out var trigger)
+                ? trigger
+                : null;
+        }
+    }
+
+    private static string BuildInputReportActionKey(GuideButtonEndpoint endpoint, ReadOnlySpan<byte> report)
+    {
+        var reportId = report.Length > 0 ? report[0].ToString("X2") : "empty";
+        return $"{endpoint.DeviceKind}:{endpoint.Address}:{endpoint.DevicePath}:{reportId}";
+    }
+
+    internal static bool ShouldSuppressNoisySteamStatusInputReport(
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report)
+    {
+        return deviceKind == GuideButtonDeviceKind.SteamController &&
+               GuideButtonReportParser.IsSteamControllerStatusReport(report);
+    }
+
+    internal static ulong BuildInputReportActionSignature(
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report)
+    {
+        return BuildInputReportActionSignature(deviceKind, report, trigger: null);
+    }
+
+    internal static ulong BuildInputReportActionSignature(
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report,
+        BatteryGuideTrigger? trigger)
+    {
+        const ulong fnvOffset = 14695981039346656037UL;
+        const ulong fnvPrime = 1099511628211UL;
+
+        var hash = fnvOffset;
+        AddByte(ref hash, (byte)deviceKind);
+        AddByte(ref hash, (byte)Math.Min(byte.MaxValue, report.Length));
+        if (report.Length == 0)
+        {
+            return hash;
+        }
+
+        AddByte(ref hash, report[0]);
+        AddDefaultGuideButtonState(ref hash, deviceKind, report);
+        AddBatteryGuideTriggerState(ref hash, deviceKind, report, trigger);
+
+        return hash;
+
+        static void AddByte(ref ulong hash, byte value)
+        {
+            hash ^= value;
+            hash *= fnvPrime;
+        }
+    }
+
+    private static void AddDefaultGuideButtonState(
+        ref ulong hash,
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report)
+    {
+        var hasGuideState = GuideButtonReportParser.TryParseGuideButton(deviceKind, report, out var pressed);
+        AddHashByte(ref hash, hasGuideState ? (byte)1 : (byte)0);
+        AddHashByte(ref hash, pressed ? (byte)1 : (byte)0);
+    }
+
+    private static void AddBatteryGuideTriggerState(
+        ref ulong hash,
+        GuideButtonDeviceKind deviceKind,
+        ReadOnlySpan<byte> report,
+        BatteryGuideTrigger? trigger)
+    {
+        if (trigger is null)
+        {
+            return;
+        }
+
+        var triggerSignature = BatteryGuideTriggerParser.BuildPressedBitsSignature(trigger, deviceKind, report);
+        for (var index = 0; index < sizeof(ulong); index++)
+        {
+            AddHashByte(ref hash, (byte)(triggerSignature >> (index * 8)));
+        }
+    }
+
+    private static void AddHashByte(ref ulong hash, byte value)
+    {
+        const ulong fnvPrime = 1099511628211UL;
+        hash ^= value;
+        hash *= fnvPrime;
+    }
+
+    private bool ShouldSkipEndpointOpenRetryLocked(string devicePath, DateTimeOffset now)
+    {
+        if (!_endpointOpenFailureBackoffByPath.TryGetValue(devicePath, out var backoff))
+        {
+            return false;
+        }
+
+        return now < backoff.NextRetryUtc;
+    }
+
+    private void RegisterEndpointOpenFailure(string devicePath)
+    {
+        if (string.IsNullOrWhiteSpace(devicePath))
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            var previousCount = _endpointOpenFailureBackoffByPath.TryGetValue(devicePath, out var previous)
+                ? previous.FailureCount
+                : 0;
+            var failureCount = previousCount + 1;
+            _endpointOpenFailureBackoffByPath[devicePath] = new EndpointOpenFailureBackoff(
+                DateTimeOffset.UtcNow + GetEndpointOpenFailureRetryDelay(failureCount),
+                failureCount);
+        }
+    }
+
+    private void ClearEndpointOpenFailure(string devicePath)
+    {
+        if (string.IsNullOrWhiteSpace(devicePath))
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            _endpointOpenFailureBackoffByPath.Remove(devicePath);
+        }
+    }
+
+    internal static TimeSpan GetEndpointOpenFailureRetryDelay(int failureCount)
+    {
+        if (failureCount <= 1)
+        {
+            return TimeSpan.FromSeconds(15);
+        }
+
+        var seconds = 15 * Math.Min(8, failureCount);
+        return TimeSpan.FromSeconds(Math.Min(MaximumEndpointOpenRetryDelay.TotalSeconds, seconds));
     }
 
     private static bool TryReadSteamGuideSnapshot(
@@ -919,4 +1271,6 @@ internal sealed class GuideButtonMonitorService : IDisposable
         string Address,
         string DisplayName,
         GuideButtonDeviceKind DeviceKind);
+
+    private sealed record EndpointOpenFailureBackoff(DateTimeOffset NextRetryUtc, int FailureCount);
 }

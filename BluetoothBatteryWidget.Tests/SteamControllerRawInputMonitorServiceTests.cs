@@ -184,6 +184,30 @@ public sealed class SteamControllerRawInputMonitorServiceTests
     }
 
     [Fact]
+    public void NormalRegistration_UsesOnlySteamVendorPage()
+    {
+        var appRoot = Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "BluetoothBatteryWidget.App");
+        var source = File.ReadAllText(Path.Combine(appRoot, "Services", "SteamControllerRawInputMonitorService.cs"));
+        var methodStart = source.IndexOf("private static RawInputDevice[] BuildNormalRawInputDevices", StringComparison.Ordinal);
+        var methodEnd = source.IndexOf("private static RawInputDevice[] BuildHumanInputOnlyRawInputDevices", methodStart, StringComparison.Ordinal);
+
+        Assert.True(methodStart >= 0);
+        Assert.True(methodEnd > methodStart);
+        var method = source[methodStart..methodEnd];
+        Assert.Contains("UsagePageVendorSteam", method);
+        Assert.DoesNotContain("UsageJoystick", method);
+        Assert.DoesNotContain("UsageGamepad", method);
+        Assert.DoesNotContain("UsageMouse", method);
+        Assert.DoesNotContain("UsageKeyboard", method);
+    }
+
+    [Fact]
     public void HumanInputOnlyRegistration_UsesOnlyKeyboardAndMouse()
     {
         var appRoot = Path.Combine(

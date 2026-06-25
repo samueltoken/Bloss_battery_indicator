@@ -169,6 +169,8 @@ public sealed class WidgetSettingsStore
         }
 
         settings.BatteryAlertThresholds = WidgetSettings.NormalizeBatteryAlertThresholds(settings.BatteryAlertThresholds);
+        settings.BatteryAlertDeviceEnabled =
+            WidgetSettings.NormalizeBatteryAlertDeviceEnabled(settings.BatteryAlertDeviceEnabled);
         settings.LastDs5DongleFirmwareVersion =
             WidgetSettings.NormalizeFirmwareVersionText(settings.LastDs5DongleFirmwareVersion);
         settings.LastSeenReleaseNotesVersion =

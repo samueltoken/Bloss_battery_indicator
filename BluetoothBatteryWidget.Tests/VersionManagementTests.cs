@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 using System.Text.Json;
 
 namespace BluetoothBatteryWidget.Tests;
@@ -26,10 +26,10 @@ public sealed class VersionManagementTests
         var propertyGroup = document.Root?.Element("PropertyGroup");
 
         Assert.NotNull(propertyGroup);
-        Assert.Equal("1.0.8", propertyGroup!.Element("Version")?.Value);
-        Assert.Equal("1.0.8", propertyGroup.Element("AssemblyVersion")?.Value);
-        Assert.Equal("1.0.8", propertyGroup.Element("FileVersion")?.Value);
-        Assert.Equal("1.0.8", propertyGroup.Element("InformationalVersion")?.Value);
+        Assert.Equal("1.0.9", propertyGroup!.Element("Version")?.Value);
+        Assert.Equal("1.0.9", propertyGroup.Element("AssemblyVersion")?.Value);
+        Assert.Equal("1.0.9", propertyGroup.Element("FileVersion")?.Value);
+        Assert.Equal("1.0.9", propertyGroup.Element("InformationalVersion")?.Value);
         Assert.Equal("false", propertyGroup.Element("IncludeSourceRevisionInInformationalVersion")?.Value);
     }
 
@@ -65,12 +65,12 @@ public sealed class VersionManagementTests
             "BluetoothBatteryWidget.App",
             "ReleaseNotesWindow.xaml.cs"));
 
-        Assert.Contains("internal const string FallbackVersion = \"1.0.8\";", source);
+        Assert.Contains("internal const string FallbackVersion = \"1.0.9\";", source);
         Assert.Contains("AssemblyInformationalVersionAttribute", source);
         Assert.Contains("AppVersionInfo.DisplayVersion", mainWindowSource);
         Assert.Contains("AppVersionInfo.DisplayVersion", releaseNotesSource);
         Assert.DoesNotContain("private const string FallbackVersion", mainWindowSource);
-        Assert.DoesNotContain("? \"1.0.8\"", releaseNotesSource);
+        Assert.DoesNotContain("? \"1.0.9\"", releaseNotesSource);
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public sealed class VersionManagementTests
         Assert.Contains("[string]$AppVersion", script);
         Assert.DoesNotContain("[string]$AppVersion = \"1.0.1\"", script);
         Assert.Contains("setup.exe.sha256", script);
-        Assert.Contains("#define AppVersion \"1.0.8\"", installer);
+        Assert.Contains("#define AppVersion \"1.0.9\"", installer);
         Assert.Contains("OutputBaseFilename=setup", installer);
         Assert.Contains("CloseApplications=no", installer);
         Assert.Contains("RestartApplications=no", installer);
@@ -162,15 +162,15 @@ public sealed class VersionManagementTests
         Assert.Contains("scripts\\verify-test-portable.ps1", guide);
         Assert.Contains("scripts\\verify-release-notes-popup.ps1", guide);
         Assert.Contains("scripts\\verify-secondary-window-animation.ps1", guide);
-        Assert.Contains("manual-verification-v108.md", guide);
-        Assert.Contains("scripts\\verify-v108-manual-checklist.ps1", guide);
-        Assert.Contains("scripts\\show-v108-manual-gate-commands.ps1", guide);
-        Assert.Contains("scripts\\verify-v108-manual-gate-updater.ps1", guide);
-        Assert.Contains("scripts\\verify-v108-release-ready.ps1", guide);
+        Assert.Contains("manual-verification-v109.md", guide);
+        Assert.Contains("scripts\\verify-v109-manual-checklist.ps1", guide);
+        Assert.Contains("scripts\\show-v109-manual-gate-commands.ps1", guide);
+        Assert.Contains("scripts\\verify-v109-manual-gate-updater.ps1", guide);
+        Assert.Contains("scripts\\verify-v109-release-ready.ps1", guide);
         Assert.Contains("scripts\\check-autostart-cleanup.ps1", guide);
-        Assert.Contains("build-v108-old-installer-prereq.ps1\" -Version 1.0.4", guide);
-        Assert.Contains("build-v108-old-installer-prereq.ps1\" -Version 1.0.5", guide);
-        Assert.Contains("build-v108-old-installer-prereq.ps1\" -Version 1.0.6", guide);
+        Assert.Contains("build-v109-old-installer-prereq.ps1\" -Version 1.0.4", guide);
+        Assert.Contains("build-v109-old-installer-prereq.ps1\" -Version 1.0.5", guide);
+        Assert.Contains("build-v109-old-installer-prereq.ps1\" -Version 1.0.6", guide);
         Assert.Contains("recreate every missing version", guide);
         Assert.Contains("portable test executable must stay named `test.exe`", guide);
         Assert.Contains("This is a read-only check.", guide);
@@ -178,7 +178,7 @@ public sealed class VersionManagementTests
         Assert.Contains("release notes popup appears once", guide);
         Assert.Contains("release notes popup appears every run", guide);
         Assert.Contains("target-version update list", guide);
-        Assert.Contains("$targetTag = \"v1.0.8\"", guide);
+        Assert.Contains("$targetTag = \"v1.0.9\"", guide);
         Assert.Contains("Auto (Windows)", guide);
         Assert.Contains("old one-minute saved settings", guide);
         Assert.Contains("display-off timeout to 1 minute", guide);
@@ -191,7 +191,7 @@ public sealed class VersionManagementTests
         Assert.Contains("lower square hotspot", guide);
         Assert.Contains("settings secondary windows", guide);
         Assert.Contains("RequireManualGatePasses", guide);
-        Assert.Contains("powershell -ExecutionPolicy Bypass -File \".\\scripts\\verify-v108-release-ready.ps1\" -LiveReleaseNotes -DisplaySleepSnapshot -RequireManualGatePasses -RequireNoRunningBlossOrTest -RequireNoCurrentAutostart", guide);
+        Assert.Contains("powershell -ExecutionPolicy Bypass -File \".\\scripts\\verify-v109-release-ready.ps1\" -LiveReleaseNotes -DisplaySleepSnapshot -RequireManualGatePasses -RequireNoRunningBlossOrTest -RequireNoCurrentAutostart", guide);
         Assert.Contains("-RequireNoCurrentAutostart", guide);
         Assert.Contains("Do not run `gh release upload` while this fails", guide);
         Assert.Contains("installer\\BluetoothBatteryWidget.iss", guide);
@@ -263,9 +263,10 @@ public sealed class VersionManagementTests
         var exportManualGateEvidence = File.ReadAllText(Path.Combine(ProjectRoot, "scripts", "export-v107-manual-gate-evidence.ps1"));
         var verifyGitPublishSafety = File.ReadAllText(Path.Combine(ProjectRoot, "scripts", "verify-git-publish-safety.ps1"));
         var showReleaseUploadSummary = File.ReadAllText(Path.Combine(ProjectRoot, "scripts", "show-v108-release-upload-summary.ps1"));
+        var showReleaseUploadSummaryAlias = File.ReadAllText(Path.Combine(ProjectRoot, "scripts", "show-v109-release-upload-summary.ps1"));
         var verifyManualGateUpdater = File.ReadAllText(Path.Combine(ProjectRoot, "scripts", "verify-v107-manual-gate-updater.ps1"));
         var setManualGate = File.ReadAllText(Path.Combine(ProjectRoot, "scripts", "set-v107-manual-gate.ps1"));
-        var manualChecklist = ReadOptionalProjectNote("manual-verification-v108.md");
+        var manualChecklist = ReadOptionalProjectNote("manual-verification-v109.md");
         var checkAutostart = File.ReadAllText(Path.Combine(ProjectRoot, "scripts", "check-autostart-cleanup.ps1"));
         var checkDisplaySleep = File.ReadAllText(Path.Combine(ProjectRoot, "scripts", "check-display-sleep-readiness.ps1"));
 
@@ -311,7 +312,7 @@ public sealed class VersionManagementTests
         Assert.Contains("verify-secondary-window-animation.ps1", verifyV107Ready);
         Assert.Contains("verify-v107-manual-checklist.ps1", verifyV107Ready);
         Assert.Contains("show-v107-manual-gate-commands.ps1", verifyV107Ready);
-        Assert.Contains("build-v108-old-installer-prereq.ps1", verifyV107Ready);
+        Assert.Contains("build-$manualScriptVersion-old-installer-prereq.ps1", verifyV107Ready);
         Assert.Contains("check-v107-manual-gate-prereqs.ps1", verifyV107Ready);
         Assert.Contains("export-v107-manual-gate-evidence.ps1", verifyV107Ready);
         Assert.Contains("verify-git-publish-safety.ps1", verifyV107Ready);
@@ -357,7 +358,7 @@ public sealed class VersionManagementTests
         Assert.Contains("remainingManualGates", verifyV107Ready);
         Assert.Contains("Git publish safety", verifyV107Ready);
         Assert.Contains("All manual gates are marked PASS.", verifyV107Ready);
-        Assert.Contains("v1.0.8 release readiness gate passed", verifyV107Ready);
+        Assert.Contains("$targetTag release readiness gate passed", verifyV107Ready);
         Assert.DoesNotContain("-Delete", verifyV107Ready);
 
         Assert.Contains("git", verifyGitPublishSafety);
@@ -369,6 +370,7 @@ public sealed class VersionManagementTests
         Assert.Contains("for107\\.md", verifyGitPublishSafety);
         Assert.Contains("manual-verification-v107\\.md", verifyGitPublishSafety);
         Assert.Contains("manual-verification-v108\\.md", verifyGitPublishSafety);
+        Assert.Contains("manual-verification-v109\\.md", verifyGitPublishSafety);
         Assert.Contains("test\\.exe", verifyGitPublishSafety);
         Assert.Contains("setup\\.exe", verifyGitPublishSafety);
         Assert.Contains("artifacts/", verifyGitPublishSafety);
@@ -377,7 +379,7 @@ public sealed class VersionManagementTests
         Assert.Contains("Git publish safety verification passed.", verifyGitPublishSafety);
         Assert.Contains("[switch]$RequireReady", showReleaseUploadSummary);
         Assert.Contains("[switch]$Json", showReleaseUploadSummary);
-        Assert.Contains("manual-verification-v108.md", showReleaseUploadSummary);
+        Assert.Contains("BLOSS_MANUAL_CHECKLIST_PATH", showReleaseUploadSummary);
         Assert.Contains("verify-git-publish-safety.ps1", showReleaseUploadSummary);
         Assert.Contains("if ($Json)", showReleaseUploadSummary);
         Assert.Contains("*>&1", showReleaseUploadSummary);
@@ -396,11 +398,13 @@ public sealed class VersionManagementTests
         Assert.Contains("NoRunningBlossOrTest", showReleaseUploadSummary);
         Assert.Contains("NoCurrentUserAutostart", showReleaseUploadSummary);
         Assert.Contains("Release upload is blocked", showReleaseUploadSummary);
-        Assert.Contains("v1.0.8 Release Upload Summary", showReleaseUploadSummary);
+        Assert.Contains("v$expectedVersion Release Upload Summary", showReleaseUploadSummary);
         Assert.Contains("NonDestructive = $true", showReleaseUploadSummary);
+        Assert.Contains("manual-verification-v109.md", showReleaseUploadSummaryAlias);
+        Assert.Contains("show-v108-release-upload-summary.ps1", showReleaseUploadSummaryAlias);
         if (guide is not null)
         {
-            Assert.Contains("show-v108-release-upload-summary.ps1", guide);
+            Assert.Contains("show-v109-release-upload-summary.ps1", guide);
             Assert.Contains("-RequireReady", guide);
         }
 
@@ -429,7 +433,7 @@ public sealed class VersionManagementTests
         Assert.Contains("Manual gate $id is PENDING but still has evidence.", verifyManualChecklist);
         Assert.Contains("PrintsInstructionsOnly", showManualGateCommands);
         Assert.Contains("$manualScriptVersion", showManualGateCommands);
-        Assert.Contains("manual-verification-v108.md", showManualGateCommands);
+        Assert.Contains("manual-verification-(v\\d+)\\.md", showManualGateCommands);
         Assert.Contains("Manual gate command helper verification passed.", showManualGateCommands);
         Assert.Contains("It does not install, uninstall, edit registry, or change Windows power settings.", showManualGateCommands);
         Assert.Contains("archive --format=zip", buildOldInstallerPrereq);
@@ -454,7 +458,7 @@ public sealed class VersionManagementTests
         Assert.Contains("1.0.4", checkManualGatePrereqs);
         Assert.Contains("1.0.5", checkManualGatePrereqs);
         Assert.Contains("1.0.6", checkManualGatePrereqs);
-        Assert.Contains("v107-manual-gate-evidence.md", exportManualGateEvidence);
+        Assert.Contains("$manualScriptVersion-manual-gate-evidence.md", exportManualGateEvidence);
         Assert.Contains("This report only reads files, current-user startup values, and running processes", exportManualGateEvidence);
         Assert.Contains("Recommended Old Installers", exportManualGateEvidence);
         Assert.Contains("Manual Gate Status", exportManualGateEvidence);
@@ -481,7 +485,7 @@ public sealed class VersionManagementTests
         }
         Assert.Contains("check-autostart-cleanup.ps1", showManualGateCommands);
         Assert.Contains("check-$manualScriptVersion-manual-gate-prereqs.ps1", showManualGateCommands);
-        Assert.Contains("manual-verification-v108.md", showManualGateCommands);
+        Assert.Contains("manual-verification-(v\\d+)\\.md", showManualGateCommands);
         Assert.Contains("-RequireNoCurrentAutostart", showManualGateCommands);
         Assert.Contains("recommended old v1.0.4 setup.exe", showManualGateCommands);
         Assert.Contains("recommended old v1.0.5 setup.exe", showManualGateCommands);
@@ -510,8 +514,8 @@ public sealed class VersionManagementTests
         Assert.Contains("set-$manualScriptVersion-manual-gate.ps1", showManualGateCommands);
         if (guide is not null)
         {
-            Assert.Contains("set-v108-manual-gate.ps1", guide);
-            Assert.Contains("scripts\\export-v108-manual-gate-evidence.ps1", guide);
+            Assert.Contains("set-v109-manual-gate.ps1", guide);
+            Assert.Contains("scripts\\export-v109-manual-gate-evidence.ps1", guide);
             Assert.Contains("do not count that as uninstall proof", guide);
             Assert.Contains("Only use `PASS` after the gate's real install, device, display, or visual check has actually passed.", guide);
         }
@@ -534,7 +538,7 @@ public sealed class VersionManagementTests
         {
             Assert.Contains("Do not mark an item `PASS` or `FAIL` unless the Evidence cell names the machine/path/version/date", manualChecklist);
             Assert.Contains("Keep the Evidence cell empty while an item is `PENDING`", manualChecklist);
-            Assert.Contains("verify-v108-release-ready.ps1", manualChecklist);
+            Assert.Contains("verify-v109-release-ready.ps1", manualChecklist);
             Assert.Contains("-RequireManualGatePasses", manualChecklist);
             Assert.Contains("-RequireNoRunningBlossOrTest", manualChecklist);
             Assert.Contains("-RequireNoCurrentAutostart", manualChecklist);
@@ -582,7 +586,7 @@ public sealed class VersionManagementTests
         var packageJson = File.ReadAllText(Path.Combine(ProjectRoot, "package.json"));
         using var document = JsonDocument.Parse(packageJson);
 
-        Assert.Equal("1.0.8", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.0.9", document.RootElement.GetProperty("version").GetString());
     }
 
     [Fact]
@@ -609,18 +613,19 @@ public sealed class VersionManagementTests
     }
 
     [Fact]
-    public void V108ManualGateAliasScripts_UseV108ChecklistAndForwardToHistoricalV107Implementation()
+    public void v109ManualGateAliasScripts_Usev109ChecklistAndForwardToHistoricalV107Implementation()
     {
         var aliases = new Dictionary<string, string>
         {
-            ["verify-v108-release-ready.ps1"] = "verify-v107-release-ready.ps1",
-            ["verify-v108-manual-checklist.ps1"] = "verify-v107-manual-checklist.ps1",
-            ["show-v108-manual-gate-commands.ps1"] = "show-v107-manual-gate-commands.ps1",
-            ["check-v108-manual-gate-prereqs.ps1"] = "check-v107-manual-gate-prereqs.ps1",
-            ["export-v108-manual-gate-evidence.ps1"] = "export-v107-manual-gate-evidence.ps1",
-            ["set-v108-manual-gate.ps1"] = "set-v107-manual-gate.ps1",
-            ["verify-v108-manual-gate-updater.ps1"] = "verify-v107-manual-gate-updater.ps1",
-            ["build-v108-old-installer-prereq.ps1"] = "build-v107-old-installer-prereq.ps1"
+            ["verify-v109-release-ready.ps1"] = "verify-v107-release-ready.ps1",
+            ["verify-v109-manual-checklist.ps1"] = "verify-v107-manual-checklist.ps1",
+            ["show-v109-manual-gate-commands.ps1"] = "show-v107-manual-gate-commands.ps1",
+            ["check-v109-manual-gate-prereqs.ps1"] = "check-v107-manual-gate-prereqs.ps1",
+            ["export-v109-manual-gate-evidence.ps1"] = "export-v107-manual-gate-evidence.ps1",
+            ["set-v109-manual-gate.ps1"] = "set-v107-manual-gate.ps1",
+            ["verify-v109-manual-gate-updater.ps1"] = "verify-v107-manual-gate-updater.ps1",
+            ["build-v109-old-installer-prereq.ps1"] = "build-v107-old-installer-prereq.ps1",
+            ["show-v109-release-upload-summary.ps1"] = "show-v108-release-upload-summary.ps1"
         };
 
         foreach (var (alias, target) in aliases)
@@ -632,16 +637,16 @@ public sealed class VersionManagementTests
             Assert.Contains(target, source);
             Assert.Contains("@args", source);
             Assert.Contains("BLOSS_MANUAL_CHECKLIST_PATH", source);
-            Assert.Contains("manual-verification-v108.md", source);
+            Assert.Contains("manual-verification-v109.md", source);
             Assert.Contains("previousChecklistPath", source);
         }
 
         var guide = ReadOptionalProjectNote("howtorelease.md");
         if (guide is not null)
         {
-            Assert.Contains("v108", guide);
-            Assert.Contains("manual-verification-v108.md", guide);
-            Assert.Contains("verify-v108-release-ready.ps1", guide);
+            Assert.Contains("v109", guide);
+            Assert.Contains("manual-verification-v109.md", guide);
+            Assert.Contains("verify-v109-release-ready.ps1", guide);
         }
     }
 }

@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "test",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Windows widget for connected Bluetooth device battery, optimized for always-on desktop usage.",
   "main": "index.js",
   "scripts": {

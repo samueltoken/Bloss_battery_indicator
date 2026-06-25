@@ -18,6 +18,7 @@
             <Setter Property="FontSize" Value="16" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="#F0FFFFFF" />
+            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
         <Style x:Key="ReleaseNoteConfirmButtonStyle" TargetType="Button">
@@ -285,13 +286,13 @@
 
                         <StackPanel Grid.Row="2">
                             <TextBlock x:Name="CleanupAutostartText"
-                                       Text="절전모드/화면꺼짐 관련 구조개선"
+                                       Text="Dual Sense, Steam Controller 사용시의 위젯 CPU 점유율을 낮추고 최적화하였습니다"
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="SleepGuardText"
-                                       Text="기타 자잘한 버그 수정"
+                                       Text="- 가이드 버튼 / 새로 지정한 버튼 사용 순간에만 일시적으로 점유율이 상승합니다"
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="CustomGuideTriggerText"
-                                       Text=""
+                                       Text="- 최초 연결시, 연결 해제시 해당 순간에만 일시적으로 점유율이 상승합니다"
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="InstallUpdateValidationText"
                                        Text=""

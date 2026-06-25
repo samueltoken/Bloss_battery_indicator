@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ChecklistPath,
     [switch]$RequirePassed
 )
@@ -18,8 +18,8 @@ if ([string]::IsNullOrWhiteSpace($ChecklistPath)) {
 $checklistPath = [System.IO.Path]::GetFullPath($ChecklistPath)
 $validStatuses = @("PENDING", "PASS", "FAIL")
 $requiredGates = @(
-    @{ Id = "UPDATE-104"; Description = "v1.0.4 in-app update reaches 1.0.8 and restarts" },
-    @{ Id = "UPDATE-105"; Description = "v1.0.5 in-app update reaches 1.0.8 and restarts" },
+    @{ Id = "UPDATE-104"; Description = "v1.0.4 in-app update reaches 1.0.9 and restarts" },
+    @{ Id = "UPDATE-105"; Description = "v1.0.5 in-app update reaches 1.0.9 and restarts" },
     @{ Id = "UPDATE-106-NOTES"; Description = "v1.0.6 update release notes one-time behavior" },
     @{ Id = "CLEAN-INSTALL-NOTES"; Description = "clean install release notes one-time behavior" },
     @{ Id = "TEST-EXE-NOTES-VISUAL"; Description = "test.exe release notes every-run visual check" },

@@ -222,6 +222,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public string BatteryAlertThresholds => Settings.BatteryAlertThresholds;
 
+    public IReadOnlyDictionary<string, bool> BatteryAlertDeviceEnabled => Settings.BatteryAlertDeviceEnabled;
+
     public string BatteryAlertThresholdsButtonText => UiLanguageCatalog.GetExtraText(Settings.Language, "BatteryAlertThresholdsButtonText");
 
     public string LastDs5DongleFirmwareVersion => Settings.LastDs5DongleFirmwareVersion;
@@ -1319,6 +1321,36 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         SaveSettings();
         OnPropertyChanged(nameof(BatteryAlertThresholds));
         OnPropertyChanged(nameof(BatteryAlertThresholdsButtonText));
+    }
+
+    public void SetBatteryAlertDeviceEnabled(IDictionary<string, bool> deviceSettings)
+    {
+        var changed = false;
+        foreach (var pair in deviceSettings)
+        {
+            var key = WidgetSettings.NormalizeBatteryAlertDeviceKey(pair.Key);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                continue;
+            }
+
+            if (!Settings.BatteryAlertDeviceEnabled.TryGetValue(key, out var existing) ||
+                existing != pair.Value)
+            {
+                Settings.BatteryAlertDeviceEnabled[key] = pair.Value;
+                changed = true;
+            }
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        Settings.BatteryAlertDeviceEnabled =
+            WidgetSettings.NormalizeBatteryAlertDeviceEnabled(Settings.BatteryAlertDeviceEnabled);
+        SaveSettings();
+        OnPropertyChanged(nameof(BatteryAlertDeviceEnabled));
     }
 
     public void RememberDs5DongleFirmwareVersion(string? version)

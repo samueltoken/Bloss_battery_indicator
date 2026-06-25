@@ -125,7 +125,7 @@ internal sealed class HidInputStreamSession : IDisposable
                 var bytesRead = readTask.Result;
                 if (bytesRead <= 0)
                 {
-                    continue;
+                    return false;
                 }
 
                 var actualReportId = rented[0];
@@ -133,6 +133,7 @@ internal sealed class HidInputStreamSession : IDisposable
                     actualReportId != expectedReportId &&
                     actualReportId != 0x00)
                 {
+                    WaitBrieflyBeforeRetry(deadline);
                     continue;
                 }
 
@@ -159,7 +160,7 @@ internal sealed class HidInputStreamSession : IDisposable
             }
             catch
             {
-                // Try again within the timeout window.
+                return false;
             }
             finally
             {
@@ -169,6 +170,104 @@ internal sealed class HidInputStreamSession : IDisposable
 
         timedOut = true;
         return false;
+    }
+
+    public bool TryReadReportInto(
+        byte expectedReportId,
+        int minimumReportSize,
+        int timeoutMs,
+        byte[] destination,
+        out int bytesWritten,
+        out byte actualReportId,
+        out bool timedOut)
+    {
+        bytesWritten = 0;
+        actualReportId = 0;
+        timedOut = false;
+
+        if (_disposed ||
+            !IsAvailable ||
+            _stream is null ||
+            minimumReportSize <= 0 ||
+            destination.Length < Math.Max(16, minimumReportSize))
+        {
+            return false;
+        }
+
+        var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(40, timeoutMs));
+        var bufferLength = Math.Max(16, minimumReportSize);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var remainingMs = Math.Max(20, (int)Math.Ceiling((deadline - DateTime.UtcNow).TotalMilliseconds));
+            try
+            {
+                using var cts = new CancellationTokenSource(remainingMs);
+                var readTask = _stream.ReadAsync(destination.AsMemory(0, bufferLength), cts.Token).AsTask();
+
+                try
+                {
+                    readTask.Wait(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    timedOut = true;
+                    return false;
+                }
+
+                var bytesRead = readTask.Result;
+                if (bytesRead <= 0)
+                {
+                    return false;
+                }
+
+                actualReportId = destination[0];
+                if (expectedReportId != 0 &&
+                    actualReportId != expectedReportId &&
+                    actualReportId != 0x00)
+                {
+                    WaitBrieflyBeforeRetry(deadline);
+                    continue;
+                }
+
+                bytesWritten = Math.Max(minimumReportSize, bytesRead);
+                if (bytesRead < bytesWritten)
+                {
+                    Array.Clear(destination, bytesRead, bytesWritten - bytesRead);
+                }
+
+                if (destination[0] == 0x00 && expectedReportId != 0x00)
+                {
+                    destination[0] = expectedReportId;
+                    actualReportId = expectedReportId;
+                }
+
+                HasCaptured = true;
+                return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        timedOut = true;
+        return false;
+    }
+
+    private static void WaitBrieflyBeforeRetry(DateTime deadline)
+    {
+        var remainingMs = (int)Math.Floor((deadline - DateTime.UtcNow).TotalMilliseconds);
+        if (remainingMs <= 0)
+        {
+            return;
+        }
+
+        System.Threading.Thread.Sleep(Math.Min(8, remainingMs));
     }
 
     public void Dispose()

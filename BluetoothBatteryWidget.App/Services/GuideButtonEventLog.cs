@@ -19,6 +19,11 @@ internal static class GuideButtonEventLog
         string displayName,
         string message)
     {
+        if (!RuntimeDiagnostics.IsFileLoggingEnabled)
+        {
+            return;
+        }
+
         try
         {
             var line = string.Join(

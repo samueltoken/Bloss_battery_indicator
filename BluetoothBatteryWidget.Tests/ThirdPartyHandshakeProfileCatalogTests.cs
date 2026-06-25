@@ -67,7 +67,7 @@ public sealed class ThirdPartyHandshakeProfileCatalogTests
             productId: "EEEE",
             displayName: "Wireless Controller",
             endpointSignal: string.Empty,
-            deviceAddress: "AA:BB:CC:DD:EE:F0");
+            deviceAddress: "A0:5A:5F:00:00:00");
 
         Assert.Equal("brand.easysmx", selection.Profile.ProfileId);
         Assert.Equal("easysmx", selection.BrandHint);

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -967,7 +967,7 @@ public sealed class BatteryToastPreviewArtifactTests
         var outputDirectory = Path.Combine(root, "artifacts", "release-notes-previews");
         Directory.CreateDirectory(outputDirectory);
 
-        var window = new ReleaseNotesWindow("1.0.8");
+        var window = new ReleaseNotesWindow("1.0.9");
         try
         {
             var rootElement = Assert.IsAssignableFrom<FrameworkElement>(window.Content);

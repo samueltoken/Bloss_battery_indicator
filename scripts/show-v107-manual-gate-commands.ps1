@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string[]]$Id,
 
     [switch]$All,
@@ -14,8 +14,9 @@ $checklistPath = if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLI
 else {
     Join-Path $projectRoot "manual-verification-v107.md"
 }
-$manualScriptVersion = if ((Split-Path -Leaf $checklistPath) -eq "manual-verification-v108.md") {
-    "v108"
+$manualChecklistName = Split-Path -Leaf $checklistPath
+$manualScriptVersion = if ($manualChecklistName -match '^manual-verification-(v\d+)\.md$') {
+    $Matches[1]
 }
 else {
     "v107"
@@ -237,31 +238,31 @@ function Get-ChecklistRows {
 }
 
 $gatePlans = @(
-    New-GatePlan -Id "UPDATE-104" -Title "v1.0.4 in-app update reaches 1.0.8 and restarts" -Checks @(
+    New-GatePlan -Id "UPDATE-104" -Title "v1.0.4 in-app update reaches 1.0.9 and restarts" -Checks @(
         "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
         "Install the recommended old v1.0.4 setup.exe shown by that prerequisite check on a real Windows account.",
         "Open Bloss and start the in-app update flow.",
-        "Confirm the app restarts after setup and the visible app/ProductVersion is 1.0.8.",
+        "Confirm the app restarts after setup and the visible app/ProductVersion is 1.0.9.",
         "Keep the old setup.exe path, SHA256, installer/update log path, or a short note with machine name and date."
-    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, in-app update completed, Bloss restarted, visible/ProductVersion 1.0.8 confirmed" -OldInstallerVersion "1.0.4"
-    New-GatePlan -Id "UPDATE-105" -Title "v1.0.5 in-app update reaches 1.0.8 and restarts" -Checks @(
+    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, in-app update completed, Bloss restarted, visible/ProductVersion 1.0.9 confirmed" -OldInstallerVersion "1.0.4"
+    New-GatePlan -Id "UPDATE-105" -Title "v1.0.5 in-app update reaches 1.0.9 and restarts" -Checks @(
         "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
         "Install the recommended old v1.0.5 setup.exe shown by that prerequisite check on a real Windows account.",
         "Open Bloss and start the in-app update flow.",
-        "Confirm the app restarts after setup and the visible app/ProductVersion is 1.0.8.",
+        "Confirm the app restarts after setup and the visible app/ProductVersion is 1.0.9.",
         "Watch for the old silent-update/antivirus abort failure returning."
-    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, in-app update completed, Bloss restarted, visible/ProductVersion 1.0.8 confirmed" -OldInstallerVersion "1.0.5"
+    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, in-app update completed, Bloss restarted, visible/ProductVersion 1.0.9 confirmed" -OldInstallerVersion "1.0.5"
     New-GatePlan -Id "UPDATE-106-NOTES" -Title "v1.0.6 update release notes one-time behavior" -Checks @(
         "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireOldInstallers -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
         "Install the recommended old v1.0.6 setup.exe shown by that prerequisite check on a real Windows account.",
-        "Update to v1.0.8 from inside Bloss.",
-        "Confirm the 1.0.8 release notes popup appears on first app start.",
+        "Update to v1.0.9 from inside Bloss.",
+        "Confirm the 1.0.9 release notes popup appears on first app start.",
         "Close/confirm the popup, restart Bloss, and confirm the popup does not appear again."
-    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, updated to 1.0.8, release notes appeared once after update, did not reappear after restart" -OldInstallerVersion "1.0.6"
+    ) -EvidenceTemplate "{Date} <machine>: installed {OldInstallerEvidence}, updated to 1.0.9, release notes appeared once after update, did not reappear after restart" -OldInstallerVersion "1.0.6"
     New-GatePlan -Id "CLEAN-INSTALL-NOTES" -Title "clean install release notes one-time behavior" -Checks @(
         "Run powershell -ExecutionPolicy Bypass -File $manualPrereqScript -RequireNoRunningProcesses -RequireNoCurrentAutostart.",
         "Install release\installer\setup.exe on a clean or reset Windows account.",
-        "Open Bloss and confirm the 1.0.8 release notes popup appears once.",
+        "Open Bloss and confirm the 1.0.9 release notes popup appears once.",
         "Close/confirm the popup, restart Bloss, and confirm the popup does not appear again.",
         "Do not use artifacts\portable\test.exe for this gate because test.exe intentionally shows the popup every run."
     ) -EvidenceTemplate "{Date} <machine>: clean install release\installer\setup.exe, release notes appeared once, did not reappear after restart"

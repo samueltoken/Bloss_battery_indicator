@@ -209,6 +209,7 @@ public partial class MainWindow : Window
 
     public MainWindow(MainViewModel viewModel)
     {
+        RuntimeDiagnostics.ConfigureForProcess(Environment.ProcessPath);
         _viewModel = viewModel;
         DataContext = _viewModel;
         _updateService = new UpdateService(_httpClient, AppDisplayName, GetDisplayVersion);
@@ -240,8 +241,10 @@ public partial class MainWindow : Window
         _steamRawInputMonitor.InputReportReceived += GuideButtonMonitor_InputReportReceived;
         _steamRawInputMonitor.InputActivityReceived += GuideButtonMonitor_InputActivityReceived;
         _steamRawInputMonitor.GlobalHumanInputReceived += SteamRawInputMonitor_GlobalHumanInputReceived;
+        _steamRawInputMonitor.SteamRawHidBaselineReady += SteamRawInputMonitor_SteamRawHidBaselineReady;
         _steamRawInputMonitor.SetKnownDeviceProvider(GetGuideButtonKnownDevices);
         _xInputActivityMonitor.InputActivityReceived += XInputActivityMonitor_InputActivityReceived;
+        SyncBatteryGuideTriggerInputInterests();
         _displayPowerCoordinator.StateChanged += DisplayPowerCoordinator_StateChanged;
         _batteryGuideChimePlayer.PlaybackEnded += BatteryGuideChimePlayer_PlaybackEnded;
         _guideSoundPreviewResetTimer.Tick += GuideSoundPreviewResetTimer_Tick;
@@ -287,6 +290,7 @@ public partial class MainWindow : Window
         UpdateDwmBlurBehindRegion();
         ApplyVisualModeState();
         await _viewModel.InitializeAsync().ConfigureAwait(true);
+        SyncBatteryGuideTriggerInputInterests();
         ApplyColorPreset(_viewModel.ColorPresetId);
         ApplySettingsTextStyle();
         ApplyCustomFont();
@@ -363,10 +367,7 @@ public partial class MainWindow : Window
 
     internal static bool IsPortableTestExecutablePath(string? processPath)
     {
-        return string.Equals(
-            Path.GetFileName(processPath),
-            "test.exe",
-            StringComparison.OrdinalIgnoreCase);
+        return RuntimeDiagnostics.IsPortableTestExecutablePath(processPath);
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
@@ -399,6 +400,7 @@ public partial class MainWindow : Window
         _steamRawInputMonitor.InputReportReceived -= GuideButtonMonitor_InputReportReceived;
         _steamRawInputMonitor.InputActivityReceived -= GuideButtonMonitor_InputActivityReceived;
         _steamRawInputMonitor.GlobalHumanInputReceived -= SteamRawInputMonitor_GlobalHumanInputReceived;
+        _steamRawInputMonitor.SteamRawHidBaselineReady -= SteamRawInputMonitor_SteamRawHidBaselineReady;
         _steamRawInputMonitor.Dispose();
         _xInputActivityMonitor.InputActivityReceived -= XInputActivityMonitor_InputActivityReceived;
         _xInputActivityMonitor.Dispose();
@@ -792,7 +794,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var dialog = new BatteryAlertThresholdsWindow(_viewModel.BatteryAlertThresholds, _viewModel.Language)
+        var dialog = new BatteryAlertThresholdsWindow(
+            _viewModel.BatteryAlertThresholds,
+            BuildBatteryAlertDeviceOptions(),
+            _viewModel.Language)
         {
             Owner = this,
             PopInOriginScreenPoint = TryGetElementCenterScreenPoint(BatteryAlertThresholdsButton)
@@ -824,10 +829,42 @@ public partial class MainWindow : Window
 
         var before = _viewModel.BatteryAlertThresholds;
         _viewModel.SetBatteryAlertThresholds(dialog.SelectedThresholds);
-        if (!string.Equals(before, _viewModel.BatteryAlertThresholds, StringComparison.Ordinal))
+        _viewModel.SetBatteryAlertDeviceEnabled(dialog.SelectedDeviceAlertSettings.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.OrdinalIgnoreCase));
+        if (!string.Equals(before, _viewModel.BatteryAlertThresholds, StringComparison.Ordinal) ||
+            dialog.SelectedDeviceAlertSettings.Count > 0)
         {
             PrimeBatteryAlertToastKeysForCurrentLevels();
         }
+    }
+
+    private IReadOnlyList<BatteryAlertDeviceOption> BuildBatteryAlertDeviceOptions()
+    {
+        return _viewModel.Devices
+            .Where(item =>
+                item.IsConnected &&
+                !item.IsStale &&
+                !item.IsBatteryConnecting &&
+                item.BatteryPercent is int)
+            .Select(item =>
+            {
+                var key = BuildBatteryAlertDeviceSettingKey(item);
+                return string.IsNullOrWhiteSpace(key)
+                    ? null
+                    : new BatteryAlertDeviceOption(
+                        key,
+                        item.DisplayName,
+                        $"{item.BatteryPercent}%",
+                        IsBatteryAlertEnabledForDeviceKey(key));
+            })
+            .Where(option => option is not null)
+            .Cast<BatteryAlertDeviceOption>()
+            .GroupBy(option => option.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(option => option.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
     }
 
     private void PositionBatteryAlertThresholdsWindow(Window dialog)
@@ -896,7 +933,7 @@ public partial class MainWindow : Window
 
     private void BeginBatteryGuideTriggerCapture()
     {
-        _isBatteryGuideTriggerCaptureActive = true;
+        SetBatteryGuideTriggerCaptureActive(true);
         _pendingBatteryGuideTriggerCapture = null;
         _batteryGuideTriggerCaptureKey = null;
         _lastBatteryGuideTriggerReportByDevice.Clear();
@@ -906,7 +943,7 @@ public partial class MainWindow : Window
 
     private void CancelBatteryGuideTriggerCapture(bool closeWindow, bool animateClose = false)
     {
-        _isBatteryGuideTriggerCaptureActive = false;
+        SetBatteryGuideTriggerCaptureActive(false);
         _pendingBatteryGuideTriggerCapture = null;
         _batteryGuideTriggerCaptureKey = null;
         _lastBatteryGuideTriggerReportByDevice.Clear();
@@ -1028,7 +1065,7 @@ public partial class MainWindow : Window
 
     private void BatteryGuideTriggerCaptureWindow_RetryRequested(object? sender, EventArgs e)
     {
-        _isBatteryGuideTriggerCaptureActive = true;
+        SetBatteryGuideTriggerCaptureActive(true);
         _pendingBatteryGuideTriggerCapture = null;
         _batteryGuideTriggerCaptureKey = null;
         _lastBatteryGuideTriggerReportByDevice.Clear();
@@ -1056,11 +1093,63 @@ public partial class MainWindow : Window
             _batteryGuideTriggerCaptureWindow = null;
         }
 
-        _isBatteryGuideTriggerCaptureActive = false;
+        SetBatteryGuideTriggerCaptureActive(false);
         _pendingBatteryGuideTriggerCapture = null;
         _batteryGuideTriggerCaptureKey = null;
         _lastBatteryGuideTriggerReportByDevice.Clear();
         ClearCustomBatteryGuideTriggerPressState();
+    }
+
+    private void SetBatteryGuideTriggerCaptureActive(bool isActive)
+    {
+        _isBatteryGuideTriggerCaptureActive = isActive;
+        _guideButtonMonitor.SetDetailedInputReportMode(isActive);
+        _steamRawInputMonitor.SetDetailedInputReportMode(isActive);
+        SyncGuideButtonMonitorSteamPolicy();
+    }
+
+    private void SyncBatteryGuideTriggerInputInterests()
+    {
+        var triggers = new Dictionary<GuideButtonDeviceKind, BatteryGuideTrigger>();
+        foreach (var deviceKind in new[] { GuideButtonDeviceKind.DualSense, GuideButtonDeviceKind.SteamController })
+        {
+            if (_viewModel.TryGetBatteryGuideTriggerForDevice(deviceKind, out var persistedTrigger) &&
+                BatteryGuideTriggerParser.TryParse(persistedTrigger, out var trigger))
+            {
+                triggers[deviceKind] = trigger;
+            }
+        }
+
+        _guideButtonMonitor.SetActiveBatteryGuideTriggers(triggers);
+        _steamRawInputMonitor.SetActiveBatteryGuideTriggers(triggers);
+    }
+
+    private void SteamRawInputMonitor_SteamRawHidBaselineReady(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                _ = Dispatcher.BeginInvoke(
+                    new Action(() => SteamRawInputMonitor_SteamRawHidBaselineReady(sender, e)));
+                return;
+            }
+
+            SyncGuideButtonMonitorSteamPolicy();
+        }
+        catch
+        {
+            // Steam RawInput is an optimization path; never let it close the widget.
+        }
+    }
+
+    private void SyncGuideButtonMonitorSteamPolicy()
+    {
+        var rawSteamMonitorActive =
+            _steamRawInputMonitor.IsRegistered &&
+            (_steamRawInputMonitor.IsNormalMode || _steamRawInputMonitor.IsWakeOnlyMode);
+        var allowSteamDirectHid = _isBatteryGuideTriggerCaptureActive || !rawSteamMonitorActive;
+        _guideButtonMonitor.SetSteamDirectHidEnabled(allowSteamDirectHid);
     }
 
     private void CloseBatteryGuideTriggerCaptureWindow(bool animateClose = false)
@@ -2541,6 +2630,7 @@ public partial class MainWindow : Window
         var delay = (TimeSpan?)null;
         var shouldPause = false;
         _gamepadPresenceService.Refresh(_viewModel.Devices.Select(device => device.Snapshot));
+        SyncGuideButtonMonitorSteamPolicy();
 
         var mode = _displayIdleCoordinator.ResolveMode(
             now,
@@ -2554,25 +2644,28 @@ public partial class MainWindow : Window
             _viewModel.IsAnyProbeRunning,
             _gamepadPresenceService.HasConnectedGamepad);
         ApplyPowerIdleMonitorState(mode, shouldPause);
-        PowerIdleDebugLog.Write(
-            mode.ToString(),
-            delay,
-            displayTimeout,
-            systemIdle,
-            localIdle,
-            gamepadIdle,
-            shouldPause,
-            _viewModel.IsRefreshRunning,
-            _viewModel.IsAnyProbeRunning,
-            _isBatteryGuideTriggerCaptureActive,
-            _guideButtonMonitor.IsRunning,
-            _guideButtonMonitor.IsPowerIdlePollingPausedForDiagnostics,
-            _guideButtonMonitor.AllowsInitialPressedPowerIdleInputForDiagnostics,
-            _steamRawInputMonitor.IsRegistered,
-            _xInputActivityMonitor.IsRunning,
-            GetRawInputModeForDiagnostics(),
-            GetXInputModeForDiagnostics(),
-            GetNormalGamepadMonitoringRemaining(now));
+        if (RuntimeDiagnostics.IsFileLoggingEnabled)
+        {
+            PowerIdleDebugLog.Write(
+                mode.ToString(),
+                delay,
+                displayTimeout,
+                systemIdle,
+                localIdle,
+                gamepadIdle,
+                shouldPause,
+                _viewModel.IsRefreshRunning,
+                _viewModel.IsAnyProbeRunning,
+                _isBatteryGuideTriggerCaptureActive,
+                _guideButtonMonitor.IsRunning,
+                _guideButtonMonitor.IsPowerIdlePollingPausedForDiagnostics,
+                _guideButtonMonitor.AllowsInitialPressedPowerIdleInputForDiagnostics,
+                _steamRawInputMonitor.IsRegistered,
+                _xInputActivityMonitor.IsRunning,
+                GetRawInputModeForDiagnostics(),
+                GetXInputModeForDiagnostics(),
+                GetNormalGamepadMonitoringRemaining(now));
+        }
     }
 
     private string GetRawInputModeForDiagnostics()
@@ -2696,16 +2789,27 @@ public partial class MainWindow : Window
             return;
         }
 
+        StartSteamRawInputPrimaryMonitor();
+        if (!_xInputActivityMonitor.IsRunning || _xInputActivityMonitor.IsWakeOnlyMode)
+        {
+            _xInputActivityMonitor.Start();
+        }
+    }
+
+    private void StartSteamRawInputPrimaryMonitor()
+    {
+        if (_displayPowerCoordinator.CurrentState is DisplayPowerState.Off or DisplayPowerState.Dimmed)
+        {
+            return;
+        }
+
         if (_steamRawInputWindowHandle != IntPtr.Zero &&
             (!_steamRawInputMonitor.IsRegistered || !_steamRawInputMonitor.IsNormalMode))
         {
             _steamRawInputMonitor.Start(_steamRawInputWindowHandle);
         }
 
-        if (!_xInputActivityMonitor.IsRunning || _xInputActivityMonitor.IsWakeOnlyMode)
-        {
-            _xInputActivityMonitor.Start();
-        }
+        SyncGuideButtonMonitorSteamPolicy();
     }
 
     private bool ShouldRunNormalGamepadMonitoring(DateTimeOffset now)
@@ -2734,6 +2838,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        SyncGuideButtonMonitorSteamPolicy();
         _guideButtonMonitor.SetPowerIdlePollingPaused(false);
         if (!_guideButtonMonitor.IsRunning)
         {
@@ -2809,10 +2914,12 @@ public partial class MainWindow : Window
             }
         }
 
+        SyncGuideButtonMonitorSteamPolicy();
     }
 
     private void StartPowerIdleGuideOnlyMonitor(bool allowInitialPressedInput)
     {
+        SyncGuideButtonMonitorSteamPolicy();
         _guideButtonMonitor.SetPowerIdlePollingPaused(true, allowInitialPressedInput);
         if (!_guideButtonMonitor.IsRunning)
         {
@@ -2839,6 +2946,8 @@ public partial class MainWindow : Window
         {
             _xInputActivityMonitor.Stop();
         }
+
+        SyncGuideButtonMonitorSteamPolicy();
     }
 
     private void StartPowerIdleXInputActivityMonitor()
@@ -2856,6 +2965,8 @@ public partial class MainWindow : Window
         {
             _steamRawInputMonitor.StartWakeOnly(_steamRawInputWindowHandle);
         }
+
+        SyncGuideButtonMonitorSteamPolicy();
     }
 
     private void StartWakeOnlyInputMonitors()
@@ -2902,6 +3013,8 @@ public partial class MainWindow : Window
                 _xInputActivityMonitor.Stop();
             }
         }
+
+        SyncGuideButtonMonitorSteamPolicy();
     }
 
     private void StopWakeOnlyNonGuideInputMonitors()
@@ -2915,6 +3028,8 @@ public partial class MainWindow : Window
         {
             _xInputActivityMonitor.Stop();
         }
+
+        SyncGuideButtonMonitorSteamPolicy();
     }
 
     private void TryWakeDisplayAfterVerifiedInput(string reason)
@@ -3123,6 +3238,7 @@ public partial class MainWindow : Window
         if (e.PropertyName is nameof(MainViewModel.BatteryGuideTrigger) or
             nameof(MainViewModel.BatteryGuideTriggerProfiles))
         {
+            SyncBatteryGuideTriggerInputInterests();
             ClearCustomBatteryGuideTriggerPressState();
             _lastCustomBatteryGuideTriggerToastByBinding.Clear();
             _batteryGuideTriggerCaptureWindow?.SetProfiles(
@@ -5500,14 +5616,14 @@ public partial class MainWindow : Window
 
     private void RequestRefreshAfterGamepadActivity()
     {
-        UpdatePowerIdleGuideMonitoring();
-
         var now = DateTimeOffset.UtcNow;
         if (now - _lastGamepadActivityRefreshRequestedAtUtc < GamepadActivityRefreshCooldown)
         {
+            RequestTelemetryRefreshIfAllowed();
             return;
         }
 
+        UpdatePowerIdleGuideMonitoring();
         _ = RefreshAfterGamepadActivityAsync(force: false);
     }
 
@@ -5709,6 +5825,11 @@ public partial class MainWindow : Window
         string displayName,
         string message)
     {
+        if (!RuntimeDiagnostics.IsFileLoggingEnabled)
+        {
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var key = $"{eventName}:{deviceKind}:{AddressNormalizer.NormalizeAddress(address)}:{displayName}";
         if (_lastGamepadActivityDiagnosticAtUtcByKind.TryGetValue(key, out var previous) &&
@@ -6685,6 +6806,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!IsBatteryAlertEnabledForDevice(item))
+        {
+            RemoveBatteryAlertToastKeysForDevice(item);
+            _batteryAlertInitializedDeviceKeys.Add(BuildBatteryToastKey(item));
+            return;
+        }
+
         var thresholds = BuildBatteryAlertThresholds(_viewModel.BatteryAlertThresholds);
         foreach (var threshold in thresholds.Where(threshold => percent > threshold))
         {
@@ -6740,6 +6868,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!IsBatteryAlertEnabledForDevice(item))
+        {
+            RemoveBatteryAlertToastKeysForDevice(item);
+            _batteryAlertInitializedDeviceKeys.Add(BuildBatteryToastKey(item));
+            return;
+        }
+
         var thresholds = BuildBatteryAlertThresholds(_viewModel.BatteryAlertThresholds);
         var targetThreshold = ResolveBatteryAlertThresholdToShow(percent, thresholds);
         _batteryAlertInitializedDeviceKeys.Add(BuildBatteryToastKey(item));
@@ -6789,6 +6924,12 @@ public partial class MainWindow : Window
                 continue;
             }
 
+            if (!IsBatteryAlertEnabledForDevice(item))
+            {
+                _batteryAlertInitializedDeviceKeys.Add(BuildBatteryToastKey(item));
+                continue;
+            }
+
             var targetThreshold = ResolveBatteryAlertThresholdToShow(percent, thresholds);
             if (targetThreshold > 0)
             {
@@ -6823,6 +6964,33 @@ public partial class MainWindow : Window
     private static string BuildBatteryAlertToastKey(DeviceItemViewModel item, int threshold)
     {
         return $"{BuildBatteryToastKey(item)}|T{threshold:D2}";
+    }
+
+    private bool IsBatteryAlertEnabledForDevice(DeviceItemViewModel item)
+    {
+        var key = BuildBatteryAlertDeviceSettingKey(item);
+        return string.IsNullOrWhiteSpace(key) || IsBatteryAlertEnabledForDeviceKey(key);
+    }
+
+    private bool IsBatteryAlertEnabledForDeviceKey(string key)
+    {
+        return !_viewModel.BatteryAlertDeviceEnabled.TryGetValue(key, out var isEnabled) || isEnabled;
+    }
+
+    internal static string BuildBatteryAlertDeviceSettingKey(DeviceItemViewModel item)
+    {
+        var address = AddressNormalizer.NormalizeAddress(item.Address);
+        if (!string.IsNullOrWhiteSpace(address))
+        {
+            return WidgetSettings.NormalizeBatteryAlertDeviceKey($"A:{address}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.ModelKey))
+        {
+            return WidgetSettings.NormalizeBatteryAlertDeviceKey($"M:{item.ModelKey}");
+        }
+
+        return WidgetSettings.NormalizeBatteryAlertDeviceKey($"D:{item.DeviceId}");
     }
 
     private void ShowBatteryToast(DeviceBatterySnapshot snapshot, bool automatic)

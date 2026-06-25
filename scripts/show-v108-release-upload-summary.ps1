@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$RequireReady,
     [switch]$Json
 )
@@ -6,8 +6,13 @@ param(
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$expectedVersion = "1.0.8"
-$checklistPath = Join-Path $projectRoot "manual-verification-v108.md"
+$expectedVersion = "1.0.9"
+$checklistPath = if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
+    [System.IO.Path]::GetFullPath($env:BLOSS_MANUAL_CHECKLIST_PATH)
+}
+else {
+    Join-Path $projectRoot "manual-verification-v108.md"
+}
 $setupPath = Join-Path $projectRoot "release\installer\setup.exe"
 $setupHashPath = Join-Path $projectRoot "release\installer\setup.exe.sha256"
 $testExePath = Join-Path $projectRoot "artifacts\portable\test.exe"
@@ -223,7 +228,7 @@ try {
     }
     else {
         Write-Host ""
-        Write-Host "== v1.0.8 Release Upload Summary =="
+        Write-Host "== v$expectedVersion Release Upload Summary =="
         $summary | Format-List
 
         if ($manualPending.Count -gt 0 -or $manualFailed.Count -gt 0) {

@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="자동 알림 설정"
-        Width="500"
+        Width="760"
         Height="430"
         WindowStartupLocation="Manual"
         WindowStyle="None"
@@ -149,6 +149,113 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="AlertScrollBarRepeatButtonStyle" TargetType="{x:Type RepeatButton}">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RepeatButton}">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AlertScrollBarThumbStyle" TargetType="{x:Type Thumb}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border Margin="1"
+                                CornerRadius="4"
+                                Background="#75BFE7FF"
+                                BorderBrush="#55FFFFFF"
+                                BorderThickness="1" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AlertVerticalScrollBarStyle" TargetType="{x:Type ScrollBar}">
+            <Setter Property="Width" Value="9" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                        <Border CornerRadius="5"
+                                Background="#16253440"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <Track x:Name="PART_Track"
+                                   IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                                  Style="{StaticResource AlertScrollBarRepeatButtonStyle}" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource AlertScrollBarThumbStyle}" />
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                                  Style="{StaticResource AlertScrollBarRepeatButtonStyle}" />
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AlertDeviceToggleButtonStyle" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Width" Value="58" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Grid Width="58"
+                              Height="30">
+                            <Border x:Name="SwitchTrack"
+                                    CornerRadius="15"
+                                    Background="#1723303C"
+                                    BorderBrush="#36506172"
+                                    BorderThickness="1" />
+                            <Border x:Name="SwitchKnob"
+                                    Width="22"
+                                    Height="22"
+                                    Margin="4,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="11"
+                                    Background="#8EA7B7C4">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#66000000"
+                                                      BlurRadius="8"
+                                                      ShadowDepth="2"
+                                                      Opacity="0.45" />
+                                </Border.Effect>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="Background" Value="#BFE7FF" />
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#DDF4FFFF" />
+                                <Setter TargetName="SwitchKnob" Property="Background" Value="#10263D" />
+                                <Setter TargetName="SwitchKnob" Property="Margin" Value="32,0,0,0" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#90D8F5FF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="SwitchTrack" Property="Opacity" Value="0.45" />
+                                <Setter TargetName="SwitchKnob" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border x:Name="WindowSurface"
@@ -175,9 +282,7 @@
         <Grid Margin="18">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -203,37 +308,87 @@
                 </Grid>
             </Border>
 
-            <TextBlock Grid.Row="1"
-                       Margin="0,0,0,16"
-                       TextWrapping="Wrap"
-                       FontSize="13"
-                       Foreground="#BBD2E4F5">
-                <Run x:Name="DescriptionLine1Run" Text="15%는 항상 울립니다." />
-                <LineBreak />
-                <Run x:Name="DescriptionLine2Run" Text="추가 알림은 30~80% 사이에서 여러 개 선택할 수 있습니다." />
-            </TextBlock>
+            <Grid Grid.Row="1"
+                  Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="444" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-            <ToggleButton x:Name="ForcedThresholdCheckBox"
-                      Grid.Row="2"
-                      HorizontalAlignment="Left"
-                      Style="{StaticResource AlertChipToggleButtonStyle}"
-                      Content="15% 필수"
-                      IsChecked="True"
-                      IsEnabled="False" />
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-            <Border Grid.Row="3"
-                    Margin="0,8,0,12"
-                    Padding="10"
-                    CornerRadius="16"
-                    Background="#101C2836"
-                    BorderBrush="#26FFFFFF"
-                    BorderThickness="1">
-                <WrapPanel x:Name="ThresholdPanel"
-                           HorizontalAlignment="Center"
-                           Orientation="Horizontal" />
-            </Border>
+                    <TextBlock Grid.Row="0"
+                               Margin="0,0,0,16"
+                               TextWrapping="Wrap"
+                               FontSize="13"
+                               Foreground="#BBD2E4F5">
+                        <Run x:Name="DescriptionLine1Run" Text="15%는 항상 울립니다." />
+                        <LineBreak />
+                        <Run x:Name="DescriptionLine2Run" Text="추가 알림은 30~80% 사이에서 여러 개 선택할 수 있습니다." />
+                    </TextBlock>
 
-            <StackPanel Grid.Row="4"
+                    <ToggleButton x:Name="ForcedThresholdCheckBox"
+                                  Grid.Row="1"
+                                  HorizontalAlignment="Left"
+                                  Style="{StaticResource AlertChipToggleButtonStyle}"
+                                  Content="15% 필수"
+                                  IsChecked="True"
+                                  IsEnabled="False" />
+
+                    <Border Grid.Row="2"
+                            Margin="0,8,0,0"
+                            Padding="10"
+                            CornerRadius="16"
+                            Background="#101C2836"
+                            BorderBrush="#26FFFFFF"
+                            BorderThickness="1">
+                        <WrapPanel x:Name="ThresholdPanel"
+                                   HorizontalAlignment="Center"
+                                   Orientation="Horizontal" />
+                    </Border>
+                </Grid>
+
+                <Border Grid.Column="2"
+                        Padding="14"
+                        CornerRadius="16"
+                        Background="#101C2836"
+                        BorderBrush="#26FFFFFF"
+                        BorderThickness="1">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock x:Name="DeviceSectionHeadingTextBlock"
+                               Grid.Row="0"
+                               Margin="2,0,0,8"
+                               Text="Alert devices"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="#DDEFFFFF" />
+
+                        <ScrollViewer Grid.Row="1"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      PanningMode="VerticalOnly">
+                            <ScrollViewer.Resources>
+                                <Style TargetType="{x:Type ScrollBar}"
+                                       BasedOn="{StaticResource AlertVerticalScrollBarStyle}" />
+                            </ScrollViewer.Resources>
+                            <StackPanel x:Name="DeviceAlertPanel" />
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <StackPanel Grid.Row="2"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right">
                 <Button x:Name="ClearButton"

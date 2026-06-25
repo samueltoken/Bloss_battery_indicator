@@ -33,6 +33,11 @@ internal static class PowerIdleDebugLog
         string xInputMode,
         TimeSpan normalMonitorRemaining)
     {
+        if (!RuntimeDiagnostics.IsFileLoggingEnabled)
+        {
+            return;
+        }
+
         try
         {
             var line = string.Join(

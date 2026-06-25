@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$SkipTests,
     [switch]$LiveReleaseNotes,
     [switch]$CheckCurrentAutostart,
@@ -13,9 +13,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$targetVersion = "1.0.9"
+$targetTag = "v$targetVersion"
 $manualGates = @(
-    [pscustomobject]@{ Id = "UPDATE-104"; Description = "Install v1.0.4, update from inside the app, confirm the app reaches 1.0.8 and restarts." },
-    [pscustomobject]@{ Id = "UPDATE-105"; Description = "Install v1.0.5, update from inside the app, confirm the app reaches 1.0.8 and restarts." },
+    [pscustomobject]@{ Id = "UPDATE-104"; Description = "Install v1.0.4, update from inside the app, confirm the app reaches $targetVersion and restarts." },
+    [pscustomobject]@{ Id = "UPDATE-105"; Description = "Install v1.0.5, update from inside the app, confirm the app reaches $targetVersion and restarts." },
     [pscustomobject]@{ Id = "UPDATE-106-NOTES"; Description = "Install v1.0.6, update from inside the app, confirm the release notes popup appears once." },
     [pscustomobject]@{ Id = "CLEAN-INSTALL-NOTES"; Description = "Clean install release\installer\setup.exe and confirm the release notes popup appears once." },
     [pscustomobject]@{ Id = "TEST-EXE-NOTES-VISUAL"; Description = "Run artifacts\portable\test.exe repeatedly and confirm the release notes popup appears every run." },
@@ -156,25 +158,33 @@ try {
         $guidePath = Join-Path $projectRoot "howtorelease.md"
         $steadyStatusPath = Join-Path $projectRoot "steadystatus.md"
         $setManualGatePath = Join-Path $projectRoot "scripts\set-v107-manual-gate.ps1"
+        $manualChecklistPath = Get-ManualChecklistPath
+        $manualChecklistName = Split-Path -Leaf $manualChecklistPath
+        $manualScriptVersion = if ($manualChecklistName -match '^manual-verification-(v\d+)\.md$') {
+            $Matches[1]
+        }
+        else {
+            "v107"
+        }
         Assert-FileContains -Path $guidePath -Needle "bloss_battery_indicator_test_ver107" -Message "Release guide does not point at this staging folder."
         Assert-FileContains -Path $guidePath -Needle "modification and verification staging folder" -Message "Release guide does not say this is a staging folder."
         Assert-FileContains -Path $guidePath -Needle "scripts\build-test-portable.ps1" -Message "Release guide does not mention the portable test build script."
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-test-portable.ps1" -Message "Release guide does not mention the portable test verification script."
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-release-notes-popup.ps1" -Message "Release guide does not mention the release-notes verification script."
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-secondary-window-animation.ps1" -Message "Release guide does not mention the secondary-window animation verification script."
-        Assert-FileContains -Path $guidePath -Needle "manual-verification-v108.md" -Message "Release guide does not mention the v1.0.8 manual checklist."
-        Assert-FileContains -Path $guidePath -Needle "scripts\show-v108-manual-gate-commands.ps1" -Message "Release guide does not mention the manual gate command helper."
-        Assert-FileContains -Path $guidePath -Needle "scripts\build-v108-old-installer-prereq.ps1" -Message "Release guide does not mention the old installer prerequisite builder."
-        Assert-FileContains -Path $guidePath -Needle "scripts\check-v108-manual-gate-prereqs.ps1" -Message "Release guide does not mention the manual gate prerequisite check."
-        Assert-FileContains -Path $guidePath -Needle "scripts\export-v108-manual-gate-evidence.ps1" -Message "Release guide does not mention the manual gate evidence export."
+        Assert-FileContains -Path $guidePath -Needle $manualChecklistName -Message "Release guide does not mention the $targetVersion manual checklist."
+        Assert-FileContains -Path $guidePath -Needle "scripts\show-$manualScriptVersion-manual-gate-commands.ps1" -Message "Release guide does not mention the manual gate command helper."
+        Assert-FileContains -Path $guidePath -Needle "scripts\build-$manualScriptVersion-old-installer-prereq.ps1" -Message "Release guide does not mention the old installer prerequisite builder."
+        Assert-FileContains -Path $guidePath -Needle "scripts\check-$manualScriptVersion-manual-gate-prereqs.ps1" -Message "Release guide does not mention the manual gate prerequisite check."
+        Assert-FileContains -Path $guidePath -Needle "scripts\export-$manualScriptVersion-manual-gate-evidence.ps1" -Message "Release guide does not mention the manual gate evidence export."
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-git-publish-safety.ps1" -Message "Release guide does not mention the git publish safety check."
-        Assert-FileContains -Path $guidePath -Needle "scripts\verify-v108-manual-gate-updater.ps1" -Message "Release guide does not mention the manual gate updater verification script."
-        Assert-FileContains -Path $guidePath -Needle "scripts\set-v108-manual-gate.ps1" -Message "Release guide does not mention the manual gate updater script."
+        Assert-FileContains -Path $guidePath -Needle "scripts\verify-$manualScriptVersion-manual-gate-updater.ps1" -Message "Release guide does not mention the manual gate updater verification script."
+        Assert-FileContains -Path $guidePath -Needle "scripts\set-$manualScriptVersion-manual-gate.ps1" -Message "Release guide does not mention the manual gate updater script."
         Assert-FileContains -Path $setManualGatePath -Needle "Evidence is required when setting" -Message "Manual gate updater does not require evidence for PASS/FAIL."
         Assert-FileContains -Path $setManualGatePath -Needle "verify-v107-manual-checklist.ps1" -Message "Manual gate updater does not re-run checklist validation."
         Assert-FileContains -Path $guidePath -Needle "scripts\build-installer.ps1" -Message "Release guide does not mention the installer build script."
         Assert-FileContains -Path $guidePath -Needle "scripts\verify-installer.ps1" -Message "Release guide does not mention the installer verification script."
-        Assert-FileContains -Path $guidePath -Needle "scripts\verify-v108-release-ready.ps1" -Message "Release guide does not mention the one-shot readiness gate."
+        Assert-FileContains -Path $guidePath -Needle "scripts\verify-$manualScriptVersion-release-ready.ps1" -Message "Release guide does not mention the one-shot readiness gate."
         Assert-FileContains -Path $guidePath -Needle "scripts\check-autostart-cleanup.ps1" -Message "Release guide does not mention the autostart cleanup check."
         Assert-FileContains -Path $guidePath -Needle "installer\BluetoothBatteryWidget.iss" -Message "Release guide does not mention the current installer script."
         Assert-FileContains -Path $guidePath -Needle "display-off timeout to 1 minute" -Message "Release guide does not include the display-off manual gate."
@@ -184,7 +194,7 @@ try {
         Assert-FileContains -Path $guidePath -Needle "lower square hotspot" -Message "Release guide does not include the Steam Quick Access lower-square hotspot gate."
         Assert-FileContains -Path $guidePath -Needle "release notes popup appears once" -Message "Release guide does not include release-notes one-time behavior."
         Assert-FileContains -Path $guidePath -Needle "release notes popup appears every run" -Message "Release guide does not include test.exe every-run behavior."
-        Assert-FileContains -Path $guidePath -Needle 'powershell -ExecutionPolicy Bypass -File ".\scripts\verify-v108-release-ready.ps1" -LiveReleaseNotes -DisplaySleepSnapshot -RequireManualGatePasses -RequireNoRunningBlossOrTest -RequireNoCurrentAutostart' -Message "Release guide does not include the final manual-gate upload guard command."
+        Assert-FileContains -Path $guidePath -Needle "powershell -ExecutionPolicy Bypass -File `".\scripts\verify-$manualScriptVersion-release-ready.ps1`" -LiveReleaseNotes -DisplaySleepSnapshot -RequireManualGatePasses -RequireNoRunningBlossOrTest -RequireNoCurrentAutostart" -Message "Release guide does not include the final manual-gate upload guard command."
         Assert-FileContains -Path $guidePath -Needle 'Do not run `gh release upload` while this fails' -Message "Release guide does not block upload while manual gates are incomplete."
         Assert-FileContains -Path $guidePath -Needle '-RequireNoRunningProcesses' -Message "Release guide does not mention the no-running-process manual gate prerequisite guard."
         Assert-FileContains -Path $guidePath -Needle '-RequireNoCurrentAutostart' -Message "Release guide does not mention the current-user autostart prerequisite guard."
@@ -368,7 +378,7 @@ try {
     }
 
     Write-Host ""
-    Write-Host "v1.0.8 release readiness gate passed for non-destructive local checks."
+    Write-Host "$targetTag release readiness gate passed for non-destructive local checks."
 }
 finally {
     Pop-Location
