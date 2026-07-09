@@ -8,10 +8,27 @@
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$centralPropsPath = Join-Path $projectRoot "Directory.Build.props"
 $oldInstallerVersions = @("1.0.4", "1.0.5", "1.0.6")
 $autostartValueNames = @("Bloss", "BluetoothBatteryWidget")
 $autostartRunKeyPath = "Software\Microsoft\Windows\CurrentVersion\Run"
 $failures = New-Object System.Collections.Generic.List[string]
+
+function Get-CentralAppVersion {
+    if (-not (Test-Path -LiteralPath $centralPropsPath -PathType Leaf)) {
+        throw "Central version file not found: $centralPropsPath"
+    }
+
+    [xml]$props = Get-Content -Encoding UTF8 -LiteralPath $centralPropsPath -Raw
+    $version = $props.Project.PropertyGroup.Version | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw "Version was not found in $centralPropsPath"
+    }
+
+    return $version.Trim()
+}
+
+$targetVersion = Get-CentralAppVersion
 
 if ($null -eq $SearchRoot -or $SearchRoot.Count -eq 0) {
     $parentRoot = Split-Path -Parent $projectRoot
@@ -198,9 +215,9 @@ else {
 }
 
 $requiredFiles = @(
-    New-RequiredFileResult -Name "v1.0.9 installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion "1.0.9"
-    New-RequiredFileResult -Name "v1.0.9 installer hash" -RelativePath "release\installer\setup.exe.sha256"
-    New-RequiredFileResult -Name "portable visual test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion "1.0.9"
+    New-RequiredFileResult -Name "v$targetVersion installer" -RelativePath "release\installer\setup.exe" -ExpectedProductVersion $targetVersion
+    New-RequiredFileResult -Name "v$targetVersion installer hash" -RelativePath "release\installer\setup.exe.sha256"
+    New-RequiredFileResult -Name "portable visual test executable" -RelativePath "artifacts\portable\test.exe" -ExpectedProductVersion $targetVersion
     New-RequiredFileResult -Name "manual verification checklist" -RelativePath $manualChecklistPath
     New-RequiredFileResult -Name "manual gate command helper" -RelativePath "scripts\show-$manualScriptVersion-manual-gate-commands.ps1"
     New-RequiredFileResult -Name "manual gate updater" -RelativePath "scripts\set-$manualScriptVersion-manual-gate.ps1"

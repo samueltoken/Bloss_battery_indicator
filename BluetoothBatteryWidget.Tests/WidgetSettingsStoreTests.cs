@@ -94,6 +94,59 @@ public sealed class WidgetSettingsStoreTests
     }
 
     [Fact]
+    public void SaveAndLoad_PreservesCenteredSettingsPopupChoice()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var settingsPath = Path.Combine(directory, "Bloss", "settings.json");
+            var store = new WidgetSettingsStore(settingsPath, Path.Combine(directory, "legacy.json"));
+
+            store.Save(new WidgetSettings
+            {
+                UseCenteredSettingsPopup = false
+            });
+
+            var settings = store.Load();
+
+            Assert.False(settings.UseCenteredSettingsPopup);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_UpgradesOldSchemaCenteredSettingsPopupToEnabled()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            File.WriteAllText(
+                settingsPath,
+                """
+                {
+                  "settingsSchemaVersion": 2,
+                  "useCenteredSettingsPopup": false
+                }
+                """);
+
+            var store = new WidgetSettingsStore(settingsPath, Path.Combine(directory, "legacy.json"));
+
+            var settings = store.Load();
+
+            Assert.True(settings.UseCenteredSettingsPopup);
+            Assert.Equal(WidgetSettings.CurrentSettingsSchemaVersion, settings.SettingsSchemaVersion);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Load_BacksUpUnreadableSettingsAndReturnsDefaults()
     {
         var directory = CreateTempDirectory();

@@ -13,7 +13,23 @@
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$targetVersion = "1.0.9"
+$centralPropsPath = Join-Path $projectRoot "Directory.Build.props"
+
+function Get-CentralAppVersion {
+    if (-not (Test-Path -LiteralPath $centralPropsPath -PathType Leaf)) {
+        throw "Central version file not found: $centralPropsPath"
+    }
+
+    [xml]$props = Get-Content -Encoding UTF8 -LiteralPath $centralPropsPath -Raw
+    $version = $props.Project.PropertyGroup.Version | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw "Version was not found in $centralPropsPath"
+    }
+
+    return $version.Trim()
+}
+
+$targetVersion = Get-CentralAppVersion
 $targetTag = "v$targetVersion"
 $manualGates = @(
     [pscustomobject]@{ Id = "UPDATE-104"; Description = "Install v1.0.4, update from inside the app, confirm the app reaches $targetVersion and restarts." },

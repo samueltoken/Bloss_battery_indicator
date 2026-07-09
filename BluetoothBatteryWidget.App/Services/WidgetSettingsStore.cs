@@ -225,6 +225,11 @@ public sealed class WidgetSettingsStore
             normalized.PowerIdlePauseMinutes = WidgetSettings.AutoPowerIdlePauseMinutes;
         }
 
+        if (loadedSchemaVersion < WidgetSettings.CenteredSettingsPopupDefaultSettingsSchemaVersion)
+        {
+            normalized.UseCenteredSettingsPopup = true;
+        }
+
         return normalized;
     }
 }

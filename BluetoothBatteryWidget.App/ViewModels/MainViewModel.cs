@@ -155,6 +155,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(AutostartEnabled));
             OnPropertyChanged(nameof(StartMinimizedToTrayEnabled));
             OnPropertyChanged(nameof(CloseToTrayEnabled));
+            OnPropertyChanged(nameof(UseCenteredSettingsPopup));
             OnPropertyChanged(nameof(GuidedProbeEnabled));
             OnPropertyChanged(nameof(GuideSoundEnabled));
             OnPropertyChanged(nameof(GuideSoundId));
@@ -197,6 +198,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool StartMinimizedToTrayEnabled => Settings.StartMinimizedToTray;
 
     public bool CloseToTrayEnabled => Settings.CloseToTray;
+
+    public bool UseCenteredSettingsPopup => Settings.UseCenteredSettingsPopup;
 
     public bool GuidedProbeEnabled => Settings.GuidedProbeEnabled;
 
@@ -278,6 +281,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public string TextAutostart => CurrentLanguageText.AutostartLabel;
 
     public string TextCloseToTray => CurrentLanguageText.CloseToTrayLabel;
+
+    public string TextCenteredSettingsPopup => UiLanguageCatalog.GetExtraText(Settings.Language, "CenteredSettingsPopup");
 
     public string TextGuidedProbe => CurrentLanguageText.GuidedProbeLabel;
 
@@ -1068,6 +1073,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         Settings.CloseToTray = enabled;
         SaveSettings();
         OnPropertyChanged(nameof(CloseToTrayEnabled));
+    }
+
+    public void SetUseCenteredSettingsPopup(bool enabled)
+    {
+        if (Settings.UseCenteredSettingsPopup == enabled)
+        {
+            return;
+        }
+
+        Settings.UseCenteredSettingsPopup = enabled;
+        SaveSettings();
+        OnPropertyChanged(nameof(UseCenteredSettingsPopup));
     }
 
     public void SetGuidedProbeEnabled(bool enabled)
@@ -2958,6 +2975,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(TextSettingsTitle));
         OnPropertyChanged(nameof(TextAutostart));
         OnPropertyChanged(nameof(TextCloseToTray));
+        OnPropertyChanged(nameof(TextCenteredSettingsPopup));
         OnPropertyChanged(nameof(TextGuidedProbe));
         OnPropertyChanged(nameof(GuideSoundEnabled));
         OnPropertyChanged(nameof(GuideSoundId));

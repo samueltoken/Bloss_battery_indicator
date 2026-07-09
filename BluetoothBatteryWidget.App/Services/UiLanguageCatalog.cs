@@ -132,6 +132,11 @@ public static class UiLanguageCatalog
     public static string GetExtraText(string? language, string key)
     {
         var normalized = WidgetSettings.NormalizeLanguage(language);
+        if (TryGetSharedExtraText(normalized, key, out var sharedText))
+        {
+            return sharedText;
+        }
+
         if (key.StartsWith("Pico", StringComparison.Ordinal))
         {
             return GetPicoExtraText(normalized, key);
@@ -228,9 +233,9 @@ public static class UiLanguageCatalog
                 "WindowsDisplayOffApplyFailed" => "Windows 화면 꺼짐 시간을 바꾸지 못했습니다.",
                 "ReleaseNotesWindowTitleFormat" => "Bloss {0} 업데이트 안내",
                 "ReleaseNotesHeading" => "업데이트 내역",
-                "ReleaseNotesCleanupAutostart" => "Dual Sense, Steam Controller 사용시의 위젯 CPU 점유율을 낮추고 최적화하였습니다",
-                "ReleaseNotesSleepGuard" => "- 가이드 버튼 / 새로 지정한 버튼 사용 순간에만 일시적으로 점유율이 상승합니다",
-                "ReleaseNotesCustomGuideTrigger" => "- 최초 연결시, 연결 해제시 해당 순간에만 일시적으로 점유율이 상승합니다",
+                "ReleaseNotesCleanupAutostart" => "설정창이 화면 중앙에 안정적으로 열리도록 개선했습니다",
+                "ReleaseNotesSleepGuard" => "- 작은 화면에서는 보이지 않는 스크롤로 설정 항목 접근성을 보강했습니다",
+                "ReleaseNotesCustomGuideTrigger" => "- 기존 1.0.9 방식의 위젯 옆 설정창도 옵션으로 유지했습니다",
                 "ReleaseNotesInstallUpdateValidation" => "",
                 "ReleaseNotesFooter" => "확인을 누르면 이 안내는 다시 뜨지 않습니다.",
                 "ReleaseNotesConfirm" => "확인",
@@ -378,9 +383,9 @@ public static class UiLanguageCatalog
                 "WindowsDisplayOffApplyFailed" => "Windowsの画面オフ時間を変更できませんでした。",
                 "ReleaseNotesWindowTitleFormat" => "Bloss {0} 更新案内",
                 "ReleaseNotesHeading" => "更新内容",
-                "ReleaseNotesCleanupAutostart" => "DualSense / Steam Controller 使用時のウィジェットCPU使用率を下げ、最適化しました",
-                "ReleaseNotesSleepGuard" => "- ガイドボタン / 新しく指定したボタンを使う瞬間だけ、一時的にCPU使用率が上がります",
-                "ReleaseNotesCustomGuideTrigger" => "- 初回接続時と切断時だけ、一時的にCPU使用率が上がります",
+                "ReleaseNotesCleanupAutostart" => "設定画面が画面中央に安定して開くよう改善しました",
+                "ReleaseNotesSleepGuard" => "- 小さい画面では見えないスクロールで設定項目へアクセスしやすくしました",
+                "ReleaseNotesCustomGuideTrigger" => "- 既存の1.0.9方式のウィジェット横設定画面もオプションとして残しました",
                 "ReleaseNotesInstallUpdateValidation" => "",
                 "ReleaseNotesFooter" => "確認すると、この案内は再表示されません。",
                 "ReleaseNotesConfirm" => "確認",
@@ -504,9 +509,9 @@ public static class UiLanguageCatalog
                 "WindowsDisplayOffApplyFailed" => "无法更改 Windows 关闭屏幕时间。",
                 "ReleaseNotesWindowTitleFormat" => "Bloss {0} 更新说明",
                 "ReleaseNotesHeading" => "更新内容",
-                "ReleaseNotesCleanupAutostart" => "优化了使用 DualSense / Steam Controller 时的小组件 CPU 占用",
-                "ReleaseNotesSleepGuard" => "- 只有在使用指南键或新指定的按键时，CPU 占用会短暂上升",
-                "ReleaseNotesCustomGuideTrigger" => "- 首次连接或断开连接时，CPU 占用会短暂上升",
+                "ReleaseNotesCleanupAutostart" => "改进了设置窗口，使其能稳定地在屏幕中央打开",
+                "ReleaseNotesSleepGuard" => "- 在较小屏幕上加入隐藏滚动，方便访问所有设置项",
+                "ReleaseNotesCustomGuideTrigger" => "- 仍保留 1.0.9 的小组件旁弹出设置方式作为选项",
                 "ReleaseNotesInstallUpdateValidation" => "",
                 "ReleaseNotesFooter" => "点击确认后，此说明不会再次显示。",
                 "ReleaseNotesConfirm" => "确认",
@@ -630,9 +635,9 @@ public static class UiLanguageCatalog
                 "WindowsDisplayOffApplyFailed" => "無法變更 Windows 關閉螢幕時間。",
                 "ReleaseNotesWindowTitleFormat" => "Bloss {0} 更新說明",
                 "ReleaseNotesHeading" => "更新內容",
-                "ReleaseNotesCleanupAutostart" => "最佳化使用 DualSense / Steam Controller 時的小工具 CPU 佔用",
-                "ReleaseNotesSleepGuard" => "- 只有在使用指南鍵或新指定的按鍵時，CPU 佔用會短暫上升",
-                "ReleaseNotesCustomGuideTrigger" => "- 首次連接或中斷連接時，CPU 佔用會短暫上升",
+                "ReleaseNotesCleanupAutostart" => "改善設定視窗，使其能穩定地在畫面中央開啟",
+                "ReleaseNotesSleepGuard" => "- 在較小螢幕上加入隱藏捲動，方便存取所有設定項目",
+                "ReleaseNotesCustomGuideTrigger" => "- 仍保留 1.0.9 的小工具旁彈出設定方式作為選項",
                 "ReleaseNotesInstallUpdateValidation" => "",
                 "ReleaseNotesFooter" => "按下確認後，此說明不會再次顯示。",
                 "ReleaseNotesConfirm" => "確認",
@@ -756,9 +761,9 @@ public static class UiLanguageCatalog
                 "WindowsDisplayOffApplyFailed" => "Tempus exstinguendi velum mutari non potuit.",
                 "ReleaseNotesWindowTitleFormat" => "Bloss {0} nuntius renovationis",
                 "ReleaseNotesHeading" => "Res renovatae",
-                "ReleaseNotesCleanupAutostart" => "CPU usus widgeti cum DualSense / Steam Controller emendatus est",
-                "ReleaseNotesSleepGuard" => "- CPU usus breviter crescit tantum cum guide button vel novo button delecto utitur",
-                "ReleaseNotesCustomGuideTrigger" => "- CPU usus breviter crescit tantum in prima connexione vel disiunctione",
+                "ReleaseNotesCleanupAutostart" => "Fenestra optionum stabilius in medio aperitur",
+                "ReleaseNotesSleepGuard" => "- In parvis monitoribus occulto lapsu omnia loca attingi possunt",
+                "ReleaseNotesCustomGuideTrigger" => "- Vetus modus iuxta widget ut optio manet",
                 "ReleaseNotesInstallUpdateValidation" => "",
                 "ReleaseNotesFooter" => "Post confirmationem hic nuntius iterum non apparebit.",
                 "ReleaseNotesConfirm" => "Confirma",
@@ -882,9 +887,9 @@ public static class UiLanguageCatalog
                 "WindowsDisplayOffApplyFailed" => "Impossible de changer le delai d'extinction de l'ecran Windows.",
                 "ReleaseNotesWindowTitleFormat" => "Notes de mise a jour Bloss {0}",
                 "ReleaseNotesHeading" => "Details de mise a jour",
-                "ReleaseNotesCleanupAutostart" => "Utilisation CPU du widget optimisee avec DualSense / Steam Controller",
-                "ReleaseNotesSleepGuard" => "- Le CPU peut monter brievement seulement avec le bouton Guide ou un bouton assigne",
-                "ReleaseNotesCustomGuideTrigger" => "- Le CPU peut monter brievement seulement a la connexion ou a la deconnexion",
+                "ReleaseNotesCleanupAutostart" => "La fenetre des reglages s'ouvre maintenant au centre de l'ecran",
+                "ReleaseNotesSleepGuard" => "- Un defilement invisible reste disponible sur les petits ecrans",
+                "ReleaseNotesCustomGuideTrigger" => "- L'ancien mode pres du widget reste disponible en option",
                 "ReleaseNotesInstallUpdateValidation" => "",
                 "ReleaseNotesFooter" => "Apres confirmation, cette note ne s'affichera plus.",
                 "ReleaseNotesConfirm" => "OK",
@@ -921,6 +926,26 @@ public static class UiLanguageCatalog
             },
             _ => GetEnglishExtraText(key)
         };
+    }
+
+    private static bool TryGetSharedExtraText(string normalizedLanguage, string key, out string text)
+    {
+        text = key switch
+        {
+            "CenteredSettingsPopup" => normalizedLanguage switch
+            {
+                WidgetSettings.KoreanLanguage => "설정창 중앙고정",
+                WidgetSettings.JapaneseLanguage => "設定画面を中央に固定",
+                WidgetSettings.ChineseSimplifiedLanguage => "设置窗口居中固定",
+                WidgetSettings.ChineseTraditionalLanguage => "設定視窗置中固定",
+                WidgetSettings.LatinLanguage => "Optiones in medio figere",
+                WidgetSettings.FrenchLanguage => "Centrer la fenetre des reglages",
+                _ => "Center settings window"
+            },
+            _ => string.Empty
+        };
+
+        return !string.IsNullOrEmpty(text);
     }
 
     private static string GetPicoExtraText(string normalized, string key)
@@ -1294,9 +1319,9 @@ public static class UiLanguageCatalog
             "WindowsDisplayOffApplyFailed" => "Could not change Windows display-off time.",
             "ReleaseNotesWindowTitleFormat" => "Bloss {0} update notes",
             "ReleaseNotesHeading" => "Update details",
-            "ReleaseNotesCleanupAutostart" => "Optimized widget CPU usage when using DualSense / Steam Controller",
-            "ReleaseNotesSleepGuard" => "- CPU usage may rise briefly only when using the guide button or a custom assigned button",
-            "ReleaseNotesCustomGuideTrigger" => "- CPU usage may rise briefly only at initial connection or disconnection",
+            "ReleaseNotesCleanupAutostart" => "Settings now open reliably in the center of the screen",
+            "ReleaseNotesSleepGuard" => "- Hidden scrolling remains available on small screens",
+            "ReleaseNotesCustomGuideTrigger" => "- The previous 1.0.9 widget-adjacent settings style remains optional",
             "ReleaseNotesInstallUpdateValidation" => "",
             "ReleaseNotesFooter" => "After you confirm, this note will not appear again.",
             "ReleaseNotesConfirm" => "OK",

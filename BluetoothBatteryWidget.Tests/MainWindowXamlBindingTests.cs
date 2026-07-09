@@ -15,6 +15,16 @@ public sealed class MainWindowXamlBindingTests
         "..",
         ".."));
 
+    private static string ReadMainWindowSource()
+    {
+        var appRoot = Path.Combine(ProjectRoot, "BluetoothBatteryWidget.App");
+        return string.Join(
+            Environment.NewLine,
+            Directory.GetFiles(appRoot, "MainWindow*.cs")
+                .OrderBy(Path.GetFileName, StringComparer.Ordinal)
+                .Select(File.ReadAllText));
+    }
+
     [Fact]
     public void MainWindowXaml_HexBrushTokensUseValidWpfLengths()
     {
@@ -61,9 +71,9 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("BLoss", xaml);
         Assert.Contains("업데이트 내역", xaml);
         Assert.DoesNotContain("이번 업데이트", xaml);
-        Assert.Contains("Dual Sense, Steam Controller 사용시의 위젯 CPU 점유율을 낮추고 최적화하였습니다", xaml);
-        Assert.Contains("- 가이드 버튼 / 새로 지정한 버튼 사용 순간에만 일시적으로 점유율이 상승합니다", xaml);
-        Assert.Contains("- 최초 연결시, 연결 해제시 해당 순간에만 일시적으로 점유율이 상승합니다", xaml);
+        Assert.Contains("설정창이 화면 중앙에 안정적으로 열리도록 개선했습니다", xaml);
+        Assert.Contains("- 작은 화면에서는 보이지 않는 스크롤로 설정 항목 접근성을 보강했습니다", xaml);
+        Assert.Contains("- 기존 1.0.9 방식의 위젯 옆 설정창도 옵션으로 유지했습니다", xaml);
         Assert.Contains("SetReleaseNoteText", code);
         Assert.Contains("ReleaseNoteConfirmButtonStyle", xaml);
         Assert.Contains("ReleaseNoteCloseButtonStyle", xaml);
@@ -74,11 +84,11 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("UiLanguageCatalog.GetExtraText(language, \"ReleaseNotesHeading\")", code);
         Assert.Contains("ReleaseNotesWindow(string version, string? language = null)", code);
         Assert.Contains("AppVersionInfo.DisplayVersion", code);
-        Assert.DoesNotContain("Bloss 1.0.9", xaml);
+        Assert.DoesNotContain("Bloss 1.1.0", xaml);
         Assert.Equal("Update details", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesHeading"));
         Assert.Equal("업데이트 내역", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesHeading"));
-        Assert.Equal("Optimized widget CPU usage when using DualSense / Steam Controller", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesCleanupAutostart"));
-        Assert.Equal("Dual Sense, Steam Controller 사용시의 위젯 CPU 점유율을 낮추고 최적화하였습니다", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesCleanupAutostart"));
+        Assert.Equal("Settings now open reliably in the center of the screen", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesCleanupAutostart"));
+        Assert.Equal("설정창이 화면 중앙에 안정적으로 열리도록 개선했습니다", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesCleanupAutostart"));
         Assert.Contains("BuildQuietTiles", code);
         Assert.Contains("BeginAmbientAnimations", code);
         Assert.Contains("SoftSweepTranslate.BeginAnimation", code);
@@ -235,9 +245,9 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("TextLanguage => CurrentLanguageText.LanguageLabel", viewModelCode);
         Assert.Contains("TextResizeTooltip => UiLanguageCatalog.GetExtraText(Settings.Language, \"ResizeTooltip\")", viewModelCode);
         Assert.Contains("OnPropertyChanged(nameof(TextResizeTooltip))", viewModelCode);
-        Assert.Contains("Text=\"{Binding TextLanguage}\"", mainWindowXaml);
+        Assert.Contains("x:Name=\"LanguageLabelTextBlock\"", mainWindowXaml);
+        Assert.Contains("Text=\"Language\"", mainWindowXaml);
         Assert.Contains("ToolTip=\"{Binding TextResizeTooltip}\"", mainWindowXaml);
-        Assert.DoesNotContain("Text=\"Language\"", mainWindowXaml);
         Assert.DoesNotContain("ToolTip=\"Resize\"", mainWindowXaml);
 
         Assert.Contains("new IconOverrideWindow(snapshots, existingOverrides, existingImageOverrides, _viewModel.Language)", mainWindowCode);
@@ -295,14 +305,14 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void ReleaseNotes_ShowOnceForReleaseButEveryRunForTestExe()
     {
-        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.0.9", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.0.9", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.7", "1.0.9", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.9", "1.0.9", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.0.9\r\n", "1.0.9", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes("1.0.9", "", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.9", "1.0.9", forceEveryRun: true));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.9", "", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.1.0", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.1.0", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.9", "1.1.0", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.1.0", "1.1.0", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.1.0\r\n", "1.1.0", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.1.0", "", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.1.0", "1.1.0", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.1.0", "", forceEveryRun: true));
         Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\test.exe"));
         Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\TEST.EXE"));
         Assert.False(MainWindow.IsPortableTestExecutablePath(@"C:\temp\Bloss.exe"));
@@ -432,14 +442,7 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void BatteryToast_UsesRuntimeSubtitleBuilder()
     {
-        var source = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
-            "BluetoothBatteryWidget.App",
-            "MainWindow.xaml.cs"));
+        var source = ReadMainWindowSource();
 
         Assert.Contains("BatteryGuideMessageBuilder.BuildToastSubtitle(snapshot, _viewModel.Language, automatic)", source);
     }
@@ -499,20 +502,15 @@ public sealed class MainWindowXamlBindingTests
         Assert.DoesNotContain("x:Name=\"CustomizeSettingsPopup\"", xaml);
         Assert.DoesNotContain("x:Name=\"LabsSettingsPopup\"", xaml);
         Assert.Contains("x:Name=\"StartMinimizedToTrayToggle\"", xaml);
+        Assert.Contains("x:Name=\"CenteredSettingsPopupToggle\"", xaml);
+        Assert.Contains("Text=\"{Binding TextCenteredSettingsPopup}\"", xaml);
         Assert.Contains("MouseLeave=\"SettingsPopupArea_MouseLeave\"", xaml);
     }
 
     [Fact]
     public void TrayMenu_ProvidesPositionResetAndStartupTrayArgument()
     {
-        var mainWindowSource = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
-            "BluetoothBatteryWidget.App",
-            "MainWindow.xaml.cs"));
+        var mainWindowSource = ReadMainWindowSource();
         var appSource = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory,
             "..",
@@ -543,9 +541,14 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("_resetPositionMenuItem", trayIconServiceSource);
         Assert.Contains("TrayIconService", mainWindowSource);
         Assert.Contains("ResetWidgetPositionToCurrentMonitor", mainWindowSource);
+        Assert.Contains("EnsureWidgetAccessibleOnConnectedMonitor", mainWindowSource);
+        Assert.Contains("SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged", mainWindowSource);
+        Assert.Contains("SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged", mainWindowSource);
+        Assert.Contains("QueueWidgetBoundsRepairAfterDisplayChange", mainWindowSource);
         Assert.Contains("CenterWindowInArea(GetWorkingAreaFromCurrentCursor())", mainWindowSource);
         Assert.Contains("Forms.Screen.FromPoint(Forms.Cursor.Position)", mainWindowSource);
         Assert.Contains("HasMeaningfulVisibleArea", mainWindowSource);
+        Assert.Contains("ClampToAccessibleBounds(currentBounds, workingAreas)", mainWindowSource);
         Assert.Contains("PrepareStartHiddenInTray", mainWindowSource);
         Assert.Contains("--start-in-tray", appSource);
         Assert.Contains("--start-in-tray", autostartSource);
@@ -564,17 +567,30 @@ public sealed class MainWindowXamlBindingTests
             "..",
             "BluetoothBatteryWidget.App",
             "MainWindow.xaml"));
-        var source = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
-            "BluetoothBatteryWidget.App",
-            "MainWindow.xaml.cs"));
+        var source = ReadMainWindowSource();
 
         Assert.Contains("PlacementTarget=\"{Binding ElementName=GlassCard}\"", xaml);
         Assert.Contains("Width=\"348\"", xaml);
+        Assert.Contains("x:Name=\"SettingsPopupScrollViewer\"", xaml);
+        Assert.Contains("VerticalScrollBarVisibility=\"Hidden\"", xaml);
+        Assert.Contains("x:Name=\"SettingsPopupCloseButton\"", xaml);
+        Assert.Contains("x:Name=\"SettingsPopupDragThumb\"", xaml);
+        Assert.Contains("DragDelta=\"SettingsPopupDragThumb_DragDelta\"", xaml);
+        Assert.Contains("Cursor=\"Arrow\"", xaml);
+        Assert.DoesNotContain("Cursor=\"SizeAll\"", xaml);
+        Assert.Contains("<Thumb.Template>", xaml);
+        Assert.Contains("<Border Background=\"Transparent\" />", xaml);
+        Assert.Contains("PreviewMouseLeftButtonDown=\"PopupChrome_MouseLeftButtonDown\"", xaml);
+        Assert.Contains("MouseMove=\"PopupChrome_MouseMove\"", xaml);
+        Assert.Contains("LostMouseCapture=\"PopupChrome_LostMouseCapture\"", xaml);
+        Assert.Contains("x:Name=\"SettingsPopupCloseCircle\"", xaml);
+        Assert.Contains("Background=\"#E00A0F16\"", xaml);
+        Assert.Contains("BorderBrush=\"{x:Null}\"", xaml);
+        Assert.Contains("Foreground=\"#FFFFFFFF\"", xaml);
+        Assert.DoesNotContain("x:Name=\"SettingsPopupCloseGlow\"", xaml);
+        Assert.DoesNotContain("x:Name=\"SettingsPopupCloseScale\"", xaml);
+        Assert.DoesNotContain("Storyboard.TargetName=\"SettingsPopupCloseGlow\"", xaml);
+        Assert.DoesNotContain("Storyboard.TargetName=\"SettingsPopupCloseScale\"", xaml);
         Assert.Contains("x:Key=\"SettingsMenuButtonStyle\"", xaml);
         Assert.Contains("Style=\"{StaticResource SettingsMenuButtonStyle}\"", xaml);
         Assert.Contains("x:Key=\"UiScaleSliderStyle\"", xaml);
@@ -588,7 +604,16 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("x:Name=\"EnvironmentAccordionArrow\"", xaml);
         Assert.DoesNotContain("HorizontalOffset=\"24\"", xaml);
         Assert.Contains("UpdateSettingsPopupLayout", source);
-        Assert.Contains("Fixed width: keep settings stable while the main widget is resized", source);
+        Assert.Contains("SettingsPopupLayoutPlanner", source);
+        Assert.Contains("UseCenteredSettingsPopup", source);
+        Assert.Contains("GetPopupChromeFromSource", source);
+        Assert.Contains("TryBeginPopupDrag", source);
+        Assert.Contains("SettingsPopupDragThumb_DragDelta", source);
+        Assert.Contains("ShowOpenFileDialogAboveCenteredSettingsPopup", source);
+        Assert.Contains("SuspendCenteredSettingsPopupForExternalWindow", source);
+        Assert.Contains("RestoreCenteredSettingsPopupAfterExternalWindow", source);
+        Assert.Contains("SettingsPopup.IsOpen = false;", source);
+        Assert.Contains("ReferenceEquals(chrome, SettingsPopupChrome) && !_viewModel.UseCenteredSettingsPopup", source);
         Assert.Contains("SettingsAccordionAnimationMilliseconds", source);
         Assert.Contains("OpenSettingsAccordion", source);
         Assert.Contains("QuarticEase", source);
@@ -668,6 +693,9 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("Width=\"160\"", xaml);
         Assert.Contains("Height=\"32\"", xaml);
         Assert.Contains("HorizontalAlignment=\"Center\"", xaml);
+        Assert.Contains("Text=\"Language\"", xaml);
+        Assert.Contains("HorizontalAlignment=\"Stretch\"", xaml);
+        Assert.Contains("Margin=\"6,0,0,0\"", xaml);
         Assert.DoesNotContain("Margin=\"0,0,10,6\"", xaml);
     }
 
@@ -866,6 +894,7 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("Text=\"{Binding TextCustomizeSettingsGroup}\"", xaml);
         Assert.Contains("Text=\"{Binding TextLabsSettingsGroup}\"", xaml);
         Assert.Contains("Text=\"{Binding TextStartMinimizedToTray}\"", xaml);
+        Assert.Contains("Text=\"{Binding TextCenteredSettingsPopup}\"", xaml);
         Assert.Contains("Text=\"{Binding TextGuideSound}\"", xaml);
         Assert.Contains("Text=\"{Binding TextColorCustomize}\"", xaml);
         Assert.Contains("Text=\"{Binding TextUserFont}\"", xaml);
@@ -878,6 +907,9 @@ public sealed class MainWindowXamlBindingTests
 
         Assert.Contains("TextEnvironmentSettingsGroup", viewModel);
         Assert.Contains("OnPropertyChanged(nameof(TextEnvironmentSettingsGroup))", viewModel);
+        Assert.Contains("TextCenteredSettingsPopup", viewModel);
+        Assert.Equal("Center settings window", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "CenteredSettingsPopup"));
+        Assert.Equal("설정창 중앙고정", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "CenteredSettingsPopup"));
         Assert.Contains("EnvironmentSettingsGroup", languageCatalog);
         Assert.Contains("EnvironmentSettingsGroup: \"Environment\"", languageCatalog);
         Assert.Contains("EnvironmentSettingsGroup = \"환경설정\"", languageCatalog);
@@ -959,14 +991,7 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void SteamControllerGuideButton_Uses107DirectToastPath()
     {
-        var source = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
-            "BluetoothBatteryWidget.App",
-            "MainWindow.xaml.cs"));
+        var source = ReadMainWindowSource();
 
         var guidePressedMethod = source[
             source.IndexOf("private void GuideButtonMonitor_GuideButtonPressed", StringComparison.Ordinal)..
@@ -1140,7 +1165,7 @@ public sealed class MainWindowXamlBindingTests
             "BluetoothBatteryWidget.App");
         var captureXaml = File.ReadAllText(Path.Combine(appRoot, "BatteryGuideTriggerCaptureWindow.xaml"));
         var captureSource = File.ReadAllText(Path.Combine(appRoot, "BatteryGuideTriggerCaptureWindow.xaml.cs"));
-        var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+        var mainWindowSource = ReadMainWindowSource();
         var mainWindowXaml = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml"));
 
         Assert.Contains("x:Class=\"BluetoothBatteryWidget.App.BatteryGuideTriggerCaptureWindow\"", captureXaml);
@@ -1324,7 +1349,7 @@ public sealed class MainWindowXamlBindingTests
         var systemDisplayIdleTimeoutSource = File.ReadAllText(Path.Combine(appRoot, "Services", "SystemDisplayIdleTimeout.cs"));
         var displayIdleCoordinatorSource = File.ReadAllText(Path.Combine(appRoot, "Services", "DisplayIdleCoordinator.cs"));
         var gamepadPresenceServiceSource = File.ReadAllText(Path.Combine(appRoot, "Services", "GamepadPresenceService.cs"));
-        var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+        var mainWindowSource = ReadMainWindowSource();
         var mainWindowXaml = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml"));
         var compositionSource = File.ReadAllText(Path.Combine(appRoot, "AppCompositionRoot.cs"));
 
@@ -1399,7 +1424,7 @@ public sealed class MainWindowXamlBindingTests
             "..",
             "..",
             "BluetoothBatteryWidget.App");
-        var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+        var mainWindowSource = ReadMainWindowSource();
 
         Assert.Contains("_steamRawInputMonitor.SteamRawHidBaselineReady += SteamRawInputMonitor_SteamRawHidBaselineReady;", mainWindowSource);
         Assert.Contains("_steamRawInputMonitor.SteamRawHidBaselineReady -= SteamRawInputMonitor_SteamRawHidBaselineReady;", mainWindowSource);
@@ -2110,14 +2135,7 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void AutomaticBatteryToast_BaselinesNewlyVisibleDevicesBeforeNonCriticalToast()
     {
-        var source = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
-            "BluetoothBatteryWidget.App",
-            "MainWindow.xaml.cs"));
+        var source = ReadMainWindowSource();
 
         var collectionChangedMethod = source[
             source.IndexOf("private void Devices_CollectionChanged", StringComparison.Ordinal)..
@@ -2201,7 +2219,7 @@ public sealed class MainWindowXamlBindingTests
             "..",
             "BluetoothBatteryWidget.Core");
         var mainWindowXaml = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml"));
-        var mainWindowSource = File.ReadAllText(Path.Combine(appRoot, "MainWindow.xaml.cs"));
+        var mainWindowSource = ReadMainWindowSource();
         var thresholdWindowXaml = File.ReadAllText(Path.Combine(appRoot, "BatteryAlertThresholdsWindow.xaml"));
         var thresholdWindowSource = File.ReadAllText(Path.Combine(appRoot, "BatteryAlertThresholdsWindow.xaml.cs"));
         var popInAnimatorSource = File.ReadAllText(Path.Combine(appRoot, "WindowPopInAnimator.cs"));
@@ -2323,6 +2341,9 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("MinimumCustomBatteryAlertThresholdPercent = 30", settingsSource);
         Assert.Contains("MaximumCustomBatteryAlertThresholdPercent = 80", settingsSource);
         Assert.Contains("PositionBatteryAlertThresholdsWindow(dialog);", mainWindowSource);
+        Assert.Contains("ShowSettingsChildWindowAbovePopup(dialog);", mainWindowSource);
+        Assert.Contains("dialog.Topmost = true;", mainWindowSource);
+        Assert.Contains("dialog.Focus();", mainWindowSource);
         Assert.Contains("private void PositionBatteryAlertThresholdsWindow(Window dialog)", mainWindowSource);
         Assert.Contains("PopInOriginScreenPoint = TryGetElementCenterScreenPoint(BatteryAlertThresholdsButton)", mainWindowSource);
         Assert.Contains("private static System.Windows.Point? TryGetElementCenterScreenPoint(FrameworkElement element)", mainWindowSource);
@@ -2431,14 +2452,7 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void AutomaticBatteryToast_DoesNotUseTimedStartupSuppression()
     {
-        var mainWindowSource = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory,
-            "..",
-            "..",
-            "..",
-            "..",
-            "BluetoothBatteryWidget.App",
-            "MainWindow.xaml.cs"));
+        var mainWindowSource = ReadMainWindowSource();
 
         Assert.Contains("ShowBatteryToast(item.Snapshot, automatic: true);", mainWindowSource);
         Assert.DoesNotContain("AutomaticBatteryToastStartupSuppressDuration", mainWindowSource);

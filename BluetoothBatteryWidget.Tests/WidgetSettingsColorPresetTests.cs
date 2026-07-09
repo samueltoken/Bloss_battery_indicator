@@ -110,6 +110,14 @@ public sealed class WidgetSettingsColorPresetTests
     }
 
     [Fact]
+    public void CenteredSettingsPopup_DefaultsToEnabled()
+    {
+        var settings = new WidgetSettings();
+
+        Assert.True(settings.UseCenteredSettingsPopup);
+    }
+
+    [Fact]
     public void GuideSound_DefaultsToEnabledTwoSecondInfographic()
     {
         var settings = new WidgetSettings();

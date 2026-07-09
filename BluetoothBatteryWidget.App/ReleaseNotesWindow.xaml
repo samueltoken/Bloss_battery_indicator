@@ -286,13 +286,13 @@
 
                         <StackPanel Grid.Row="2">
                             <TextBlock x:Name="CleanupAutostartText"
-                                       Text="Dual Sense, Steam Controller 사용시의 위젯 CPU 점유율을 낮추고 최적화하였습니다"
+                                       Text="설정창이 화면 중앙에 안정적으로 열리도록 개선했습니다"
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="SleepGuardText"
-                                       Text="- 가이드 버튼 / 새로 지정한 버튼 사용 순간에만 일시적으로 점유율이 상승합니다"
+                                       Text="- 작은 화면에서는 보이지 않는 스크롤로 설정 항목 접근성을 보강했습니다"
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="CustomGuideTriggerText"
-                                       Text="- 최초 연결시, 연결 해제시 해당 순간에만 일시적으로 점유율이 상승합니다"
+                                       Text="- 기존 1.0.9 방식의 위젯 옆 설정창도 옵션으로 유지했습니다"
                                        Style="{StaticResource ReleaseNoteBulletTextStyle}" />
                             <TextBlock x:Name="InstallUpdateValidationText"
                                        Text=""

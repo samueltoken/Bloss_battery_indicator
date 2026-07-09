@@ -6,7 +6,7 @@
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$expectedVersion = "1.0.9"
+$centralPropsPath = Join-Path $projectRoot "Directory.Build.props"
 $checklistPath = if (-not [string]::IsNullOrWhiteSpace($env:BLOSS_MANUAL_CHECKLIST_PATH)) {
     [System.IO.Path]::GetFullPath($env:BLOSS_MANUAL_CHECKLIST_PATH)
 }
@@ -19,6 +19,22 @@ $testExePath = Join-Path $projectRoot "artifacts\portable\test.exe"
 $gitSafetySummaryPath = Join-Path $projectRoot "artifacts\manual-gate-evidence\git-publish-safety-upload-summary.json"
 $autostartRunKeyPath = "Software\Microsoft\Windows\CurrentVersion\Run"
 $autostartValueNames = @("Bloss", "BluetoothBatteryWidget")
+
+function Get-CentralAppVersion {
+    if (-not (Test-Path -LiteralPath $centralPropsPath -PathType Leaf)) {
+        throw "Central version file not found: $centralPropsPath"
+    }
+
+    [xml]$props = Get-Content -Encoding UTF8 -LiteralPath $centralPropsPath -Raw
+    $version = $props.Project.PropertyGroup.Version | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw "Version was not found in $centralPropsPath"
+    }
+
+    return $version.Trim()
+}
+
+$expectedVersion = Get-CentralAppVersion
 
 function Get-Sha256OrEmpty {
     param([string]$Path)

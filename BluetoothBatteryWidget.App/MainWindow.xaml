@@ -1530,6 +1530,11 @@
                     Cursor="Arrow"
                     Focusable="False"
                     FocusVisualStyle="{x:Null}"
+                    PreviewMouseLeftButtonDown="PopupChrome_MouseLeftButtonDown"
+                    MouseLeftButtonDown="PopupChrome_MouseLeftButtonDown"
+                    MouseMove="PopupChrome_MouseMove"
+                    MouseLeftButtonUp="PopupChrome_MouseLeftButtonUp"
+                    LostMouseCapture="PopupChrome_LostMouseCapture"
                     MouseEnter="SettingsPopupArea_MouseEnter"
                     MouseLeave="SettingsPopupArea_MouseLeave">
                 <Border.Effect>
@@ -1538,11 +1543,34 @@
                                       ShadowDepth="4"
                                       Opacity="0.25" />
                 </Border.Effect>
+                <ScrollViewer x:Name="SettingsPopupScrollViewer"
+                              VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Disabled"
+                              CanContentScroll="False"
+                              PanningMode="VerticalOnly"
+                              Focusable="False"
+                              Background="Transparent">
                 <StackPanel Cursor="Arrow">
                     <Grid MinHeight="24"
                           Margin="0,0,0,6"
                           Background="Transparent"
                           Cursor="Arrow">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Thumb x:Name="SettingsPopupDragThumb"
+                               Grid.Column="0"
+                               Background="Transparent"
+                               Cursor="Arrow"
+                               Visibility="{Binding UseCenteredSettingsPopup, Converter={StaticResource BooleanToVisibilityConverter}}"
+                               DragDelta="SettingsPopupDragThumb_DragDelta">
+                            <Thumb.Template>
+                                <ControlTemplate TargetType="Thumb">
+                                    <Border Background="Transparent" />
+                                </ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
                         <TextBlock x:Name="SettingsTitleTextBlock"
                                     VerticalAlignment="Center"
                                     FontSize="14"
@@ -1550,6 +1578,48 @@
                                     Foreground="{StaticResource SettingsTitleBrush}"
                                     IsHitTestVisible="False"
                                     Text="{Binding TextSettingsTitle}" />
+                        <Button x:Name="SettingsPopupCloseButton"
+                                Grid.Column="1"
+                                Width="28"
+                                Height="28"
+                                Margin="8,0,0,0"
+                                Padding="0"
+                                Background="#E00A0F16"
+                                BorderBrush="{x:Null}"
+                                BorderThickness="0"
+                                Foreground="#FFFFFFFF"
+                                VerticalAlignment="Center"
+                                FocusVisualStyle="{x:Null}"
+                                Cursor="Hand"
+                                Click="SettingsPopupCloseButton_Click"
+                                ToolTip="{Binding TextCloseTooltip}"
+                                Visibility="{Binding UseCenteredSettingsPopup, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid>
+                                        <Border x:Name="SettingsPopupCloseCircle"
+                                                Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="14" />
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="SettingsPopupCloseCircle" Property="Background" Value="#F0000000" />
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="SettingsPopupCloseCircle" Property="Background" Value="#FF000000" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <TextBlock FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Foreground="#FFFFFFFF"
+                                       Text="×" />
+                        </Button>
                     </Grid>
 
                     <Button x:Name="EnvironmentSettingsGroupButton"
@@ -1738,6 +1808,30 @@
                                               IsChecked="{Binding CloseToTrayEnabled, Mode=OneWay}"
                                               Checked="CloseToTrayToggle_Checked"
                                               Unchecked="CloseToTrayToggle_Unchecked" />
+                            </Grid>
+
+                            <Grid Height="32"
+                                  Margin="0,0,0,10"
+                                  SnapsToDevicePixels="True"
+                                  UseLayoutRounding="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="56" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="CenteredSettingsPopupLabelTextBlock"
+                                           Margin="0,0,14,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding TextCenteredSettingsPopup}" />
+                                <ToggleButton x:Name="CenteredSettingsPopupToggle"
+                                              Grid.Column="1"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource GlassToggleSwitchStyle}"
+                                              IsChecked="{Binding UseCenteredSettingsPopup, Mode=OneWay}"
+                                              Checked="CenteredSettingsPopupToggle_Checked"
+                                              Unchecked="CenteredSettingsPopupToggle_Unchecked" />
                             </Grid>
 
                             <Grid Height="32"
@@ -2465,20 +2559,21 @@
                           Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="LanguageLabelTextBlock"
                                    Grid.Column="0"
-                                   Margin="0,0,10,0"
+                                   Margin="0,0,6,0"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
                                    TextAlignment="Center"
                                    Foreground="{StaticResource SettingsTextBrush}"
-                                   Text="{Binding TextLanguage}" />
+                                   Text="Language" />
                         <ComboBox x:Name="LanguageComboBox"
                                   Grid.Column="1"
-                                  Width="160"
                                   Height="32"
+                                  Margin="6,0,0,0"
+                                  HorizontalAlignment="Stretch"
                                   HorizontalContentAlignment="Center"
                                   Style="{StaticResource GlassScrollingComboBoxStyle}"
                                   ItemContainerStyle="{StaticResource GlassPresetComboBoxItemStyle}"
@@ -2580,6 +2675,7 @@
                                    Text="{Binding TextVersionPrefix}" />
                     </Button>
                 </StackPanel>
+                </ScrollViewer>
             </Border>
         </Popup>
 

@@ -58,8 +58,9 @@ public sealed class WidgetSettings
     public const int DefaultPowerIdlePauseMinutes = AutoPowerIdlePauseMinutes;
     public const int MinimumPowerIdlePauseMinutes = 0;
     public const int MaximumPowerIdlePauseMinutes = 300;
-    public const int CurrentSettingsSchemaVersion = 2;
+    public const int CurrentSettingsSchemaVersion = 3;
     public const int WindowsPowerIdleAutoSettingsSchemaVersion = 2;
+    public const int CenteredSettingsPopupDefaultSettingsSchemaVersion = 3;
     public const int MaximumBatteryGuideTriggerLength = 512;
     public const int MaximumBatteryGuideTriggerProfiles = 8;
     public const string DualSenseBatteryGuideProfileKey = "DualSense";
@@ -84,6 +85,8 @@ public sealed class WidgetSettings
     public bool StartMinimizedToTray { get; set; } = false;
 
     public bool CloseToTray { get; set; } = true;
+
+    public bool UseCenteredSettingsPopup { get; set; } = true;
 
     public int RefreshSeconds { get; set; } = 30;
 
