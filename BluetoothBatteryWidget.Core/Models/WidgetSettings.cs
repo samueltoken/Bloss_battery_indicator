@@ -154,6 +154,8 @@ public sealed class WidgetSettings
 
     public Dictionary<string, string> NameOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    public List<string> Pico2WProfileMigrationCompletedBridgeIds { get; set; } = [];
+
     public static string NormalizeColorPresetId(string? presetId)
     {
         return presetId switch

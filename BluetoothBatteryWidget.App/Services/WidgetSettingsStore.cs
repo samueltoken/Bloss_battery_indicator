@@ -208,6 +208,13 @@ public sealed class WidgetSettingsStore
         settings.IconOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         settings.IconImageOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         settings.NameOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        settings.Pico2WProfileMigrationCompletedBridgeIds ??= [];
+        settings.Pico2WProfileMigrationCompletedBridgeIds = settings.Pico2WProfileMigrationCompletedBridgeIds
+            .Select(AddressNormalizer.NormalizeAddress)
+            .Where(PlayStationUsbBridgeSupport.IsStablePico2WAddress)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToList();
         settings.IconImageOverrides = IconImageOverrideParser.Parse(settings.IconImageOverrides)
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         settings.NameOverrides = NameOverrideParser.Parse(settings.NameOverrides)

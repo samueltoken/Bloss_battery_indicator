@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <None Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Resource Include="Assets\release-notes-space.png" />
     <Resource Include="Assets\controller-guide-blueprint.png" Condition="Exists('Assets\controller-guide-blueprint.png')" />
     <Resource Include="Assets\reset-button-blue.png" Condition="Exists('Assets\reset-button-blue.png')" />
     <None Include="Assets\controller-guide-blueprint.jpg" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\controller-guide-blueprint.jpg')" />

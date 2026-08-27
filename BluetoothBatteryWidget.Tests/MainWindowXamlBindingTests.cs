@@ -71,9 +71,10 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("BLoss", xaml);
         Assert.Contains("업데이트 내역", xaml);
         Assert.DoesNotContain("이번 업데이트", xaml);
-        Assert.Contains("설정창이 화면 중앙에 안정적으로 열리도록 개선했습니다", xaml);
-        Assert.Contains("- 작은 화면에서는 보이지 않는 스크롤로 설정 항목 접근성을 보강했습니다", xaml);
-        Assert.Contains("- 기존 1.0.9 방식의 위젯 옆 설정창도 옵션으로 유지했습니다", xaml);
+        Assert.Contains("Pico2W/DS5Dongle의 합성 USB 주소와 실제 DualSense 주소가 중복 표시되던 문제를 수정했습니다", xaml);
+        Assert.Contains("- 실제 DualSense 주소로 배터리와 이름·아이콘을 연결해 컨트롤러별로 기억합니다", xaml);
+        Assert.Contains("- Pico2W 한 대에는 한 번에 한 컨트롤러만 연결되며, 번갈아 연결하면 각각 개별 인식합니다", xaml);
+        Assert.Contains("- Pico2W가 여러 개이면 연결된 DualSense를 각각 동시에 표시할 수 있습니다", xaml);
         Assert.Contains("SetReleaseNoteText", code);
         Assert.Contains("ReleaseNoteConfirmButtonStyle", xaml);
         Assert.Contains("ReleaseNoteCloseButtonStyle", xaml);
@@ -84,11 +85,11 @@ public sealed class MainWindowXamlBindingTests
         Assert.Contains("UiLanguageCatalog.GetExtraText(language, \"ReleaseNotesHeading\")", code);
         Assert.Contains("ReleaseNotesWindow(string version, string? language = null)", code);
         Assert.Contains("AppVersionInfo.DisplayVersion", code);
-        Assert.DoesNotContain("Bloss 1.1.0", xaml);
+        Assert.DoesNotContain("Bloss 1.1.1", xaml);
         Assert.Equal("Update details", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesHeading"));
         Assert.Equal("업데이트 내역", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesHeading"));
-        Assert.Equal("Settings now open reliably in the center of the screen", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesCleanupAutostart"));
-        Assert.Equal("설정창이 화면 중앙에 안정적으로 열리도록 개선했습니다", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesCleanupAutostart"));
+        Assert.Contains("Pico2W/DS5Dongle", UiLanguageCatalog.GetExtraText(WidgetSettings.EnglishLanguage, "ReleaseNotesCleanupAutostart"));
+        Assert.Contains("Pico2W/DS5Dongle", UiLanguageCatalog.GetExtraText(WidgetSettings.KoreanLanguage, "ReleaseNotesCleanupAutostart"));
         Assert.Contains("BuildQuietTiles", code);
         Assert.Contains("BeginAmbientAnimations", code);
         Assert.Contains("SoftSweepTranslate.BeginAnimation", code);
@@ -305,14 +306,14 @@ public sealed class MainWindowXamlBindingTests
     [Fact]
     public void ReleaseNotes_ShowOnceForReleaseButEveryRunForTestExe()
     {
-        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.1.0", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.1.0", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.0.9", "1.1.0", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes("1.1.0", "1.1.0", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.1.0\r\n", "1.1.0", forceEveryRun: false));
-        Assert.False(MainWindow.ShouldShowReleaseNotes("1.1.0", "", forceEveryRun: false));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.1.0", "1.1.0", forceEveryRun: true));
-        Assert.True(MainWindow.ShouldShowReleaseNotes("1.1.0", "", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("", "1.1.1", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes(null, "1.1.1", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.1.0", "1.1.1", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.1.1", "1.1.1", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes(" 1.1.1\r\n", "1.1.1", forceEveryRun: false));
+        Assert.False(MainWindow.ShouldShowReleaseNotes("1.1.1", "", forceEveryRun: false));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.1.1", "1.1.1", forceEveryRun: true));
+        Assert.True(MainWindow.ShouldShowReleaseNotes("1.1.1", "", forceEveryRun: true));
         Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\test.exe"));
         Assert.True(MainWindow.IsPortableTestExecutablePath(@"C:\temp\TEST.EXE"));
         Assert.False(MainWindow.IsPortableTestExecutablePath(@"C:\temp\Bloss.exe"));

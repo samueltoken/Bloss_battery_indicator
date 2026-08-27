@@ -15,6 +15,17 @@ public sealed class SonyHidBatteryLevelProvider
     private static readonly HashSet<ushort> DualSenseProductIds = [0x0CE6, 0x0DF2];
     private static readonly HashSet<ushort> DualShock4ProductIds = [0x05C4, 0x09CC];
     private static readonly IntPtr InvalidHandleValue = new(-1);
+    private readonly PlayStationControllerIdentityResolver _identityResolver;
+
+    public SonyHidBatteryLevelProvider()
+        : this(new PlayStationControllerIdentityResolver())
+    {
+    }
+
+    internal SonyHidBatteryLevelProvider(PlayStationControllerIdentityResolver identityResolver)
+    {
+        _identityResolver = identityResolver;
+    }
 
     public Task<IReadOnlyList<PnpBatteryReading>> GetBatteryLevelsAsync(
         IReadOnlyList<ConnectedBluetoothDevice> connectedDevices,
@@ -101,7 +112,7 @@ public sealed class SonyHidBatteryLevelProvider
                         }
 
                         var address = isUsbPicoDualSense
-                            ? PlayStationUsbBridgeSupport.BuildSyntheticAddress(instanceId, devicePath, productId)
+                            ? _identityResolver.Resolve(instanceId, devicePath, productId).ControllerAddress
                             : AddressNormalizer.ExtractAddressFromInstanceId(instanceId);
                         if (string.IsNullOrEmpty(address) && !isUsbPicoDualSense)
                         {

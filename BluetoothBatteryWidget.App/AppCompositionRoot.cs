@@ -11,10 +11,11 @@ internal static class AppCompositionRoot
         var settingsStore = new WidgetSettingsStore();
         var autostartService = new AutostartService();
         var steamTritonReader = new SteamControllerTritonHidReader();
+        var playStationIdentityResolver = new PlayStationControllerIdentityResolver();
         var winRtConnectedDeviceProvider = new WinRtConnectedDeviceProvider();
         var connectedDeviceProvider = new CompositeConnectedDeviceProvider(
             winRtConnectedDeviceProvider,
-            new PlayStationUsbConnectedDeviceProvider(),
+            new PlayStationUsbConnectedDeviceProvider(playStationIdentityResolver),
             new SteamControllerTritonConnectedDeviceProvider(steamTritonReader));
         var setupApiBatteryLevelProvider = new SetupApiBatteryLevelProvider();
         var profileStore = new GamepadProfileStore();
@@ -26,7 +27,7 @@ internal static class AppCompositionRoot
             setupApiBatteryLevelProvider,
             new GameInputBatteryProvider(),
             new LearnedHidBatteryLevelProvider(profileStore),
-            new SonyHidBatteryLevelProvider(),
+            new SonyHidBatteryLevelProvider(playStationIdentityResolver),
             new XInputBatteryLevelProvider(),
             new HidFeatureBatteryProvider(),
             new BleBatteryServiceProvider(),

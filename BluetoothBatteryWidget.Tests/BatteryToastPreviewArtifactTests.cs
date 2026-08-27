@@ -967,7 +967,7 @@ public sealed class BatteryToastPreviewArtifactTests
         var outputDirectory = Path.Combine(root, "artifacts", "release-notes-previews");
         Directory.CreateDirectory(outputDirectory);
 
-        var window = new ReleaseNotesWindow("1.1.0");
+        var window = new ReleaseNotesWindow("1.1.1");
         try
         {
             var rootElement = Assert.IsAssignableFrom<FrameworkElement>(window.Content);

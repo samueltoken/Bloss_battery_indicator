@@ -118,6 +118,31 @@ public sealed class WidgetSettingsStoreTests
     }
 
     [Fact]
+    public void SaveAndLoad_PreservesPico2WControllerProfileMigrationMarker()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var settingsPath = Path.Combine(directory, "Bloss", "settings.json");
+            var store = new WidgetSettingsStore(settingsPath, Path.Combine(directory, "legacy.json"));
+            var bridgeAddress = PlayStationUsbBridgeSupport.StableDualSensePico2WAddress;
+
+            store.Save(new WidgetSettings
+            {
+                Pico2WProfileMigrationCompletedBridgeIds = [bridgeAddress, bridgeAddress, "INVALID"]
+            });
+
+            var settings = store.Load();
+
+            Assert.Equal([bridgeAddress], settings.Pico2WProfileMigrationCompletedBridgeIds);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Load_UpgradesOldSchemaCenteredSettingsPopupToEnabled()
     {
         var directory = CreateTempDirectory();

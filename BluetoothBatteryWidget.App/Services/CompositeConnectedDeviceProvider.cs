@@ -56,6 +56,12 @@ public sealed class CompositeConnectedDeviceProvider : IConnectedDeviceProvider
 
     private static bool ShouldPrefer(ConnectedBluetoothDevice candidate, ConnectedBluetoothDevice existing)
     {
+        if (!string.IsNullOrWhiteSpace(candidate.BridgeAddress) &&
+            string.IsNullOrWhiteSpace(existing.BridgeAddress))
+        {
+            return true;
+        }
+
         if (candidate.IsConnected && !existing.IsConnected)
         {
             return true;

@@ -26,10 +26,10 @@ public sealed class VersionManagementTests
         var propertyGroup = document.Root?.Element("PropertyGroup");
 
         Assert.NotNull(propertyGroup);
-        Assert.Equal("1.1.0", propertyGroup!.Element("Version")?.Value);
-        Assert.Equal("1.1.0", propertyGroup.Element("AssemblyVersion")?.Value);
-        Assert.Equal("1.1.0", propertyGroup.Element("FileVersion")?.Value);
-        Assert.Equal("1.1.0", propertyGroup.Element("InformationalVersion")?.Value);
+        Assert.Equal("1.1.1", propertyGroup!.Element("Version")?.Value);
+        Assert.Equal("1.1.1", propertyGroup.Element("AssemblyVersion")?.Value);
+        Assert.Equal("1.1.1", propertyGroup.Element("FileVersion")?.Value);
+        Assert.Equal("1.1.1", propertyGroup.Element("InformationalVersion")?.Value);
         Assert.Equal("false", propertyGroup.Element("IncludeSourceRevisionInInformationalVersion")?.Value);
     }
 
@@ -65,12 +65,12 @@ public sealed class VersionManagementTests
             "BluetoothBatteryWidget.App",
             "ReleaseNotesWindow.xaml.cs"));
 
-        Assert.Contains("internal const string FallbackVersion = \"1.1.0\";", source);
+        Assert.Contains("internal const string FallbackVersion = \"1.1.1\";", source);
         Assert.Contains("AssemblyInformationalVersionAttribute", source);
         Assert.Contains("AppVersionInfo.DisplayVersion", mainWindowSource);
         Assert.Contains("AppVersionInfo.DisplayVersion", releaseNotesSource);
         Assert.DoesNotContain("private const string FallbackVersion", mainWindowSource);
-        Assert.DoesNotContain("? \"1.1.0\"", releaseNotesSource);
+        Assert.DoesNotContain("? \"1.1.1\"", releaseNotesSource);
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public sealed class VersionManagementTests
         Assert.Contains("[string]$AppVersion", script);
         Assert.DoesNotContain("[string]$AppVersion = \"1.0.1\"", script);
         Assert.Contains("setup.exe.sha256", script);
-        Assert.Contains("#define AppVersion \"1.1.0\"", installer);
+        Assert.Contains("#define AppVersion \"1.1.1\"", installer);
         Assert.Contains("OutputBaseFilename=setup", installer);
         Assert.Contains("CloseApplications=no", installer);
         Assert.Contains("RestartApplications=no", installer);
@@ -300,7 +300,7 @@ public sealed class VersionManagementTests
         Assert.Contains("Test-WindowCenteredOnAnyScreen", verifyReleaseNotes);
         Assert.Contains("must not use the secondary-window pop-in animation", verifyReleaseNotes);
         Assert.Contains("must not be centered on the widget owner", verifyReleaseNotes);
-        Assert.Contains("v1.0.9 update behavior", verifyReleaseNotes);
+        Assert.Contains("v1.1.0 update behavior", verifyReleaseNotes);
         Assert.Contains("normalized seen-version behavior", verifyReleaseNotes);
         Assert.Contains("blank release-version suppression", verifyReleaseNotes);
         Assert.Contains("test.exe force-every-run behavior", verifyReleaseNotes);
@@ -586,7 +586,7 @@ public sealed class VersionManagementTests
         var packageJson = File.ReadAllText(Path.Combine(ProjectRoot, "package.json"));
         using var document = JsonDocument.Parse(packageJson);
 
-        Assert.Equal("1.1.0", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.1.1", document.RootElement.GetProperty("version").GetString());
     }
 
     [Fact]

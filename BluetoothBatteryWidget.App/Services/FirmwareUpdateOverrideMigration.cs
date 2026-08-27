@@ -14,9 +14,7 @@ internal static class FirmwareUpdateOverrideMigration
             return false;
         }
 
-        settings.IconOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        settings.IconImageOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        settings.NameOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        EnsureSettingsCollections(settings);
 
         var currentAddresses = connectedDevices
             .Select(device => AddressNormalizer.NormalizeAddress(device.Address))
@@ -29,8 +27,9 @@ internal static class FirmwareUpdateOverrideMigration
 
         var targetAddresses = connectedDevices
             .Where(IsPico2WPlayStationDevice)
-            .Select(device => AddressNormalizer.NormalizeAddress(device.Address))
+            .Select(ResolveBridgeAddress)
             .Where(PlayStationUsbBridgeSupport.IsStablePico2WAddress)
+            .Where(address => !HasCompletedControllerProfileMigration(settings, address))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         if (targetAddresses.Count == 0)
@@ -63,12 +62,94 @@ internal static class FirmwareUpdateOverrideMigration
         return changed;
     }
 
+    public static bool TryMigratePico2WOverridesToControllerAddress(
+        WidgetSettings settings,
+        IReadOnlyList<ConnectedBluetoothDevice> connectedDevices)
+    {
+        if (connectedDevices.Count == 0)
+        {
+            return false;
+        }
+
+        EnsureSettingsCollections(settings);
+
+        var resolvedIdentities = connectedDevices
+            .Where(IsPico2WPlayStationDevice)
+            .Select(device => new
+            {
+                ControllerAddress = AddressNormalizer.NormalizeAddress(device.Address),
+                BridgeAddress = ResolveBridgeAddress(device)
+            })
+            .Where(identity =>
+                !string.IsNullOrWhiteSpace(identity.ControllerAddress) &&
+                PlayStationUsbBridgeSupport.IsStablePico2WAddress(identity.BridgeAddress) &&
+                !string.Equals(
+                    identity.ControllerAddress,
+                    identity.BridgeAddress,
+                    StringComparison.OrdinalIgnoreCase))
+            .DistinctBy(
+                identity => $"{identity.ControllerAddress}|{identity.BridgeAddress}",
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var controllerAddresses = resolvedIdentities
+            .Select(identity => identity.ControllerAddress)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var bridgeAddresses = resolvedIdentities
+            .Select(identity => identity.BridgeAddress)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (controllerAddresses.Count != 1 || bridgeAddresses.Count != 1)
+        {
+            return false;
+        }
+
+        var controllerAddress = controllerAddresses[0];
+        var bridgeAddress = bridgeAddresses[0];
+        if (HasCompletedControllerProfileMigration(settings, bridgeAddress) ||
+            !HasAnyOverride(settings, bridgeAddress))
+        {
+            return false;
+        }
+
+        _ = CopyOverrides(settings, bridgeAddress, controllerAddress);
+        settings.Pico2WProfileMigrationCompletedBridgeIds.Add(bridgeAddress);
+        return true;
+    }
+
     private static bool IsPico2WPlayStationDevice(ConnectedBluetoothDevice device)
     {
         var text = $"{device.DisplayName} {device.CategoryHint} {device.DeviceId}";
         return text.Contains("pico2w", StringComparison.OrdinalIgnoreCase) &&
                (text.Contains("dualsense", StringComparison.OrdinalIgnoreCase) ||
                 text.Contains("054C", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolveBridgeAddress(ConnectedBluetoothDevice device)
+    {
+        var bridgeAddress = AddressNormalizer.NormalizeAddress(device.BridgeAddress);
+        if (PlayStationUsbBridgeSupport.IsStablePico2WAddress(bridgeAddress))
+        {
+            return bridgeAddress;
+        }
+
+        return AddressNormalizer.NormalizeAddress(device.Address);
+    }
+
+    private static void EnsureSettingsCollections(WidgetSettings settings)
+    {
+        settings.IconOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        settings.IconImageOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        settings.NameOverrides ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        settings.Pico2WProfileMigrationCompletedBridgeIds ??= [];
+    }
+
+    private static bool HasCompletedControllerProfileMigration(WidgetSettings settings, string bridgeAddress)
+    {
+        return settings.Pico2WProfileMigrationCompletedBridgeIds
+            .Select(AddressNormalizer.NormalizeAddress)
+            .Contains(bridgeAddress, StringComparer.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<string> CollectOverrideAddresses(WidgetSettings settings)

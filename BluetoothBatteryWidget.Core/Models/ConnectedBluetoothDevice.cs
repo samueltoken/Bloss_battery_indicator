@@ -5,5 +5,6 @@ public sealed record ConnectedBluetoothDevice(
     string Address,
     string DisplayName,
     bool IsConnected,
-    string? CategoryHint
+    string? CategoryHint,
+    string? BridgeAddress = null
 );

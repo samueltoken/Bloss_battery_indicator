@@ -515,7 +515,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 .GetConnectedDevicesAsync(refreshToken)
                 .ConfigureAwait(true);
 
-            if (FirmwareUpdateOverrideMigration.TryCopyPico2WOverridesToStableAddress(Settings, connectedDevices))
+            var copiedLegacyPico2WOverrides =
+                FirmwareUpdateOverrideMigration.TryCopyPico2WOverridesToStableAddress(Settings, connectedDevices);
+            var migratedPico2WControllerOverrides =
+                FirmwareUpdateOverrideMigration.TryMigratePico2WOverridesToControllerAddress(Settings, connectedDevices);
+            if (copiedLegacyPico2WOverrides || migratedPico2WControllerOverrides)
             {
                 SaveSettings();
             }

@@ -4,7 +4,7 @@ namespace BluetoothBatteryWidget.App.Services;
 
 internal static class AppVersionInfo
 {
-    internal const string FallbackVersion = "1.1.0";
+    internal const string FallbackVersion = "1.1.1";
 
     internal static string DisplayVersion => ResolveDisplayVersion();
 
